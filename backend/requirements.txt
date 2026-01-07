@@ -1,0 +1,24 @@
+# Core
+numpy>=1.24
+opencv-python>=4.9
+
+# Scene detection
+scenedetect>=0.6
+
+# FFmpeg wrapper (optional but convenient)
+ffmpeg-python>=0.2
+
+# AI / Embeddings
+torch>=2.1
+torchvision>=0.16
+open-clip-torch>=2.24
+
+# Vector search
+faiss-cpu>=1.7
+
+# Utilities
+tqdm>=4.66
+pillow>=10.0
+
+# Optional (recommended)
+scipy>=1.11
