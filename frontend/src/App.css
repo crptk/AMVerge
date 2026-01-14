@@ -112,21 +112,23 @@ body {
 
 .clips-grid {
     display: grid;
-    grid-template-columns: auto auto auto auto;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 15px;
+    padding: 15px;
 }
 
 .clip-wrapper {
-    background: grey;
-    width: 250px;
-    height: 250px;
+    width: 100%;
+    aspect-ratio: 1 / 1; /* keeps it square */
     overflow: hidden;
     border-radius: 15px;
-    margin: 4px;
+    background: grey;
 }
 .clip {
-    width: 250px;
-    height: 250px;
+    width: 100%;
+    height: 100%;
     object-fit: cover;
+    display: block;
     background: grey;
     text-align: center;
     justify-content: center;
