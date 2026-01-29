@@ -1,7 +1,0 @@
-make grid responsive
- -> grid should shrink depending on windows size, clips should shrink too maybe?
-
-replace images with placeholder clips from sakugabooru
-- figure out how to do grab a thumbnail from the clip
-
-Fix up layout, make the entire thing more responsive, clean up HTML and css

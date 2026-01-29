@@ -1,2 +1,14 @@
 venv
 .venv
+./backend/test
+./backend/output_test
+
+# --- Video files ---
+*.mp4
+*.mkv
+*.mov
+*.avi
+*.webm
+*.flv
+*.wmv
+*.m4v

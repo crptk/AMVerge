@@ -1,26 +1,59 @@
-import { useState } from "react";
-import reactLogo from "./assets/react.svg";
-import ClipsContainer from "./components/ClipsContainer"
-import PreviewContainer from "./components/PreviewContainer"
+import { useState, useRef } from "react";
 import Navbar from "./components/Navbar";
-import { invoke } from "@tauri-apps/api/core";
+import ImportButtons from "./components/ImportButtons";
 import "./App.css";
+import MainLayout from "./MainLayout";
 
 function App() {
-  const [greetMsg, setGreetMsg] = useState("");
-  const [name, setName] = useState("");
+  /*
+  Create setSelectedClip function, whatever gets passed into it
+  becomes selectedClip
+  */
+  const [selectedClips, setSelectedClips] = useState<Set<string>>(new Set());
+  const [gridPreview, setGridPreview] = useState<true | false>(false);
+  const [cols, setCols] = useState(6);
+  const gridRef = useRef<HTMLDivElement>(null);
+  const width = gridRef.current?.offsetWidth || 0;
+  const gridSize = Math.floor(width / cols);
 
-  async function greet() {
-    // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-    setGreetMsg(await invoke("greet", { name }));
-  }
+  console.log("Grid width:", width);
+  // divides width of grid by input grid size
+  const currentCols = Math.max(
+    1, // has to be minimum 1 column so we max it with 1 here
+    Math.floor(width / (gridSize))
+  );
+
+  console.log("Current columns:", currentCols);
+  const snapGridBigger = () => {
+    setCols(c => Math.max(1, c - 1));
+  };
+
+
+  const snapGridSmaller = () => {
+    setCols(c => Math.min(12, c + 1));
+  };
 
   return (
     <main>
       <Navbar />
-      <div className="main">
-        <ClipsContainer />
-        <PreviewContainer />
+      <ImportButtons 
+        cols={cols}
+        gridSize={gridSize}
+        onBigger={snapGridBigger}
+        onSmaller={snapGridSmaller}
+        setGridPreview={setGridPreview}
+        gridPreview={gridPreview}
+        selectedClips={selectedClips}
+        setSelectedClips={setSelectedClips}
+      />
+      <div className="main" >
+        <MainLayout 
+         cols={cols}
+         gridSize={gridSize}
+         gridRef={gridRef}
+         gridPreview={gridPreview}
+         selectedClips={selectedClips}
+         setSelectedClips={setSelectedClips}/>
       </div>
     </main>
   );

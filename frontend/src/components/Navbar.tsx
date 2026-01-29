@@ -3,8 +3,8 @@ export default function Navbar() {
     return (
         <div className="navbar">
             <svg width="800px" height="800px" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <g clip-path="url(#clip0_429_11066)">
-                    <path d="M3 6.00092H21M3 12.0009H21M3 18.0009H21" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+                <g clipPath="url(#clip0_429_11066)">
+                    <path d="M3 6.00092H21M3 12.0009H21M3 18.0009H21" stroke="#ffffff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
                 </g>
                 <defs>
                 <clipPath id="clip0_429_11066">
