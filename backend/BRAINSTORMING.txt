@@ -1,0 +1,25 @@
+My first brainstorm:
+
+I figured I could create the algorithm by calculating the edges of a scene and then using that as the scene detect filter. So
+basically:
+1) Convert ep to find edges
+2) For each frame, consider past 5 frames
+3) Average past 5 frames, if it's over a threshold, consider, otherwise don't
+
+This is fine, but this is more for smoothing, it's not really to detect change
+
+To detect change, I need to essentially find the "difference" between each frame. By this I mean
+literally subtracting one frame from the last. This would basically get the edges that overlap over each other only,
+then I calculate the mean of that, if it's over the threshold, consider it, otherwise don't.
+
+I'll keep thinking later about what i can do, I rly need a notebook lol
+
+
+SUBTRACTION:
+
+EDGEDETECT ALGORITHM:
+- Heavily struggles on high action scenes since average content fluctutates 
+  heavily. Lots of false positive on high action scenes.
+
+
+NEW FINDINGS

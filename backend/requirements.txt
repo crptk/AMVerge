@@ -22,3 +22,5 @@ pillow>=10.0
 
 # Optional (recommended)
 scipy>=1.11
+
+opencv-python
