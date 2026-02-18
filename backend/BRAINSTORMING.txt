@@ -22,4 +22,135 @@ EDGEDETECT ALGORITHM:
   heavily. Lots of false positive on high action scenes.
 
 
-NEW FINDINGS
+[2/3/2026]
+NEW FINDINGS (chatgpt pasted): 
+Algorithm (High-Level)
+1) Preprocess
+
+Convert frame → grayscale
+
+Run edge detection (Canny is fine)
+
+Treat edge map as a binary structural fingerprint
+
+2) Structural similarity (cosine / overlap)
+
+Instead of subtracting frames, compute similarity between consecutive edge maps.
+
+Conceptually:
+
+Flatten edge map to vector
+
+Compute cosine similarity between frame t and t-1
+
+Result:
+
+Value ≈ 1.0 → same structure
+
+Value ≈ 0.0 → totally different structure
+
+This is far more stable than subtraction.
+
+3) Rolling baseline (this is critical)
+
+Maintain a sliding window of last N similarities (N ≈ 5–10):
+
+S = [simₜ₋ₙ, ..., simₜ₋₁]
+
+
+This window represents:
+
+“What does normal structural change look like right now?”
+
+4) Detect structural collapse, not low similarity
+
+A cut is detected when:
+
+(current_similarity) << (recent baseline)
+
+
+Formally:
+
+mean(S) - current_similarity > K * std(S)
+
+
+K ≈ 2–3
+
+This adapts automatically to:
+
+high-action scenes
+
+calm scenes
+
+No fixed thresholds.
+
+5) Fade / dimming rejection (explicit)
+
+Use grayscale deltas only to detect fades.
+
+Track last few grayscale deltas:
+
+Δ = [|μₜ₋₄ - μₜ₋₅|, ..., |μₜ - μₜ₋₁|]
+
+
+If:
+
+deltas are similar magnitude
+
+same direction
+
+monotonic
+
+→ this is a fade → reject detection
+
+This directly fixes the lamp-dimming case you mentioned.
+
+6) Cooldown
+
+After a confirmed cut:
+
+ignore detections for ~10 frames
+
+Prevents:
+
+double hits
+
+transition noise
+
+Why cosine similarity specifically works
+
+Invariant to brightness shifts
+
+Sensitive to edge relocation
+
+Motion shifts edges slightly → similarity stays moderate
+
+Scene cuts relocate edges → similarity collapses
+
+Subtraction can’t distinguish motion from cuts — cosine can.
+
+Final Decision Rule (Mental Model)
+
+A frame is a scene cut iff:
+
+Structural similarity drops as a statistical outlier
+
+Drop is not part of a smooth luminance trend
+
+You are not in cooldown
+
+TL;DR (lock this in)
+
+Detect scene cuts as outliers in edge-map cosine similarity, not as large frame-to-frame differences.
+
+This is the complete, updated version of the cosine-based approach from the previous chat — nothing missing, nothing extra.
+
+If next you want:
+
+minimal pseudocode
+
+how to compute cosine efficiently on binary edges
+
+how to tune N and K for 24fps anime
+
+just say which one.
