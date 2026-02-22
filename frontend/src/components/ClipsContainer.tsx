@@ -6,25 +6,18 @@ import { VscLoading } from "react-icons/vsc";
 //     Types/Props
 // --------------------
 
-// called whenever a clip should be previewed
 type ClipContainerProps = {
   onSelectClip: (clip: string) => void;
   gridSize: number;
   gridRef: React.RefObject<HTMLDivElement | null>;
   cols: number;
   gridPreview: boolean;
-  setSelectedClips: React.Dispatch<
-    React.SetStateAction<Set<string>>
-  >;
+  setSelectedClips: React.Dispatch<React.SetStateAction<Set<string>>>;
   selectedClips: Set<string>;
   clips: { id: string; src: string }[];
   importToken: string;
   loading: boolean;
 };
-
-// --------------------
-//      Component
-// --------------------
 
 export default function ClipsContainer(props: ClipContainerProps) {
   // stores references to <video> elements keyed by clip ID.

@@ -112,6 +112,7 @@ function App() {
         <div className="loading-overlay">
           <div className="spinner" />
           <div className="loading-text">
+
             <div>{progressMsg}</div>
             <div>{progress}%</div>
             <div className="progress-bar">
