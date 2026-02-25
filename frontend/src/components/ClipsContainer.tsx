@@ -1,6 +1,5 @@
 import { useState, useRef, useEffect } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
-import { VscLoading } from "react-icons/vsc";
 
 // --------------------
 //     Types/Props
@@ -19,14 +18,110 @@ type ClipContainerProps = {
   loading: boolean;
 };
 
-export default function ClipsContainer(props: ClipContainerProps) {
-  // stores references to <video> elements keyed by clip ID.
-  const videoRefs = useRef<Record<string, HTMLVideoElement | null>>({});
+// --------------------
+//   Lazy Video Cell
+// --------------------
 
-  // index of the last selected clip
+type LazyClipProps = {
+  clip: { id: string; src: string };
+  importToken: string;
+  isSelected: boolean;
+  gridPreview: boolean;
+  onClick: (e: React.MouseEvent<HTMLVideoElement>) => void;
+  videoRef: (el: HTMLVideoElement | null) => void;
+};
+
+function LazyClip({ clip, importToken, isSelected, gridPreview, onClick, videoRef }: LazyClipProps) {
+  // tracks whether this clip has entered the viewport at least once
+  const [isVisible, setIsVisible] = useState(false);
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  const internalVideoRef = useRef<HTMLVideoElement | null>(null);
+
+  useEffect(() => {
+    const el = wrapperRef.current;
+    if (!el) return;
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setIsVisible(true);
+          // Play immediately if gridPreview is already on — can't wait for
+          // the React state update + effect cycle because the video ref may
+          // not be wired up yet at that point, so we use a short rAF to let
+          // the render happen first.
+          if (gridPreview) {
+            requestAnimationFrame(() => {
+              internalVideoRef.current?.play().catch(() => {});
+            });
+          }
+          observer.disconnect();
+        }
+      },
+      { rootMargin: "200px", threshold: 0 }
+    );
+
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
+  // Sync gridPreview play/pause — runs when gridPreview toggles OR when the
+  // clip first becomes visible (covers the case where gridPreview is already
+  // true when the user scrolls a clip into view).
+  useEffect(() => {
+    const v = internalVideoRef.current;
+    if (!v || !isVisible) return;
+
+    if (gridPreview) {
+      v.play().catch(() => {});
+    } else {
+      v.pause();
+      v.currentTime = 0;
+    }
+  }, [gridPreview, isVisible]);
+
+  return (
+    <div
+      ref={wrapperRef}
+      className={`clip-wrapper ${isSelected ? "selected" : ""}`}
+    >
+      {isVisible ? (
+        <video
+          className="clip"
+          src={`${convertFileSrc(clip.src)}?v=${importToken}`}
+          muted
+          loop
+          preload="metadata"
+          ref={(el) => {
+            internalVideoRef.current = el;
+            videoRef(el);
+          }}
+          onMouseEnter={() => {
+            if (!gridPreview) internalVideoRef.current?.play();
+          }}
+          onMouseLeave={() => {
+            if (!gridPreview) {
+              const v = internalVideoRef.current;
+              if (v) { v.pause(); v.currentTime = 0; }
+            }
+          }}
+          onClick={onClick}
+        />
+      ) : (
+        // Placeholder that holds the layout space while the clip is off-screen
+        <div className="clip clip-skeleton" style={{ borderRadius: 15 }} />
+      )}
+    </div>
+  );
+}
+
+// --------------------
+//   Main Container
+// --------------------
+
+export default function ClipsContainer(props: ClipContainerProps) {
+  const videoRefs = useRef<Record<string, HTMLVideoElement | null>>({});
   const [lastSelectedIndex, setLastSelectedIndex] = useState<number | null>(null);
 
-  // Toggles clip in multi-selection, used for ctrl+click
   const toggleClip = (id: string) => {
     props.setSelectedClips(prev => {
       const next = new Set(prev);
@@ -35,128 +130,55 @@ export default function ClipsContainer(props: ClipContainerProps) {
     });
   };
 
-  // Selects a single clip and clears all others
   const selectSingleClip = (id: string) => {
     props.setSelectedClips(new Set([id]));
   };
 
-  // Selects range of clips
   const selectRange = (id: string) => {
     const currentIndex = props.clips.findIndex(c => c.id === id);
     if (lastSelectedIndex === null) return;
-
-    const [start, end] = [lastSelectedIndex, currentIndex].sort(
-      (a, b) => a - b
-    );
-
+    const [start, end] = [lastSelectedIndex, currentIndex].sort((a, b) => a - b);
     const range = props.clips.slice(start, end + 1).map(c => c.id);
     props.setSelectedClips(new Set(range));
   };
 
-  useEffect(() => {
-    Object.values(videoRefs.current).forEach(video => {
-      if (!video) return;
-
-      if (props.gridPreview) {
-        video.play().catch(() => {});
-      } else {
-        video.pause();
-        video.currentTime = 0;
-      }
-    });
-  }, [props.gridPreview]);
-  // --------------------
-  // Render
-  // --------------------
-
   return (
     <main className="clips-container">
-        <div
+      <div
         ref={props.gridRef}
-          className="clips-grid"
-          style={{
-            gridTemplateColumns: `repeat(${props.cols}, minmax(0, 1fr))`
-          }}
-        >
-        { props.loading 
+        className="clips-grid"
+        style={{ gridTemplateColumns: `repeat(${props.cols}, minmax(0, 1fr))` }}
+      >
+        {props.loading
           ? Array.from({ length: 12 }).map((_, i) => (
-            <div key={i} className="clip-skeleton" />
-          ))
+              <div key={i} className="clip-skeleton" />
+            ))
           : props.clips.map((clip, index) => (
-          <div
-            key={clip.id}
-            // Apply green outline when selected
-            className={`clip-wrapper ${
-              props.selectedClips.has(clip.id) ? "selected" : ""
-            }`}
-          >
-            {/* 
-              Video clip cell:
-              - Autoplays on hover
-              - Supports single / multi / range selection
-              - Updates preview on click
-            */}
-            <video
-              className="clip"
-              // convertFileSrc converts it to an http which makes it accessible
-              src={`${convertFileSrc(clip.src)}?v=${props.importToken}`}
-              muted
-              loop
-              preload="metadata"
+              <LazyClip
+                key={clip.id}
+                clip={clip}
+                importToken={props.importToken}
+                isSelected={props.selectedClips.has(clip.id)}
+                gridPreview={props.gridPreview}
+                videoRef={(el) => { videoRefs.current[clip.id] = el; }}
+                onClick={(e) => {
+                  const isCtrl = e.ctrlKey || e.metaKey;
+                  const isShift = e.shiftKey;
 
-              // Store reference for hover playback control
-              ref={(el) => {
-                videoRefs.current[clip.id] = el;
-              }}
-              
-              // Hover preview playback
-              
-              // if gridPreview == true, play all, else play on hover
-              onMouseEnter={() => {
-                if (!props.gridPreview) {
-                  videoRefs.current[clip.id]?.play();
-                }
-              }}
-
-              onMouseLeave={() => {
-                if (!props.gridPreview) {
-                  const v = videoRefs.current[clip.id];
-                  if (v) {
-                    v.pause();
-                    v.currentTime = 0;
+                  if (isShift && lastSelectedIndex !== null) {
+                    selectRange(clip.id);
+                  } else if (isCtrl) {
+                    toggleClip(clip.id);
+                    props.onSelectClip(clip.src);
+                  } else {
+                    selectSingleClip(clip.id);
+                    props.onSelectClip(clip.src);
                   }
-                }
-              }}
 
-              // Click behavior with modifier keys
-              onClick={(e) => {
-                const isCtrl = e.ctrlKey || e.metaKey;
-                const isShift = e.shiftKey;
-
-                if (isShift && lastSelectedIndex !== null) {
-                  // Shift + Click → range select
-                  selectRange(clip.id);
-                } 
-                else if (isCtrl) {
-                  // Ctrl / Cmd + Click → toggle selection
-                  toggleClip(clip.id);
-                  props.onSelectClip(clip.src); // update preview
-                } 
-                else {
-                  // Normal click → single select + preview
-                  selectSingleClip(clip.id);
-                  props.onSelectClip(clip.src);
-                }
-
-                // Update anchor for future Shift selections
-                if (!isShift) {
-                  setLastSelectedIndex(index);
-                }
-              }}
-            />
-          </div>
-        ))}
-
+                  if (!isShift) setLastSelectedIndex(index);
+                }}
+              />
+            ))}
       </div>
     </main>
   );

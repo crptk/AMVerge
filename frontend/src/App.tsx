@@ -39,12 +39,12 @@ function App() {
     // calls backend passing in video file and threshold
     const result = await invoke<string>("detect_scenes", {
       videoPath: videoPath,
-      threshold: 0.8,
-      blocksize: 3
     });
 
     // contains path to all clips along w other metadata
+    console.log("Raw result:", result);
     const scenes = JSON.parse(result);
+    console.log("Parsed scenes:", scenes); 
 
     // turns to an array of objects
     return scenes.map((s: any) => ({

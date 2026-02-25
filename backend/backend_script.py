@@ -7,6 +7,8 @@ import av
 import sys
 import json
 from utils import generate_keyframes, keyframe_windows, merge_short_scenes, emit_progress
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
 #-----------------------------
 #   SCENEDETECT ALGORITHM
 #-----------------------------
@@ -67,8 +69,6 @@ def read_frames(
     cut_timestamps = []
 
     for frame in container.decode(stream):
-
-        # frame.time is already in secs
         if frame.time is None:
             continue
 
@@ -83,7 +83,8 @@ def read_frames(
             break
 
         # Convert to grayscale numpy array
-        img = frame.to_ndarray(format="gray")
+        frame = frame.reformat(width=480, height=270, format="gray")
+        img = frame.to_ndarray()
 
         # Edge detection
         edges = cv2.Canny(img, 50, 100)
@@ -102,7 +103,6 @@ def read_frames(
         prev = pooled
 
     container.close()
-
     return cut_timestamps
 
 #-----------------------------
@@ -112,7 +112,7 @@ def read_frames(
 def detect_and_trim_scenes(
         original_video_path: str,
         threshold: float,
-        radius: float = 0.3,
+        radius: float = 0.6,
         output_dir: str = "./output_test",
         blocksize: int = 3
 ):
@@ -120,100 +120,144 @@ def detect_and_trim_scenes(
 
     emit_progress(10, "Capturing key areas..")
     keyframes = generate_keyframes(original_video_path)
+
+
     if not keyframes:
         return []
     windows = keyframe_windows(keyframes, radius)
     
     all_cut_timestamps = []
-
-    emit_progress(30, "Scanning for scene cuts...")
     total_windows = max(1, len(windows))
+    emit_progress(30, "Scanning for scene cuts...")
 
-    for i, (start, end) in enumerate(windows):
-        percent = 30 + int(40 * (i / total_windows))
-        emit_progress(percent, f"Scanning window {i+1}/{total_windows}")
-
-        window_cuts = read_frames(
-            original_video_path,
-            start,
-            end,
-            threshold,
-            blocksize
-        )
-
-        all_cut_timestamps.extend(window_cuts)
+    def scan_window(args):
+        i, (start, end) = args
+        return read_frames(original_video_path, start, end, threshold, blocksize)
+    
+    with ThreadPoolExecutor(max_workers=os.cpu_count()) as executor:
+        futures = {executor.submit(scan_window, (i, w)): i for i, w in enumerate(windows)}
+        completed = 0
+        for future in as_completed(futures):
+            cuts = future.result()
+            all_cut_timestamps.extend(cuts)
+            completed += 1
+            percent = 30 + int(40 * (completed / total_windows))
+            emit_progress(percent, f"Scanning window {completed}/{total_windows}")
 
     all_cut_timestamps = sorted(set(all_cut_timestamps))
 
+    emit_progress(70, "Finalizing scene boundaries")
     duration_cmd = [
         "ffprobe", "-i", original_video_path,
         "-show_entries", "format=duration",
         "-v", "quiet",
         "-of", "csv=p=0"
     ]
-
-    emit_progress(70, "Finalizing scene boundaries")
     result = subprocess.run(duration_cmd, stdout=subprocess.PIPE, text=True)
     duration = float(result.stdout.strip())
 
-    scene_boundaries = [0.0] + all_cut_timestamps + [duration]
-    scene_boundaries = sorted(set(scene_boundaries))
-
+    scene_boundaries = sorted(set([0.0] + all_cut_timestamps + [duration]))
     scene_boundaries = merge_short_scenes(scene_boundaries, min_duration=0.5)
 
-    final_scenes = []
-    scene_idx = 0
-
     emit_progress(80, "Cutting scenes..")
-    total_scenes = max(1, len(scene_boundaries) - 1)
-    for i in range(total_scenes):
-        percent = 80 + int(20 * (i / total_scenes))
-        emit_progress(percent, f"Exporting clip {i+1}/{total_scenes}")
+    cut_points = scene_boundaries[1:-1]
+    out_pattern = os.path.join(output_dir, "scene_%04d.mp4")
 
+    cmd = [
+        "ffmpeg", "-y",
+        "-i", original_video_path,
+        "-c", "copy",
+        "-f", "segment",
+        "-segment_times", ",".join(f"{t:.6f}" for t in cut_points),
+        "-reset_timestamps", "1",
+        out_pattern
+    ]
+    subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
+
+    emit_progress(95, "Assembling results...")
+
+    # Collect the output files ffmpeg created and match them to boundaries
+    final_scenes = []
+    for i in range(len(scene_boundaries) - 1):
         start = scene_boundaries[i]
         end = scene_boundaries[i + 1]
+        out_path = os.path.join(output_dir, f"scene_{i:04d}.mp4")
+        if os.path.exists(out_path) and os.path.getsize(out_path) > 0:
+            final_scenes.append({
+                "scene_index": i,
+                "start": start,
+                "end": end,
+                "path": out_path
+            })
 
-        if start >= end:
-            continue
+    emit_progress(100, "Done")
+    return final_scenes
 
-        out_path = os.path.join(output_dir, f"scene_{scene_idx:04d}.mp4")
+def trim_scenes_at_keyframes(video_path: str, output_dir: str):
+    os.makedirs(output_dir, exist_ok=True)
+    
+    emit_progress(10, "Extracting keyframes...")
+    keyframes = generate_keyframes(video_path=video_path)
+    print(f"Keyframes found: {len(keyframes)}", file=sys.stderr)
+    print(f"First few: {keyframes[:5]}", file=sys.stderr)
+    
+    if not keyframes:
+        print("No keyframes found, returning empty", file=sys.stderr)
+        return []
+    
+    # Skip the first keyframe(0.0)
+    cut_points = sorted(keyframes[1:])
+    emit_progress(50, f"Cutting {len(cut_points)} scenes...")
 
-        cmd = [
-            "ffmpeg", "-y",
-            "-ss", str(start),
-            "-to", str(end),
-            "-i", original_video_path,
-            "-c", "copy",
-            out_path
-        ]
+    out_pattern = os.path.join(output_dir, "scene_%04d.mp4")
 
-        subprocess.run(cmd,
-                        stdout=subprocess.DEVNULL,
-                        stderr=subprocess.DEVNULL,
-                        check=True)
+    cmd = [
+        "ffmpeg", "-y",
+        "-i", video_path,
+        "-c", "copy",
+        "-f", "segment",
+        "-segment_times", ",".join(f"{t:.6f}" for t in cut_points),
+        "-reset_timestamps", "1",
+        out_pattern
+    ]
+    
+    subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
 
-        final_scenes.append({
-            "scene_index": scene_idx,
-            "start": start,
-            "end": end,
-            "path": out_path
-        })
+    print(f"Output dir: {output_dir}", file=sys.stderr)
+    print(f"Files created: {os.listdir(output_dir)}", file=sys.stderr)
 
-        scene_idx += 1
+    # Collect results
+    final_scenes = []
+    boundaries = [0.0] + cut_points
+    for i, start in enumerate(boundaries):
+        end = boundaries[i + 1] if i + 1 < len(boundaries) else None
+        out_path = os.path.join(output_dir, f"scene_{i:04d}.mp4")
+        exists = os.path.exists(out_path)
+        size = os.path.getsize(out_path) if exists else 0
+        print(f"Checking {out_path}: exists={exists}, size={size}", file=sys.stderr)
+        if os.path.exists(out_path) and os.path.getsize(out_path) > 0:
+            final_scenes.append({
+                "scene_index": i,
+                "start": start,
+                "end": end,
+                "path": out_path
+            })
     emit_progress(100, "Done")
     return final_scenes
 
 if __name__ == "__main__":
     input_file = sys.argv[1]
-    threshold = float(sys.argv[2])
-    blocksize = int(sys.argv[3])
-    output_dir = sys.argv[4]
-    scenes = detect_and_trim_scenes(
-        original_video_path=input_file,
-        threshold=threshold,
-        blocksize=blocksize,
-        output_dir=output_dir
-    )
+    output_dir = sys.argv[2]
+    # blocksize = int(sys.argv[3])
+    # output_dir = sys.argv[4]
+    # scenes = detect_and_trim_scenes(
+    #     original_video_path=input_file,
+    #     threshold=threshold,
+    #     blocksize=blocksize,
+    #     output_dir=output_dir
+    # )
 
+    scenes = trim_scenes_at_keyframes(input_file, output_dir)
     print("About to print JSON", file=sys.stderr)
     print(json.dumps(scenes)) # sends to stdout for rust to collect, react parses it
+    sys.stdout.flush() 

@@ -1,6 +1,2 @@
-Need to make it so that the clip import button is fixed and doesn't add on, it should replace all dead videos on the unique
--> UNDERSTAND HOW THE CURRENT ARCHITECTURE WORKS ENTIRELY
-    -> Understand how TAURI works, how RUST files works (main.rs, capabilities/default.json, Cargo.toml, tauri.conf.json)
-    -> Understand how TAURI connects the python to frontend ui, how everything flows together through HTTP
-    -> Understand entire UI structure, how everything works, look through each line of code, function and understand it
-    -> Then fix the clip import after
+Need to add a dynamic threshold, essentially the stuff that gets outputted to frame.txt, get the average of all of the upper
+numbers, and set that as the threshold. Implement that using Claude.

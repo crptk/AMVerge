@@ -22,6 +22,22 @@ export default function VideoPlayer({ selectedClip }: VideoPlayerProps) {
     const wasPlayingRef = useRef(false);
     const rafRef = useRef<number | null>(null);
 
+    const safePlay = (video: HTMLVideoElement) => {
+        if (!video.src || video.readyState === 0) return;
+        video.play().catch((err) => {
+            if (err.name !== "AbortError") console.error(err);
+        })
+    }
+
+    useEffect(() => {
+        const video = videoRef.current;
+        if (!video || !selectedClip) return;
+
+        setCurrentTime(0)
+        setDuration(0)
+        setIsPlaying(false);
+    }, [selectedClip])
+
     // --- CONTROL HANDLERS ---
     useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -170,16 +186,18 @@ export default function VideoPlayer({ selectedClip }: VideoPlayerProps) {
             <div className="video-frame">
                 <video
                     ref={videoRef}
-                    src={convertFileSrc(selectedClip)}
+                    src={selectedClip ? convertFileSrc(selectedClip): undefined}
                     preload="metadata"
+                    muted
+                    loop
                     onLoadedMetadata={(e) => {
                         const video = e.currentTarget;
                         video.style.setProperty(
-                        "--aspect-ratio",
-                        `${video.videoWidth} / ${video.videoHeight}`
+                            "--aspect-ratio",
+                            `${video.videoWidth} / ${video.videoHeight}`
                         );
                         setDuration(video.duration);
-                        togglePlay();
+                        safePlay(video);
                     }}
                     onTimeUpdate={() => {
                         if (!videoRef.current) return;

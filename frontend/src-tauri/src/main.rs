@@ -1,7 +1,6 @@
 use std::io::{BufRead, BufReader, Read};
 use std::process::{Command, Stdio};
 use std::sync::{Arc, Mutex};
-use std::thread;
 
 use tauri::{AppHandle, Manager};
 use tauri::Emitter;
@@ -14,15 +13,10 @@ struct ProgressPayload {
 }
 
 #[tauri::command]
-fn detect_scenes(
+async fn detect_scenes(
     app: AppHandle,
     video_path: String,
-    threshold: f32,
-    blocksize: i32
 ) -> Result<String, String> {
-    // ----------------------------
-    // Output directory (app data)
-    // ----------------------------
     let output_dir = app
         .path()
         .app_data_dir()
@@ -41,12 +35,9 @@ fn detect_scenes(
     }
     let output_dir_str = output_dir.to_string_lossy().to_string();
 
-    // ----------------------------
-    // Dev-only: find python + script
-    // ----------------------------
     let mut root = std::env::current_dir().map_err(|e| e.to_string())?;
-    root.pop(); // remove src-tauri
-    root.pop(); // remove frontend
+    root.pop();
+    root.pop();
 
     let script_path = root.join("backend").join("backend_script.py");
     let python_path = root
@@ -55,45 +46,30 @@ fn detect_scenes(
         .join("Scripts")
         .join("python.exe");
 
-    println!("Script: {:?}", script_path);
-    println!("Output dir: {:?}", output_dir);
-
     let mut child = Command::new(python_path)
         .arg(script_path)
         .arg(&video_path)
-        .arg(threshold.to_string())
-        .arg(blocksize.to_string())
         .arg(&output_dir_str)
-        .stdout(Stdio::piped()) // JSON only
-        .stderr(Stdio::piped()) // progress + logs
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
         .spawn()
         .map_err(|e| format!("Failed to spawn python: {e}"))?;
 
     let stdout = child.stdout.take().ok_or("Failed to capture stdout")?;
     let stderr = child.stderr.take().ok_or("Failed to capture stderr")?;
 
-    // We'll collect *all* stderr lines (incase python fails)
     let stderr_accum = Arc::new(Mutex::new(String::new()));
-
-    // Clone handles for the stderr thread
     let app_for_thread = app.clone();
     let stderr_accum_for_thread = Arc::clone(&stderr_accum);
 
-
-    // ----------------------------
-    // Thread: read stderr line-by-line and emit progress
-    // ----------------------------
-    let stderr_thread = thread::spawn(move || {
+    let stderr_handle = tokio::task::spawn_blocking(move || {
         let reader = BufReader::new(stderr);
         for line in reader.lines().flatten() {
-            // Save line for debugging/errors
             if let Ok(mut buf) = stderr_accum_for_thread.lock() {
                 buf.push_str(&line);
                 buf.push('\n');
             }
 
-            // Expected format:
-            // PROGRESS|<percent>|<message>
             if let Some(rest) = line.strip_prefix("PROGRESS|") {
                 let mut parts = rest.splitn(2, '|');
                 let p_str = parts.next().unwrap_or("");
@@ -109,24 +85,22 @@ fn detect_scenes(
         }
     });
 
-    // ----------------------------
-    // Main thread: read stdout fully (JSON)
-    // ----------------------------
-    let mut stdout_reader = BufReader::new(stdout);
-    let mut stdout_string = String::new();
-    stdout_reader
-        .read_to_string(&mut stdout_string)
-        .map_err(|e| format!("Failed reading stdout: {e}"))?;
+    let stdout_string = tokio::task::spawn_blocking(move || {
+        let mut reader = BufReader::new(stdout);
+        let mut buf = String::new();
+        reader.read_to_string(&mut buf).map(|_| buf)
+    })
+    .await
+    .map_err(|e| format!("stdout thread panicked: {e}"))?
+    .map_err(|e| format!("Failed reading stdout: {e}"))?;
 
-    // Wait for python to finish
-    let status = child
-        .wait()
+    let _ = stderr_handle.await;
+
+    let status = tokio::task::spawn_blocking(move || child.wait())
+        .await
+        .map_err(|e| format!("wait thread panicked: {e}"))?
         .map_err(|e| format!("Failed waiting for python: {e}"))?;
 
-    // Ensure stderr thread finishes too
-    let _ = stderr_thread.join();
-
-    // If python failed, return stderr
     if !status.success() {
         let err = stderr_accum
             .lock()
@@ -135,7 +109,6 @@ fn detect_scenes(
         return Err(err);
     }
 
-    // Success: stdout is pure JSON
     Ok(stdout_string)
 }
 

@@ -1,6 +1,9 @@
 import subprocess
 import json
 import os
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import threading
+import av
 def preprocess_video(input_path, output_path):
     cmd = [
         "ffmpeg", "-y",
@@ -43,21 +46,18 @@ def generate_keyframes(video_path: str):
         if "best_effort_timestamp_time" in frame
     ]
 
-def keyframe_windows(keyframes, radius=1.0):
+def keyframe_windows(keyframes, radius=1.0, fps=24.0):
     """Generates keyframe windows for """
-    windows = [(max(0, key - radius), key + radius) for key in keyframes]
-
+    frame_duration = 1.0 / fps
+    windows = [(max(0, k - radius), k + radius - frame_duration) for k in keyframes]
     windows.sort()
-    merged = [windows[0]]  
-    
-    # Ensures that none of the windows overlap each other
+    merged = [windows[0]]
     for start, end in windows[1:]:
         last_start, last_end = merged[-1]
         if start <= last_end:
-            merged[-1] = (last_start, max(last_end, end)) # Replace appended start with the last end
+            merged[-1] = (last_start, max(last_end, end))
         else:
             merged.append((start, end))
-    
     return merged
 
 def trim_keyframes(video_path: str, output_dir="./keyframe_clips", radius=1.0):
@@ -121,7 +121,9 @@ def merge_short_scenes(boundaries, min_duration=0.5):
 
     return merged
 
+_progress_lock = threading.Lock()
 def emit_progress(percent: int, message: str):
     import sys
     percent = max(0, min(100, int(percent)))
-    print(f"PROGRESS|{percent}|{message}", file=sys.stderr, flush=True)
+    with _progress_lock:
+        print(f"PROGRESS|{percent}|{message}", file=sys.stderr, flush=True)
