@@ -1,6 +1,6 @@
 import { useState, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { open } from "@tauri-apps/plugin-dialog";
+import { save, open } from "@tauri-apps/plugin-dialog";
 import { listen } from "@tauri-apps/api/event";
 import { useEffect } from "react";
 import Navbar from "./components/Navbar";
@@ -20,11 +20,12 @@ function App() {
   const [gridPreview, setGridPreview] = useState<true | false>(false);
   const [cols, setCols] = useState(6);
   const [progress, setProgress] = useState(0);
-  const [progressMsg, setProgressMsg] = useState("Starting...");
+  const [progressMsg, setProgressMsg] = useState("Starting..."); 
+  const [isEmpty, setIsEmpty] = useState(true);
   const gridRef = useRef<HTMLDivElement>(null);
   const width = gridRef.current?.offsetWidth || 0;
   const gridSize = Math.floor(width / cols);
-  
+
   const snapGridBigger = () => {
     setCols(c => Math.max(1, c - 1));
   };
@@ -63,11 +64,11 @@ function App() {
     if (!file) return;
 
     try {
+      setIsEmpty(false);
       setProgress(0);
       setProgressMsg("Starting...");
       setLoading(true);
 
-      setLoading(true);
       setImportToken(Date.now().toString());
       const formatted = await detectScenes(file);
 
@@ -79,6 +80,41 @@ function App() {
     }
   };
   
+  const handleExport = async(selectedClips: Set<string>, mergeEnabled: boolean) => {
+    if (selectedClips.size === 0) return;
+
+    const savePath = await save({
+      filters: [
+        {
+          name: "Video",
+          extensions: ["mp4"]
+        }
+      ]
+    });
+
+    if (!savePath) return;
+
+    try {
+      setLoading(true);
+
+      const clipArray = clips
+        .filter(c => selectedClips.has(c.id))
+        .map(c => c.src);
+      
+      await invoke("export_clips", {
+        clips: clipArray,
+        savePath: savePath,
+        mergeEnabled: mergeEnabled
+      });
+      
+      console.log("Export complete");
+    } catch (err) {
+      console.log("Export failed:", err)
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const snapGridSmaller = () => {
     setCols(c => Math.min(12, c + 1));
   };
@@ -142,7 +178,9 @@ function App() {
          setSelectedClips={setSelectedClips}
          clips={clips}
          importToken={importToken}
-         loading={loading}/>
+         loading={loading}
+         isEmpty={isEmpty}
+         handleExport={handleExport}/>
       </div>
     </main>
   );

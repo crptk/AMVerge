@@ -16,6 +16,7 @@ type ClipContainerProps = {
   clips: { id: string; src: string; thumbnail: string }[];
   importToken: string;
   loading: boolean;
+  isEmpty: boolean;
 };
 
 // --------------------
@@ -134,42 +135,46 @@ export default function ClipsContainer(props: ClipContainerProps) {
 
   return (
     <main className="clips-container">
-      <div
-        ref={props.gridRef}
-        className="clips-grid"
-        style={{ gridTemplateColumns: `repeat(${props.cols}, minmax(0, 1fr))` }}
-      >
-        {props.loading
-          ? Array.from({ length: 12 }).map((_, i) => (
-              <div key={i} className="clip-skeleton" />
-            ))
-          : props.clips.map((clip, index) => (
-              <LazyClip
-                key={clip.id}
-                clip={clip}
-                importToken={props.importToken}
-                isSelected={props.selectedClips.has(clip.id)}
-                gridPreview={props.gridPreview}
-                videoRef={(el) => { videoRefs.current[clip.id] = el; }}
-                onClick={(e) => {
-                  const isCtrl = e.ctrlKey || e.metaKey;
-                  const isShift = e.shiftKey;
+      { props.isEmpty ? (
+        <p id="empty-grid">No video loaded.</p>
+      ) : (
+          <div
+            ref={props.gridRef}
+            className="clips-grid"
+            style={{ gridTemplateColumns: `repeat(${props.cols}, minmax(0, 1fr))` }}
+          >
+            {props.loading
+              ? Array.from({ length: 12 }).map((_, i) => (
+                  <div key={i} className="clip-skeleton" />
+                ))
+              : props.clips.map((clip, index) => (
+                  <LazyClip
+                    key={clip.id}
+                    clip={clip}
+                    importToken={props.importToken}
+                    isSelected={props.selectedClips.has(clip.id)}
+                    gridPreview={props.gridPreview}
+                    videoRef={(el) => { videoRefs.current[clip.id] = el; }}
+                    onClick={(e) => {
+                      const isCtrl = e.ctrlKey || e.metaKey;
+                      const isShift = e.shiftKey;
 
-                  if (isShift && lastSelectedIndex !== null) {
-                    selectRange(clip.id);
-                  } else if (isCtrl) {
-                    toggleClip(clip.id);
-                    props.onSelectClip(clip.src);
-                  } else {
-                    selectSingleClip(clip.id);
-                    props.onSelectClip(clip.src);
-                  }
+                      if (isShift && lastSelectedIndex !== null) {
+                        selectRange(clip.id);
+                      } else if (isCtrl) {
+                        toggleClip(clip.id);
+                        props.onSelectClip(clip.src);
+                      } else {
+                        selectSingleClip(clip.id);
+                        props.onSelectClip(clip.src);
+                      }
 
-                  if (!isShift) setLastSelectedIndex(index);
-                }}
-              />
-            ))}
-      </div>
+                      if (!isShift) setLastSelectedIndex(index);
+                    }}
+                  />
+                ))}
+          </div>
+       )}
     </main>
   );
 }

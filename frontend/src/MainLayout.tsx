@@ -14,6 +14,11 @@ type LayoutProps = {
     clips: { id: string; src: string; thumbnail: string }[];
     importToken: string;
     loading: boolean;
+    isEmpty: boolean;
+    handleExport: (
+        selectedClips: Set<string>,
+        mergeEnabled: boolean
+    ) => Promise<void>;
 };
 export default function MainLayout(props: LayoutProps) {
     const [leftWidth, setLeftWidth] = useState(65);
@@ -63,7 +68,8 @@ export default function MainLayout(props: LayoutProps) {
                  setSelectedClips={props.setSelectedClips}
                  clips={props.clips}
                  importToken={props.importToken}
-                 loading={props.loading}/>
+                 loading={props.loading}
+                 isEmpty={props.isEmpty}/>
             </div>
             
             <div
@@ -78,7 +84,10 @@ export default function MainLayout(props: LayoutProps) {
 
             <div className="right-pane" style={{ width: `${100 - leftWidth}%` }}>
                 <PreviewContainer 
-                selectedClip={selectedClip} />
+                selectedClip={selectedClip}
+                selectedClips={props.selectedClips}
+                handleExport={props.handleExport}
+                />
             </div>
         </div>
     )
