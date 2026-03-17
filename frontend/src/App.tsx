@@ -328,7 +328,6 @@ function App() {
               onImport={onImportClick}
               loading={loading}
             />
-            <p>TEST V0.1.1</p>
             <MainLayout 
             cols={cols}
             gridSize={gridSize}

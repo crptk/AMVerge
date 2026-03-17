@@ -11,7 +11,7 @@ export default function InfoBox() {
         <p>
           <strong>Windows:</strong>
           <br />
-          - Select multiple clips with <b>Ctrl + Click</b> or <b>Shift + Click</b>
+          - Select clips with <b>Ctrl + Click</b>, <b>Shift + Click</b> or <b>Double click</b>
           <br />
           - Click "Merge clips" to merge, or leave unchecked to export separately
           <br />
@@ -21,7 +21,7 @@ export default function InfoBox() {
         <p>
           <strong>macOS:</strong>
           <br />
-          - Select multiple clips with <b>Cmd + Click</b> or <b>Shift + Click</b>
+          - Select multiple clips with <b>Cmd + Click</b>, <b>Shift + Click</b> or <b>Double click</b>
           <br />
           - Click "Merge clips" to merge, or leave unchecked to export separately
           <br />
