@@ -309,7 +309,7 @@ function App() {
 
       )}
       <div className="window-wrapper">
-        <p>test v0.1.235</p>
+        <p>test v0.1.235a</p>
         {/* {sideBarEnabled && <Sidebar/>} */}
         <div className="content-wrapper">
           <Navbar 
