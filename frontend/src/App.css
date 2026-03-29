@@ -412,9 +412,39 @@ body {
     background: rgba(0, 0, 0, 0.4);
     display: flex;
     flex-direction: column;
-    min-width: 20vh;
+    width: var(--amverge-sidebar-width, 280px);
+    flex: 0 0 var(--amverge-sidebar-width, 280px);
+    min-width: 220px;
+    max-width: 60vw;
+    min-height: 0;
+    overflow: hidden;
     border-right: 1px solid rgba(255, 255, 255, 0.1);;
 
+}
+
+.sidebar-divider {
+    display: flex;
+    flex-direction: row;
+    width: 15px;
+    height: 50%;
+    cursor: col-resize;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0 3px;
+    box-sizing: border-box;
+    align-self: stretch;
+    user-select: none;
+    touch-action: none;
+    transform: translateY(55%);
+}
+
+.sidebar-divider:hover {
+    background: rgba(255, 255, 255, 0.04);
+}
+
+body.is-resizing-sidebar {
+    cursor: col-resize;
+    user-select: none;
 }
 
 .sidebar-container > .menu-buttons {
@@ -430,6 +460,252 @@ body {
     flex-direction: column;
     align-items: center;
     height: 100%;
+}
+
+.episode-panel {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    flex: 1;
+    min-height: 0;
+    padding: 8px;
+    box-sizing: border-box;
+}
+
+.episode-panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 8px;
+    width: 100%;
+}
+
+.episode-panel-title {
+    font-family: 'Jersey 10', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+    font-size: 22px;
+    color: white;
+    letter-spacing: 0.5px;
+}
+
+.episode-panel-actions {
+    display: flex;
+    gap: 6px;
+}
+
+.episode-panel-action {
+    font-family: 'Jersey 10', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+    font-size: 12px;
+    padding: 4px 8px;
+    border-radius: 8px;
+    background: rgba(0, 0, 0, 0.25);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    color: white;
+    cursor: pointer;
+}
+
+.episode-panel-action:hover {
+    background: rgb(var(--accent-rgb) / 0.18);
+    border-color: rgb(var(--accent-rgb) / 0.6);
+}
+
+.episode-panel-list {
+    width: 100%;
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    padding: 6px;
+    border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: rgba(0, 0, 0, 0.22);
+    box-sizing: border-box;
+}
+
+.episode-panel-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px;
+    border-radius: 8px;
+    cursor: pointer;
+    user-select: none;
+    color: white;
+    min-width: 0;
+}
+
+.episode-panel-row:hover {
+    background: rgba(255, 255, 255, 0.06);
+}
+
+.episode-panel-row.is-drop-target {
+    outline: 1px dashed rgb(var(--accent-rgb) / 0.9);
+    outline-offset: -1px;
+}
+
+.episode-panel-list.is-drop-target-root {
+    border-color: rgb(var(--accent-rgb) / 0.55);
+}
+
+.episode-panel-row.is-selected,
+.episode-panel-row.is-open {
+    background: rgb(var(--accent-rgb) / 0.22);
+    border: 1px solid rgb(var(--accent-rgb) / 0.55);
+}
+
+.episode-panel-row.is-focused {
+    background: rgb(var(--accent-rgb) / 0.12);
+    border: 1px solid rgb(var(--accent-rgb) / 0.35);
+ }
+
+.episode-panel-row.folder-row.is-selected {
+    background: rgb(var(--accent-rgb) / 0.12);
+    border: 1px solid rgb(var(--accent-rgb) / 0.35);
+}
+
+.folder-row {
+    font-weight: 500;
+}
+
+.episode-row {
+    font-weight: 400;
+}
+
+.episode-panel-folder-name,
+.episode-panel-episode-name {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.episode-panel-count {
+    opacity: 0.75;
+    font-size: 12px;
+}
+
+.episode-panel-caret {
+    width: 20px;
+    height: 20px;
+    border-radius: 6px;
+    background: transparent;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    color: white;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transform: rotate(0deg);
+    transition: transform 0.12s ease;
+}
+
+.episode-panel-caret.is-expanded {
+    transform: rotate(90deg);
+}
+
+.episode-panel-folder-children {
+    padding-left: 0;
+}
+
+.episode-context-menu {
+    position: fixed;
+    z-index: 9999;
+    background: rgba(0, 0, 0, 0.92);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    border-radius: 10px;
+    padding: 6px;
+    min-width: 140px;
+}
+
+.episode-context-menu-item {
+    width: 100%;
+    padding: 8px 10px;
+    background: transparent;
+    border: none;
+    color: white;
+    text-align: left;
+    border-radius: 8px;
+    cursor: pointer;
+}
+
+.episode-context-menu-item:hover {
+    background: rgb(var(--accent-rgb) / 0.18);
+}
+
+.episode-modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.65);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10000;
+}
+
+.episode-modal {
+    width: min(420px, 92vw);
+    background: rgba(0, 0, 0, 0.92);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    border-radius: 12px;
+    padding: 12px;
+    box-shadow: 0 18px 60px rgba(0, 0, 0, 0.65);
+}
+
+.episode-modal-title {
+    font-size: 20px;
+    margin-bottom: 10px;
+}
+
+.episode-modal-message {
+    opacity: 0.92;
+    line-height: 1.2;
+    margin-bottom: 12px;
+}
+
+.episode-modal-input {
+    width: 100%;
+    padding: 10px 12px;
+    border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    background: rgba(0, 0, 0, 0.35);
+    color: white;
+    font-family: 'Jersey 10', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+    font-size: 18px;
+    outline: none;
+    box-sizing: border-box;
+}
+
+.episode-modal-input:focus {
+    border-color: rgb(var(--accent-rgb) / 0.55);
+    box-shadow: 0 0 0 2px rgb(var(--accent-rgb) / 0.18);
+}
+
+.episode-modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 12px;
+}
+
+.episode-modal-btn {
+    padding: 8px 12px;
+    border-radius: 10px;
+    background: rgba(0, 0, 0, 0.25);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    color: white;
+    cursor: pointer;
+    font-family: 'Jersey 10', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+    font-size: 16px;
+}
+
+.episode-modal-btn:hover {
+    background: rgb(var(--accent-rgb) / 0.14);
+    border-color: rgb(var(--accent-rgb) / 0.55);
+}
+
+.episode-modal-btn.primary {
+    background: rgb(var(--accent-rgb) / 0.22);
+    border-color: rgb(var(--accent-rgb) / 0.55);
 }
 
 .sidebar-container > .sidebar-button {

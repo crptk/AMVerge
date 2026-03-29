@@ -86,6 +86,39 @@ fn apply_no_window(cmd: &mut Command) {
     }
 }
 
+fn sanitize_episode_cache_id(raw: &str) -> Result<String, String> {
+    let id = raw.trim();
+    if id.is_empty() {
+        return Err("episode_cache_id is empty".to_string());
+    }
+
+    // Keep paths safe and predictable.
+    // Allow UUIDs and simple user-generated ids.
+    if id.len() > 96 {
+        return Err("episode_cache_id is too long".to_string());
+    }
+
+    let ok = id
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_');
+    if !ok {
+        return Err("episode_cache_id contains invalid characters".to_string());
+    }
+
+    Ok(id.to_string())
+}
+
+fn clear_files_in_dir(dir: &Path) {
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_file() {
+                let _ = std::fs::remove_file(path);
+            }
+        }
+    }
+}
+
 // --------------------
 // Preview proxy locking
 // --------------------
@@ -178,24 +211,23 @@ async fn check_hevc(app: AppHandle, video_path: String) -> Result<bool, String> 
 async fn detect_scenes(
     app: AppHandle,
     video_path: String,
+    episode_cache_id: Option<String>,
 ) -> Result<String, String> {
     let video_name = file_name_only(&video_path);
-    let output_dir = app
+    let app_data_dir = app
         .path()
         .app_data_dir()
         .map_err(|e| e.to_string())?;
 
-    std::fs::create_dir_all(&output_dir)
-        .map_err(|e| e.to_string())?;
+    let output_dir = if let Some(raw_id) = episode_cache_id.as_deref() {
+        let id = sanitize_episode_cache_id(raw_id)?;
+        app_data_dir.join("episodes").join(id)
+    } else {
+        app_data_dir.clone()
+    };
 
-    if let Ok(entries) = std::fs::read_dir(&output_dir) {
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.is_file() {
-                let _ = std::fs::remove_file(path);
-            }
-        }
-    }
+    std::fs::create_dir_all(&output_dir).map_err(|e| e.to_string())?;
+    clear_files_in_dir(&output_dir);
     let output_dir_str = output_dir.to_string_lossy().to_string();
 
     console_log(
@@ -372,6 +404,39 @@ async fn detect_scenes(
     }
 
     Ok(stdout_string)
+}
+
+// --------------------
+// Episode cache cleanup
+// --------------------
+
+#[tauri::command]
+async fn delete_episode_cache(app: AppHandle, episode_cache_id: String) -> Result<(), String> {
+    let id = sanitize_episode_cache_id(&episode_cache_id)?;
+    let app_data_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| e.to_string())?;
+
+    let episode_dir = app_data_dir.join("episodes").join(id);
+    if episode_dir.exists() {
+        std::fs::remove_dir_all(&episode_dir).map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+async fn clear_episode_panel_cache(app: AppHandle) -> Result<(), String> {
+    let app_data_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| e.to_string())?;
+    let episodes_dir = app_data_dir.join("episodes");
+
+    if episodes_dir.exists() {
+        std::fs::remove_dir_all(&episodes_dir).map_err(|e| e.to_string())?;
+    }
+    Ok(())
 }
 
 // --------------------
@@ -1277,6 +1342,8 @@ fn main() {
             check_hevc,
             hover_preview_error,
             ensure_preview_proxy,
+            delete_episode_cache,
+            clear_episode_panel_cache,
         ])
         .run(tauri::generate_context!())
         .expect("error running app");
