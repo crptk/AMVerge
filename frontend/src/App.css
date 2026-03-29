@@ -273,11 +273,15 @@ body {
 .clips-import {
     display: flex;
     flex-direction: row;
+    flex-wrap: wrap;
     width: 100%;
     /* background: green; */
-    height: 2.5rem;
+    height: auto;
+    min-height: 2.5rem;
     padding-top: 6px;
     margin-bottom: 5px;
+    gap: 8px;
+    align-items: center;
 }
 
 .import-buttons-container {
@@ -318,12 +322,18 @@ body {
     display: flex;
     /* background: navy;  */
     align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    min-width: 0;
 }
 
 .checkbox-row {
+    display: flex;
+    align-items: center;
     height: 2.2rem;
     padding: 2px;
     margin-right: 5px;
+    white-space: nowrap;
 }
 
 .custom-checkbox {
@@ -457,6 +467,7 @@ body.is-resizing-sidebar {
     align-items: center;
     justify-content: space-between;
     gap: 8px;
+    flex-wrap: wrap;
     margin-bottom: 8px;
     width: 100%;
 }
@@ -466,11 +477,15 @@ body.is-resizing-sidebar {
     font-size: 22px;
     color: white;
     letter-spacing: 0.5px;
+    flex: 1 1 auto;
+    min-width: 120px;
 }
 
 .episode-panel-actions {
     display: flex;
     gap: 6px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
 }
 
 .episode-panel-action {
@@ -482,6 +497,9 @@ body.is-resizing-sidebar {
     border: 1px solid rgba(255, 255, 255, 0.18);
     color: white;
     cursor: pointer;
+    white-space: nowrap;
+    flex: 0 0 auto;
+    text-align: center;
 }
 
 .episode-panel-action:hover {
