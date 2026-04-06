@@ -327,6 +327,7 @@ async fn detect_scenes(
 
     let stderr_handle = tokio::task::spawn_blocking(move || {
         let reader = BufReader::new(stderr);
+        const STDERR_CAP: usize = 256 * 1024; // 256 KB
         for line in reader.lines().flatten() {
             if !line.starts_with("PROGRESS|") {
                 let sanitized = sanitize_line_with_known_paths(
@@ -339,8 +340,10 @@ async fn detect_scenes(
                 console_log("BACKEND", &sanitized);
             }
             if let Ok(mut buf) = stderr_accum_for_thread.lock() {
-                buf.push_str(&line);
-                buf.push('\n');
+                if buf.len() < STDERR_CAP {
+                    buf.push_str(&line);
+                    buf.push('\n');
+                }
             }
 
             if let Some(rest) = line.strip_prefix("PROGRESS|") {
@@ -918,9 +921,11 @@ async fn export_clips(
             .to_string();
 
         // Probe durations once to produce smooth overall progress.
-        emit_export_progress(&app, 5, "Probing clip durations...");
+        emit_export_progress(&app, 5, "Probing clip info...");
         let mut per_ms: Vec<Option<u64>> = Vec::with_capacity(clips.len());
         let mut total_ms: Option<u64> = Some(0);
+        // Pre-cache codec info alongside durations to avoid redundant ffprobe calls per clip.
+        let mut per_copy_safe: Vec<bool> = Vec::with_capacity(clips.len());
         for c in &clips {
             let d = ffprobe_duration_ms(ffprobe.clone(), c.clone()).await.ok().flatten();
             per_ms.push(d);
@@ -929,6 +934,8 @@ async fn export_clips(
             } else {
                 total_ms = None;
             }
+            let safe = is_ae_copy_safe(ffprobe.clone(), c.clone()).await.unwrap_or(false);
+            per_copy_safe.push(safe);
         }
 
         let mut done_ms: u64 = 0;
@@ -972,8 +979,8 @@ async fn export_clips(
             let msg = format!("Exporting clip {}/{}", i + 1, clips.len());
             emit_export_progress(&app, 10, &msg);
 
-            // Prefer stream copy when already AE-friendly.
-            let copy_ok = is_ae_copy_safe(ffprobe.clone(), clip.clone()).await.unwrap_or(false);
+            // Use pre-cached codec info instead of re-probing each clip.
+            let copy_ok = per_copy_safe.get(i).copied().unwrap_or(false);
             let clip_total = per_ms.get(i).copied().flatten();
 
             let (mode_msg, args) = if copy_ok {
@@ -1136,7 +1143,9 @@ async fn ensure_preview_proxy(
     let clip_key = clip_path.clone();
     let clip_lock = {
         let mut map = proxy_locks.inner.lock().await;
-        map.entry(clip_key)
+        // Evict stale entries (no other task holds a reference) to prevent unbounded growth.
+        map.retain(|_, v| Arc::strong_count(v) > 1);
+        map.entry(clip_key.clone())
             .or_insert_with(|| Arc::new(AsyncMutex::new(())))
             .clone()
     };

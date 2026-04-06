@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import ClipsContainer from "./components/ClipsContainer";
 import PreviewContainer from "./components/PreviewContainer";
 
@@ -28,16 +28,30 @@ type LayoutProps = {
 export default function MainLayout(props: LayoutProps) {
     const [leftWidth, setLeftWidth] = useState(65);
 
-    const focusedClipThumbnail = props.focusedClip
-        ? props.clips.find((c) => c.src === props.focusedClip)?.thumbnail ?? null
-        : null;
+    const focusedClipThumbnail = useMemo(
+        () =>
+            props.focusedClip
+                ? props.clips.find((c) => c.src === props.focusedClip)?.thumbnail ?? null
+                : null,
+        [props.focusedClip, props.clips]
+    );
+
+    // Track active resize listeners so we can clean up on unmount.
+    const resizeCleanupRef = useRef<(() => void) | null>(null);
+
+    useEffect(() => {
+        return () => {
+            resizeCleanupRef.current?.();
+        };
+    }, []);
+
     /*
     startResize is the function used to resize the PreviewContainer and ClipsContainer
     Notes:
     - e: The MouseEvent() object, it's passed in on declaration of the object
          and is used to track all mouse interactions with the window
     */
-    const startResize = (e: React.MouseEvent<HTMLDivElement>) => {
+    const startResize = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
         const startX = e.clientX;
         const container = e.currentTarget.parentElement as HTMLElement;
         const leftPane = container.children[0] as HTMLElement;
@@ -57,12 +71,16 @@ export default function MainLayout(props: LayoutProps) {
         const onMouseUp = () => {
             window.removeEventListener("mousemove", onMouseMove);
             window.removeEventListener("mouseup", onMouseUp);
+            resizeCleanupRef.current = null;
         };
+
+        // Remove any stale listeners before attaching new ones.
+        resizeCleanupRef.current?.();
 
         window.addEventListener("mousemove", onMouseMove);
         window.addEventListener("mouseup", onMouseUp);
-        console.log("Mouse clicked!", e.clientX)
-    }
+        resizeCleanupRef.current = onMouseUp;
+    }, []);
     return (
         <div className="split-layout">
             <div className="left-pane" style={{ width: `${leftWidth}%`}}>

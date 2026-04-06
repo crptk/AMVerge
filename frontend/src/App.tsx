@@ -82,6 +82,7 @@ function App() {
   const gridRef = useRef<HTMLDivElement>(null);
   const userHasHEVC = useRef<boolean>(false)
   const lastExternalDropRef = useRef<{ path: string; ts: number } | null>(null);
+  const importGenRef = useRef(0);
   const width = gridRef.current?.offsetWidth || 0;
   const gridSize = Math.floor(width / cols);
 
@@ -263,6 +264,7 @@ function App() {
     if (!file) return;
 
     const episodeId = crypto.randomUUID();
+    const gen = ++importGenRef.current;
 
     try {
       setIsEmpty(false);
@@ -276,6 +278,10 @@ function App() {
       setImportToken(Date.now().toString());
 
       const formatted = await detectScenes(file, episodeId);
+
+      // A newer import started while we were waiting — discard stale results.
+      if (importGenRef.current !== gen) return;
+
       const inferredName = formatted[0]?.originalName || fileNameFromPath(file);
 
       const episodeEntry: EpisodeEntry = {
@@ -294,9 +300,10 @@ function App() {
         setClips(formatted);
       });
     } catch (err) {
+      if (importGenRef.current !== gen) return;
       console.error("Detection failed:", err);
     } finally {
-      setLoading(false);
+      if (importGenRef.current === gen) setLoading(false);
     }
   };
 

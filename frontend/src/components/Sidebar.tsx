@@ -481,6 +481,8 @@ function EpisodePanel(props: Omit<SidebarProps, "activePage" | "setActivePage">)
 
         (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
 
+        let rafId: number | null = null;
+
         const onMove = (ev: PointerEvent) => {
             const state = pointerDragRef.current;
             if (!state) return;
@@ -497,14 +499,29 @@ function EpisodePanel(props: Omit<SidebarProps, "activePage" | "setActivePage">)
 
             if (!state.dragging) return;
 
-            const next = computeDropTarget(ev.clientX, ev.clientY, state.source);
-            setDropTarget(next);
+            // Throttle drop-target computation to once per animation frame.
+            const cx = ev.clientX;
+            const cy = ev.clientY;
+            if (rafId === null) {
+                rafId = requestAnimationFrame(() => {
+                    rafId = null;
+                    const s = pointerDragRef.current;
+                    if (!s || !s.dragging) return;
+                    const next = computeDropTarget(cx, cy, s.source);
+                    setDropTarget(next);
+                });
+            }
         };
 
         const onUpOrCancel = (ev: PointerEvent) => {
             const state = pointerDragRef.current;
             if (!state) return;
             if (ev.pointerId !== state.pointerId) return;
+
+            if (rafId !== null) {
+                cancelAnimationFrame(rafId);
+                rafId = null;
+            }
 
             window.removeEventListener("pointermove", onMove);
             window.removeEventListener("pointerup", onUpOrCancel);

@@ -743,6 +743,15 @@ export default function ClipsContainer(props: ClipContainerProps) {
   // --------------------
   const videoRefs = useRef<Record<string, HTMLVideoElement | null>>({});
 
+  // Prune videoRefs when clips change so old entries don't accumulate.
+  useEffect(() => {
+    const validIds = new Set(props.clips.map((c) => c.id));
+    const refs = videoRefs.current;
+    for (const key of Object.keys(refs)) {
+      if (!validIds.has(key)) delete refs[key];
+    }
+  }, [props.clips]);
+
   const { requestProxySequential, reportProxyDemand } = useViewportAwareProxyQueue();
   const { reportStaggerDemand } = useStaggeredMountQueue();
 
