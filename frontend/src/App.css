@@ -1052,7 +1052,7 @@ body.is-resizing-sidebar {
     box-sizing: border-box;
     max-width: 50vh;
 }
-//
+
 .export-dir-input:focus {
     border-color: rgba(255, 255, 255, 0.35);
 }
