@@ -1,6 +1,7 @@
 import VideoPlayer from "../components/VideoPlayer.tsx"
 import InfoBox from "../components/InfoBox.tsx"
 import React from "react";
+import { FaFolderOpen } from "react-icons/fa";
 type PreviewContainerProps = {
   focusedClip: string | null;
   focusedClipThumbnail: string | null;
@@ -10,18 +11,43 @@ type PreviewContainerProps = {
   importToken: string;
   handleExport: (
     selectedClips: Set<string>,
-    enableMerged: boolean
+    enableMerged: boolean,
+    mergeFileName?: string
   ) => Promise<void>;
   exportDir: string | null;
   onPickExportDir: () => void;
   onExportDirChange: (dir: string) => void;
+  defaultMergedName: string;
 };
 
 export default function PreviewContainer (props: PreviewContainerProps) {
   const [mergeEnabled, setMergeEnabled] = React.useState(true);
+  const [showMergeNameModal, setShowMergeNameModal] = React.useState(false);
+  const mergeNameInputRef = React.useRef<HTMLInputElement | null>(null);
+
+  React.useEffect(() => {
+    if (showMergeNameModal) {
+      requestAnimationFrame(() => {
+        mergeNameInputRef.current?.focus();
+        mergeNameInputRef.current?.select();
+      });
+    }
+  }, [showMergeNameModal]);
+
   const onExportClick = () => {
-    props.handleExport(props.selectedClips, mergeEnabled);
-  }
+    if (mergeEnabled) {
+      setShowMergeNameModal(true);
+    } else {
+      props.handleExport(props.selectedClips, false);
+    }
+  };
+
+  const confirmMergeExport = () => {
+    const value = (mergeNameInputRef.current?.value ?? "").trim();
+    if (!value) return;
+    setShowMergeNameModal(false);
+    props.handleExport(props.selectedClips, true, value);
+  };
   return (
     <main  className="preview-container" >
       <div className="preview-window">
@@ -63,7 +89,7 @@ export default function PreviewContainer (props: PreviewContainerProps) {
             onClick={props.onPickExportDir}
             title="Browse for output folder"
           >
-            Set Export Dir
+            <FaFolderOpen />
           </button>
         </div>
         <button 
@@ -76,6 +102,46 @@ export default function PreviewContainer (props: PreviewContainerProps) {
       </div>
       
       <InfoBox/>
+
+      {showMergeNameModal && (
+        <div
+          className="episode-modal-overlay"
+          onMouseDown={() => setShowMergeNameModal(false)}
+        >
+          <div
+            className="episode-modal"
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <div className="episode-modal-title">Merged file name</div>
+            <input
+              ref={mergeNameInputRef}
+              className="episode-modal-input"
+              placeholder="Enter file name..."
+              defaultValue={props.defaultMergedName}
+              onKeyDown={(e) => {
+                if (e.key === "Escape") setShowMergeNameModal(false);
+                if (e.key === "Enter") confirmMergeExport();
+              }}
+            />
+            <div className="episode-modal-actions">
+              <button
+                type="button"
+                className="episode-modal-btn"
+                onClick={() => setShowMergeNameModal(false)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="episode-modal-btn primary"
+                onClick={confirmMergeExport}
+              >
+                Export
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }

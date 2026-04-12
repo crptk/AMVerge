@@ -17,7 +17,8 @@ type LayoutProps = {
     isEmpty: boolean;
     handleExport: (
         selectedClips: Set<string>,
-        mergeEnabled: boolean
+        mergeEnabled: boolean,
+        mergeFileName?: string
     ) => Promise<void>;
     sideBarEnabled: boolean;
     videoIsHEVC: boolean | null;
@@ -27,6 +28,7 @@ type LayoutProps = {
     exportDir: string | null;
     onPickExportDir: () => void;
     onExportDirChange: (dir: string) => void;
+    defaultMergedName: string;
 };
 export default function MainLayout(props: LayoutProps) {
     const [leftWidth, setLeftWidth] = useState(65);
@@ -127,6 +129,7 @@ export default function MainLayout(props: LayoutProps) {
                 exportDir={props.exportDir}
                 onPickExportDir={props.onPickExportDir}
                 onExportDirChange={props.onExportDirChange}
+                defaultMergedName={props.defaultMergedName}
                 />
             </div>
         </div>

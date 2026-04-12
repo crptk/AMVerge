@@ -698,7 +698,7 @@ function App() {
     if (dir) setExportDir(dir as string);
   };
 
-  const handleExport = async(selectedClips: Set<string>, mergeEnabled: boolean) => {
+  const handleExport = async(selectedClips: Set<string>, mergeEnabled: boolean, mergeFileName?: string) => {
     if (selectedClips.size === 0) return;
 
     const selected = clips.filter(c => selectedClips.has(c.id));
@@ -719,9 +719,8 @@ function App() {
       const clipArray = selected.map(c => c.src);
 
       if (mergeEnabled) {
-        const episodeName = selected[0]?.originalName || "episode";
-        const suffix = String(Math.floor(Math.random() * 999) + 1).padStart(3, "0");
-        const savePath = `${dir}\\${episodeName}_merged_${suffix}.mp4`;
+        const baseName = mergeFileName || ((selected[0]?.originalName || "episode") + "_merged");
+        const savePath = `${dir}\\${baseName}.mp4`;
 
         await invoke("export_clips", {
           clips: clipArray,
@@ -1030,6 +1029,9 @@ function App() {
                     exportDir={exportDir}
                     onPickExportDir={handlePickExportDir}
                     onExportDirChange={(dir: string) => setExportDir(dir || null)}
+                    defaultMergedName={
+                      (clips[0]?.originalName || "episode") + "_merged"
+                    }
                   />
                   <div className="info-bar">
                     {openedEpisodeId && importedVideoPath && (
