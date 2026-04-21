@@ -27,34 +27,36 @@ export default function ImportButtons(props: ImportButtonsProps) {
           </button>
         </div>
         <div className="grid-checkboxes">
-          <div className="checkbox-row">
-            <label className="custom-checkbox">
-              <input 
-                type="checkbox" 
-                className="checkbox"
-                checked={props.gridPreview}
-                onChange={(e) => props.setGridPreview(e.target.checked)}
-              />
-              <span className="checkmark"></span>
-            </label>
-            <span>Grid preview</span>    
-          </div>
-          <div className="checkbox-row">
-            <label className="custom-checkbox">
-              <input 
-                type="checkbox" 
-                className="checkbox"
-                checked={hasSelection}
-                disabled={!hasSelection}
-                onChange={(e) => {
-                  if (!e.target.checked) {
-                    props.setSelectedClips(new Set())
-                  }
-                }}
-              />
-              <span className="checkmark"></span>
-            </label>
-            <span>{props.selectedClips.size} selected</span>    
+          <div className="selectable-checkboxes">
+            <div className="checkbox-row">
+              <label className="custom-checkbox">
+                <input 
+                  type="checkbox" 
+                  className="checkbox"
+                  checked={props.gridPreview}
+                  onChange={(e) => props.setGridPreview(e.target.checked)}
+                />
+                <span className="checkmark"></span>
+              </label>
+              <span>Grid preview</span>    
+            </div>
+            <div className="checkbox-row">
+              <label className="custom-checkbox">
+                <input 
+                  type="checkbox" 
+                  className="checkbox"
+                  checked={hasSelection}
+                  disabled={!hasSelection}
+                  onChange={(e) => {
+                    if (!e.target.checked) {
+                      props.setSelectedClips(new Set())
+                    }
+                  }}
+                />
+                <span className="checkmark"></span>
+              </label>
+              <span>{props.selectedClips.size} selected</span>    
+            </div>
           </div>
           <div className="zoomWrapper">
             <span>Size: {props.gridSize}px</span>

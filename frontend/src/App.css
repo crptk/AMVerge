@@ -70,7 +70,7 @@ body {
     width: 100px;
     font-family: 'Jersey 10', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
     font-size: 20px;
-    border: 1px solid white;
+    border: 1px solid #7c7c7c;
     margin-bottom: 5px;
     background: black;
     color: white;
@@ -309,7 +309,7 @@ body {
 .clips-import {
     display: flex;
     flex-direction: row;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     width: 100%;
     /* background: green; */
     height: auto;
@@ -338,33 +338,44 @@ body {
     margin-right: 5px;
     margin-bottom: 5px;
     font-family: 'Jersey 10', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
-    font-size: 20px;
+    font-size: 18px;
     background: black;
     color: white;
-    border: 1px solid white;
+    border: 1px solid #555555;
     border-radius: 8px;
 }
 
 #file-button {
-    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    transition: border 0.2s ease, 
+                box-shadow 0.2s ease, 
+                color 0.2s ease;
 }
 
 #file-button:hover {
     cursor: pointer;
-    box-shadow: 0 0 15px rgba(255, 255, 255, 0.6);
+    box-shadow: 0 0 15px rgb(var(--accent-rgb) / 0.4);
+    border: 1px solid var(--accent);
+    color: var(--accent);
 }
 
 .grid-checkboxes { 
     display: flex;
-    /* background: navy;  */
     align-items: center;
-    flex-wrap: wrap;
+    flex: 1;
+    justify-content: space-between;
     gap: 8px;
     min-width: 0;
 }
 
+.selectable-checkboxes {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
 .checkbox-row {
     display: flex;
+    flex-direction: row;
     align-items: center;
     height: 2.2rem;
     padding: 2px;
@@ -391,12 +402,16 @@ body {
     width: 100%;
     height: 100%;
     border: 1.5px solid white;
-    border-radius: 4px; /* slightly rounded */
+    border-radius: 4px;
     background: transparent;
     display: inline-flex;
     align-items: center;
     justify-content: center;
     transition: all 0.15s ease;
+}
+
+.custom-checkbox > .checkmark:hover {
+    border: 1.5px solid var(--accent);
 }
 
 .custom-checkbox:has(input:disabled) {
@@ -419,11 +434,12 @@ body {
 
 .zoomWrapper {
     display: flex;
-    flex-direction: column;
     align-items: center;
     justify-content: center;
-    transform: translateY(-7px);
+    gap: 5px;
+    padding-right: 10px;
 }
+
 .zoomWrapper > form {
     display: flex;
     justify-content: center;
@@ -432,6 +448,9 @@ body {
     /* background: red; */
 }
 
+.zoomWrapper span {
+    color: rgb(146, 146, 146)
+}
 .zoomWrapper button {
     width: 30px;
     height: 30px;
@@ -441,10 +460,12 @@ body {
     border: 1px solid white;
     border-radius: 5px;
     font-size: 20px;
+    transition: border 0.1s ease;
 }
 
 .zoomWrapper button:hover {
-    color: white;
+    /* color: white; */
+    border: 1px solid var(--accent);
     cursor: pointer;
 }
 
@@ -513,6 +534,36 @@ body.is-resizing-sidebar {
     height: 100%;
 }
 
+.sidebar-container > .sidebar-button {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 30px;
+    margin: 3px;
+}
+
+.sidebar-button > button {
+    width: 100%;
+    height: 100%;
+    font-size: 25px;
+    font-family: 'Jersey 10', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+    background:  rgba(15, 0, 0, 0.1);
+    border: 1px solid rgb(var(--accent-rgb) / 0.9);
+    color: white;
+    border-radius: 10px;
+    transition: background 0.2s ease,
+                border 0.1s ease,
+                /* color 0.1s ease; */
+}
+
+.sidebar-button > button:hover {
+    background:  var(--accent);
+    color: black;
+    border-radius: 10px;
+    cursor: pointer;
+}
+
+
 .episode-panel {
     display: flex;
     flex-direction: column;
@@ -561,11 +612,17 @@ body.is-resizing-sidebar {
     white-space: nowrap;
     flex: 0 0 auto;
     text-align: center;
+    transition: background 0.2s ease,
+                border 0.2s ease,
+                box-shadow 0.2s ease;
 }
 
 .episode-panel-action:hover {
-    background: rgb(var(--accent-rgb) / 0.18);
-    border-color: rgb(var(--accent-rgb) / 0.6);
+    /* background: rgb(var(--accent-rgb) / 0.18); */
+    border: 1px solid rgb(var(--accent-rgb));
+    color: var(--accent);
+    box-shadow: 0 0 0 2px rgb(var(--accent-rgb) / 0.18);
+    /* color: var(--accent); */
 }
 
 .episode-panel-list {
@@ -594,6 +651,7 @@ body.is-resizing-sidebar {
 
 .episode-panel-row:hover {
     background: rgba(255, 255, 255, 0.06);
+    /* color: var(--accent); */
 }
 
 .episode-panel-row.is-drop-target {
@@ -607,8 +665,8 @@ body.is-resizing-sidebar {
 
 .episode-panel-row.is-selected,
 .episode-panel-row.is-open {
-    background: rgb(var(--accent-rgb) / 0.22);
-    border: 1px solid rgb(var(--accent-rgb) / 0.55);
+    color: var(--accent);
+    border-left: 2px solid rgb(var(--accent-rgb));
 }
 
 .episode-panel-row.is-focused {
@@ -789,38 +847,6 @@ body.is-resizing-sidebar {
     border-color: rgb(var(--accent-rgb) / 0.55);
 }
 
-.sidebar-container > .sidebar-button {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    height: 30px;
-    margin: 3px;
-}
-
-.sidebar-button > button {
-    width: 100%;
-    height: 100%;
-    font-size: 25px;
-    font-family: 'Jersey 10', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
-    background:  rgba(15, 0, 0, 0.1);
-    border: 1px solid rgb(var(--accent-rgb) / 0.9);
-    color: white;
-    border-radius: 10px;
-    transition: background 0.2s ease;
-}
-
-.sidebar-button > button:hover {
-    width: 100%;
-    height: 100%;
-    font-size: 25px;
-    font-family: 'Jersey 10', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
-    background:  rgb(var(--accent-rgb) / 0.18);
-    border: none;
-    color: white;
-    border-radius: 10px;
-    cursor: pointer;
-}
-
 
 /* --------------------
       LAYOUT SPLIT
@@ -829,7 +855,6 @@ body.is-resizing-sidebar {
     display: flex;
     flex: 1;
     width: 100%;
-    /* background: navy; */
     min-width: 0;
     min-height: 0;
 }
@@ -875,7 +900,7 @@ body.is-resizing-sidebar {
 }
 
 .subdivider {
-    background: white;
+    background: rgb(var(--accent-rgb) / 0.5);
     width: 1px;
     height: 100%;
 }
@@ -1097,7 +1122,9 @@ body.is-resizing-sidebar {
 }
 
 .export-dir-browse:hover {
-    box-shadow: 0 0 10px rgba(255, 255, 255, 0.6);
+    box-shadow: 0 0 10px rgb(var(--accent-rgb) / 0.7);
+    border: 1px solid var(--accent);
+    color: var(--accent);
 }
 
 .checkbox-row {
@@ -1223,7 +1250,15 @@ body.is-resizing-sidebar {
 
 .info-box h3 {
     font-weight: 100;
+    margin-top: 18px;
+    margin-bottom: 5px;
 }
+
+.info-box p {
+    margin: 0;
+    color: #bebebecc
+}
+
 
 .dot-switcher {
     display: flex;

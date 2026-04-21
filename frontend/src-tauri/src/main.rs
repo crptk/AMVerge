@@ -1,4 +1,4 @@
-// #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] // removes the cmd line on exe
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] // removes the cmd line on exe
 
 // Tauri backend entrypoint.
 //
