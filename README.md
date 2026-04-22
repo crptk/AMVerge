@@ -26,10 +26,10 @@ AMVerge detects scene boundaries, previews clips instantly, and lets users merge
 
 
 <p align="center">
-  <img src="frontend/src/assets/scrolling_amverge_gif.gif" alt="Importing and Scene Detection" width="300"/>
-  <img src="frontend/src/assets/color_amverge_gif.gif" alt="Importing and Scene Detection" width="300"/>
-  <img src="frontend/src/assets/resizing_amverge_gif.gif" alt="Importing and Scene Detection" width="300"/>
-<img src="frontend/src/assets/import_amverge_gif.gif" alt="Importing and Scene Detection" width="300"/>
+  <img src="frontend/src/assets/scrolling_amverge_gif.gif" alt="Importing and Scene Detection" width="340"/>
+  <img src="frontend/src/assets/color_amverge_gif.gif" alt="Importing and Scene Detection" width="340"/>
+  <img src="frontend/src/assets/resizing_amverge_gif.gif" alt="Importing and Scene Detection" width="340"/>
+<img src="frontend/src/assets/import_amverge_gif.gif" alt="Importing and Scene Detection" width="340"/>
 </p>
 
 ---
