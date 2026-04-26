@@ -3,7 +3,7 @@ import os
 import sys
 import json
 import tempfile
-from amverge_utils.video_utils import generate_keyframes, emit_progress, get_binary, merge_short_scenes
+from utils.video_utils import generate_keyframes, emit_progress, get_binary, merge_short_scenes
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import av
 from PIL import Image

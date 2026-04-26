@@ -249,7 +249,7 @@ async fn detect_scenes(
         root.pop();
         root.pop();
 
-        let script_path = root.join("backend").join("backend_script.py");
+        let script_path = root.join("backend").join("app.py");
         let python_path = root
             .join("backend")
             .join("venv")
@@ -263,7 +263,7 @@ async fn detect_scenes(
         console_log(
             "SCENE|spawn",
             &format!(
-                "mode=dev exe={python_name} script=backend_script.py args=[{video_name},{output_dir_base}]"
+                "mode=dev exe={python_name} script=app.py args=[{video_name},{output_dir_base}]"
             ),
         );
 

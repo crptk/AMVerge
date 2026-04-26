@@ -58,7 +58,7 @@ Backend (Python, FFmpeg)
 AMVerge/
 │
 ├── backend/         # Python backend (scene detection, FFmpeg, utils)
-│   ├── amverge_utils/
+│   ├── utils/
 │   ├── build/
 │   ├── keyframe_clips/
 │   ├── pipeline/

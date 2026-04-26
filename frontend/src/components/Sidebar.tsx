@@ -188,15 +188,9 @@ function EpisodePanel(props: Omit<SidebarProps, "activePage" | "setActivePage">)
             return;
         }
 
-        // Normal click – clear multi-select, use double-click logic
+        // Normal click – clear multi-select
         setMultiSelectedIds(new Set());
         lastClickedEpisodeRef.current = episodeId;
-
-        handleClickWithOptionalDouble({
-            key: `episode:${episodeId}`,
-            onSingle: () => props.onSelectEpisode(episodeId),
-            onDouble: () => props.onOpenEpisode(episodeId),
-        })();
     };
 
     const folderById = useMemo(() => {
@@ -739,6 +733,7 @@ function EpisodePanel(props: Omit<SidebarProps, "activePage" | "setActivePage">)
                                     style={{ paddingLeft: `${8 + depth * 12 + 28}px` }}
                                     onPointerDown={beginPointerDrag({ type: "episode", id: episode.id })}
                                     onClick={handleEpisodeClick(episode.id)}
+                                    onDoubleClick={() => props.onOpenEpisode(episode.id)}
                                     onContextMenu={(e) => openContextMenu(episode.id, e)}
                                     title={episode.videoPath}
                                 >
@@ -842,6 +837,7 @@ function EpisodePanel(props: Omit<SidebarProps, "activePage" | "setActivePage">)
                                 data-episode-folder-id=""
                                 onPointerDown={beginPointerDrag({ type: "episode", id: episode.id })}
                                 onClick={handleEpisodeClick(episode.id)}
+                                onDoubleClick={() => props.onOpenEpisode(episode.id)}
                                 onContextMenu={(e) => openContextMenu(episode.id, e)}
                                 title={episode.videoPath}
                             >

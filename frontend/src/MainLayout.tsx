@@ -119,17 +119,17 @@ export default function MainLayout(props: LayoutProps) {
 
             <div className="right-pane" style={{ width: `${100 - leftWidth}%` }}>
                 <PreviewContainer 
-                focusedClip={props.focusedClip}
-                focusedClipThumbnail={focusedClipThumbnail}
-                selectedClips={props.selectedClips}
-                handleExport={props.handleExport}
-                videoIsHEVC={props.videoIsHEVC}
-                userHasHEVC={props.userHasHEVC}
-                importToken={props.importToken}
-                exportDir={props.exportDir}
-                onPickExportDir={props.onPickExportDir}
-                onExportDirChange={props.onExportDirChange}
-                defaultMergedName={props.defaultMergedName}
+                    focusedClip={props.focusedClip}
+                    focusedClipThumbnail={focusedClipThumbnail}
+                    selectedClips={props.selectedClips}
+                    handleExport={props.handleExport}
+                    videoIsHEVC={props.videoIsHEVC}
+                    userHasHEVC={props.userHasHEVC}
+                    importToken={props.importToken}
+                    exportDir={props.exportDir}
+                    onPickExportDir={props.onPickExportDir}
+                    onExportDirChange={props.onExportDirChange}
+                    defaultMergedName={props.defaultMergedName}
                 />
             </div>
         </div>

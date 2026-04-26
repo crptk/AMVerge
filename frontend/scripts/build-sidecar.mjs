@@ -1,3 +1,10 @@
+// build-sidecar.mjs
+//
+// This script builds the Python backend using PyInstaller, bundles required binaries (ffmpeg.exe, ffprobe.exe),
+// and copies the output into the Tauri sidecar bin directory for packaging with the desktop app.
+// It ensures the Tauri app always includes the latest backend and dependencies for distribution.
+// Keep in mind that this is only ran on "npm run tauri build"
+
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
@@ -16,6 +23,7 @@ function run(cmd, args, options = {}) {
 }
 
 async function main() {
+  // fetching all the file paths necessary for building to dist
   const scriptDir = path.dirname(fileURLToPath(import.meta.url));
   const frontendDir = path.resolve(scriptDir, "..");
   const repoRoot = path.resolve(frontendDir, "..");
@@ -34,14 +42,19 @@ async function main() {
     "backend_script-x86_64-pc-windows-msvc"
   );
 
-  // 1) Build the PyInstaller onedir output
+  /*
+  after all file paths are found, we:
+  1) Delete the entire distDir directory (backend_script directory)
+  2) Run the command to build the new backend folder using PyInstaller
+  3) Delete the old contents of sidecar directory and recreate the new one with new build folder
+  */
   await fs.rm(distDir, { recursive: true, force: true });
   run(
     pythonExe,
     [
       "-m",
       "PyInstaller",
-      "backend_script.py",
+      "app.py",
       "--onedir",
       "--noconsole",
       "--clean",
@@ -49,14 +62,12 @@ async function main() {
       "--name",
       "backend_script",
       "--add-binary",
-      "ffmpeg.exe;.",
+      "bin/ffmpeg.exe;.",
       "--add-binary",
-      "ffprobe.exe;.",
+      "bin/ffprobe.exe;.",
     ],
     { cwd: backendDir }
   );
-
-  // 2) Sync output into src-tauri/bin (Tauri bundles from here)
   await fs.rm(tauriSidecarDir, { recursive: true, force: true });
   await fs.mkdir(tauriSidecarDir, { recursive: true });
   await fs.cp(distDir, tauriSidecarDir, { recursive: true });

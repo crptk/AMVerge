@@ -85,7 +85,7 @@ lerna-debug.log*
 *.mpeg
 *.vob
 
-# Audio (often large)
+# Audio
 *.mp3
 *.m4a
 *.flac
