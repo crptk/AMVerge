@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import ClipsContainer from "./components/ClipsContainer";
-import PreviewContainer from "./components/PreviewContainer";
+import ClipsContainer from "./components/clipsGrid/ClipsContainer.tsx";
+import PreviewContainer from "./components/previewPanel/PreviewContainer.tsx";
 
 type LayoutProps = {
     cols: number;
@@ -30,6 +30,7 @@ type LayoutProps = {
     onExportDirChange: (dir: string) => void;
     defaultMergedName: string;
 };
+
 export default function MainLayout(props: LayoutProps) {
     const [leftWidth, setLeftWidth] = useState(65);
 
@@ -41,7 +42,7 @@ export default function MainLayout(props: LayoutProps) {
         [props.focusedClip, props.clips]
     );
 
-    // Track active resize listeners so we can clean up on unmount.
+    // track active resize listeners so we can clean up on unmount.
     const resizeCleanupRef = useRef<(() => void) | null>(null);
 
     useEffect(() => {
@@ -50,12 +51,6 @@ export default function MainLayout(props: LayoutProps) {
         };
     }, []);
 
-    /*
-    startResize is the function used to resize the PreviewContainer and ClipsContainer
-    Notes:
-    - e: The MouseEvent() object, it's passed in on declaration of the object
-         and is used to track all mouse interactions with the window
-    */
     const startResize = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
         const startX = e.clientX;
         const container = e.currentTarget.parentElement as HTMLElement;
@@ -79,7 +74,7 @@ export default function MainLayout(props: LayoutProps) {
             resizeCleanupRef.current = null;
         };
 
-        // Remove any stale listeners before attaching new ones.
+        // remove any stale listeners before attaching new ones.
         resizeCleanupRef.current?.();
 
         window.addEventListener("mousemove", onMouseMove);
@@ -107,6 +102,7 @@ export default function MainLayout(props: LayoutProps) {
                  />
             </div>
             
+    
             <div
                 className="divider"
                 onMouseDown={(e) => startResize(e)}

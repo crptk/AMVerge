@@ -1,5 +1,5 @@
-import VideoPlayer from "../components/VideoPlayer.tsx"
-import InfoBox from "../components/InfoBox.tsx"
+import VideoPlayer from "./VideoPlayer.tsx"
+import InfoBox from "./InfoBox.tsx"
 import React from "react";
 import { FaFolderOpen } from "react-icons/fa";
 type PreviewContainerProps = {

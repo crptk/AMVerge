@@ -76,7 +76,6 @@ function App() {
   });
 
   
-  // Centralized episode selection logic
   const handleSelectEpisode = (episodeId: string) => {
     setSelectedEpisodeId(episodeId);
     setSelectedFolderId(null);
@@ -287,8 +286,6 @@ function App() {
         setSelectedFolderId(parsed.selectedFolderId ?? null);
       }
       if (typeof parsed.selectedEpisodeId === "string" || parsed.selectedEpisodeId === null) {
-        // Use the episode panel abstraction to select the episode, which will update all relevant state
-        // (including clips, if you wire it up)
         handleSelectEpisodeFromStorage(parsed.selectedEpisodeId, parsed.episodes);
       }
     } catch {
@@ -296,7 +293,7 @@ function App() {
     }
   }, []);
 
-  // Helper to select episode and set clips when restoring from storage
+  // loads up last selected episode
   function handleSelectEpisodeFromStorage(episodeId: string | null, episodesList?: EpisodeEntry[]) {
     setSelectedEpisodeId(episodeId ?? null);
     setSelectedFolderId(null);
@@ -337,7 +334,6 @@ function App() {
         // Ignore quota / serialization issues
       }
     }, 150);
-
     return () => window.clearTimeout(handle);
   }, [episodeFolders, episodes, selectedEpisodeId, selectedFolderId]);
 
@@ -365,9 +361,6 @@ function App() {
 
   // drag & drop files effect
   useEffect(() => {
-    // IMPORTANT: this is async registration. In React StrictMode/dev, effects can mount/unmount
-    // rapidly and cleanup may run before the awaited unlisten is assigned. We guard against that
-    // to avoid multiple listeners (which would duplicate imports on drop).
     let disposed = false;
     let unlisten: (() => void) | null = null;
 
@@ -388,13 +381,13 @@ function App() {
         const paths = event.payload.paths;
         if (!paths || paths.length === 0) return;
 
-        // De-dupe: some platforms/webviews may emit two drops.
+        // de-dupe: some platforms/webviews may cause double drag-and-drop
         const now = Date.now();
         const last = lastExternalDropRef.current;
         if (last && last.path === paths[0] && now - last.ts < 500) return;
         lastExternalDropRef.current = { path: paths[0], ts: now };
 
-        // Filter to supported video extensions
+        // filter to supported video extensions
         const videoExtensions = ["mp4", "mkv", "mov"];
         const videoFiles = paths.filter((p: string) => {
           const ext = p.split(".").pop()?.toLowerCase() || "";
