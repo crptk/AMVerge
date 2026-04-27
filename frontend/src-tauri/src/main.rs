@@ -1,10 +1,21 @@
-#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] // removes the cmd line on exe
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-// Tauri backend entrypoint.
-//
-// Frontend-facing commands:
-// - detect_scenes: runs the Python/packaged backend to generate clips + thumbnails
-// - export_clips: merges (concat demuxer) or multi-exports clips (filesystem copy)
+//! AMVerge Tauri backend entrypoint.
+//!
+//! This file is the bridge between the React frontend and the Python/FFmpeg backend.
+//!
+//! Main responsibilities:
+//! - start/abort scene detection
+//! - emit progress events to the frontend
+//! - export selected clips, either separately or merged
+//! - generate browser-friendly preview proxies for unsupported codecs
+//! - clean episode cache folders
+//!
+//! Rust note: this file is intentionally kept in one place for now.
+//! I’m far more comfortable in React/TypeScript and Python, so the Rust side was built
+//! mainly as a practical Tauri bridge for native desktop packaging and frontend/backend communication.
+//!
+//! It may be refactored into modules later as the project grows.
 
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Read};
@@ -27,18 +38,18 @@ struct ProgressPayload {
     message: String,
 }
 
-// --------------------
-// Active sidecar tracking (for abort)
-// --------------------
+// ============================================================================
+// Shared app state
+// ============================================================================
 
 #[derive(Default)]
 struct ActiveSidecar {
     pid: Mutex<Option<u32>>,
 }
 
-// --------------------
-// Console logging helpers (tester screenshot friendly)
-// --------------------
+// ============================================================================
+// Logging and path display helpers
+// ============================================================================
 
 fn file_name_only(s: &str) -> String {
     let p = Path::new(s);
@@ -127,9 +138,9 @@ fn clear_files_in_dir(dir: &Path) {
     }
 }
 
-// --------------------
+// ============================================================================
 // Preview proxy locking
-// --------------------
+// ============================================================================
 
 #[derive(Default)]
 struct PreviewProxyLocks {
@@ -138,9 +149,9 @@ struct PreviewProxyLocks {
     inner: AsyncMutex<HashMap<String, Arc<AsyncMutex<()>>>>,
 }
 
-// --------------------
-// Codec check (HEVC / H.265)
-// --------------------
+// ============================================================================
+// Commands: codec checks
+// ============================================================================
 
 #[tauri::command]
 async fn check_hevc(app: AppHandle, video_path: String) -> Result<bool, String> {
@@ -208,9 +219,9 @@ async fn check_hevc(app: AppHandle, video_path: String) -> Result<bool, String> 
     Ok(codec == "hevc")
 }
 
-// --------------------
-// Scene detection (clips + thumbs)
-// --------------------
+// ============================================================================
+// Commands: scene detection
+// ============================================================================
 
 #[tauri::command]
 async fn detect_scenes(
@@ -427,9 +438,9 @@ async fn detect_scenes(
     Ok(stdout_string)
 }
 
-// --------------------
-// Abort active scene detection
-// --------------------
+// ============================================================================
+// Commands: abort scene detection
+// ============================================================================
 
 #[tauri::command]
 async fn abort_detect_scenes(sidecar_state: State<'_, ActiveSidecar>) -> Result<(), String> {
@@ -465,9 +476,9 @@ async fn abort_detect_scenes(sidecar_state: State<'_, ActiveSidecar>) -> Result<
     Ok(())
 }
 
-// --------------------
-// Episode cache cleanup
-// --------------------
+// ============================================================================
+// Commands: episode cache cleanup
+// ============================================================================
 
 #[tauri::command]
 async fn delete_episode_cache(app: AppHandle, episode_cache_id: String) -> Result<(), String> {
@@ -492,9 +503,9 @@ async fn clear_episode_panel_cache(app: AppHandle) -> Result<(), String> {
     Ok(())
 }
 
-// --------------------
-// Export (merge or copy)
-// --------------------
+// ============================================================================
+// Commands: export clips
+// ============================================================================
 
 #[tauri::command]
 async fn export_clips(
@@ -930,23 +941,6 @@ async fn export_clips(
         let app_for_ffmpeg = app.clone();
         let ffmpeg_clone = ffmpeg.clone();
         let total_ms_f = total_ms;
-        // Compute cumulative end times for each clip (in ms)
-        let mut per_clip_ms: Vec<u64> = Vec::with_capacity(clips.len());
-        let mut cum = 0u64;
-        for c in &clips {
-            match ffprobe_duration_ms(ffprobe.clone(), c.clone()).await {
-                Ok(Some(ms)) => {
-                    cum = cum.saturating_add(ms);
-                    per_clip_ms.push(cum);
-                }
-                _ => {
-                    // If any duration is missing, fallback to None
-                    per_clip_ms.clear();
-                    break;
-                }
-            }
-        }
-
         let start_time = export_start_time;
         let out = tokio::task::spawn_blocking(move || {
             run_ffmpeg_with_progress(
@@ -1188,9 +1182,9 @@ async fn export_clips(
     Ok(())
 }
 
-// --------------------
-// Preview error signal (grid hover)
-// --------------------
+// ============================================================================
+// Commands: preview proxy generation
+// ============================================================================
 
 #[tauri::command]
 async fn hover_preview_error(
@@ -1424,6 +1418,7 @@ fn resolve_bundled_tool(app: &AppHandle, tool_name: &str) -> Result<PathBuf, Str
 }
 
 fn main() {
+    // Keep setup small and obvious: plugins, shared state, commands, then run.
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())

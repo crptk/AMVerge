@@ -6,7 +6,7 @@ import cv2
 import av
 import sys
 import json
-from amverge_utils import generate_keyframes, keyframe_windows, merge_short_scenes, emit_progress
+from utils import generate_keyframes, keyframe_windows, merge_short_scenes, emit_progress
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 '''

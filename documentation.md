@@ -1,335 +1,364 @@
-# AMVergeSystem Architecture & Inter-Process Communication
+# AMVerge Architecture
 
 ## Overview
 
-AMVerge is a desktop AI-powered video editing tool built using a multi-layer architecture:
+AMVerge is a desktop app built for editors who need to quickly split videos into usable clips, preview scenes, and export selections without wasting time in a traditional editor.
 
-* **Frontend:** React (TypeScript)
-* **Bridge Layer:** Tauri (Rust)
-* **Backend Engine:** Python (Scene Detection + FFmpeg)
-* **Media Processing:** FFmpeg
-* **Computer Vision:** OpenCV + PyAV
-* **ML Extensions (Planned):** PyTorch
+The stack is:
 
-This document outlines how data flows between layers and how each subsystem communicates.
+- **Frontend:** React + TypeScript
+- **Desktop App Runtime:** Tauri (Rust)
+- **Backend Processing:** Python
+- **Media Tools:** FFmpeg / FFprobe / PyAV
 
----
-
-# Architecture Diagram
-
-```
-┌──────────────────────┐
-│      React UI        │
-│ (WebView Frontend)   │
-└────────────┬─────────┘
-             │ invoke()
-             ▼
-┌──────────────────────┐
-│   Rust (Tauri Core)  │
-│  System Bridge Layer │
-└────────────┬─────────┘
-             │ Command::new()
-             ▼
-┌──────────────────────┐
-│   Python Backend     │
-│ Scene Detection Core │
-└────────────┬─────────┘
-             │ Writes clips to disk
-             ▼
-        File System
-```
+Each layer has a clear job. The frontend handles the UI, Rust bridges desktop features, and Python handles video processing.
 
 ---
 
-# Layer Responsibilities
+# High Level Flow
 
-## 1. React Frontend
+```txt
+React UI
+   ↓
+Tauri Commands (Rust)
+   ↓
+Python Backend
+   ↓
+FFmpeg / Filesystem
+````
 
-**Purpose:**
-Provides the graphical interface and renders video clips.
+Example:
 
-**Responsibilities:**
+1. User imports a video
+2. Frontend calls a Tauri command
+3. Rust launches Python
+4. Python processes the video and returns clip metadata
+5. Frontend renders the clips
 
-* File selection (via Tauri dialog plugin)
-* Calling backend commands using `invoke()`
-* Parsing JSON results
-* Rendering video clips in a grid
-* Managing UI state (selection, preview, layout)
+---
 
-**Key Mechanism:**
+# Why It Uses Multiple Languages
+
+## React + TypeScript
+
+Used for the interface.
+
+Good for:
+
+* fast UI iteration
+* reusable components
+* state management
+* responsive interactions
+
+## Rust + Tauri
+
+Used as the desktop bridge.
+
+Good for:
+
+* secure system access
+* packaging desktop apps
+* exposing native commands
+* file access
+
+## Python
+
+Used for media workflows.
+
+Good for:
+
+* fast scripting
+* FFmpeg orchestration
+* video tooling
+* easy iteration
+
+---
+
+# Frontend Structure
+
+
+src/
+├── App.tsx
+├── pages/
+├── hooks/
+├── components/
+├── styles/
+├── types/
+└── utils/
+
+
+---
+
+# Main Frontend Areas
+
+## App.tsx
+
+Main app entry.
+
+Responsible for:
+
+* top-level state
+* page switching
+* wiring components together
+* global hooks
+
+Most logic has been moved into hooks to keep this file readable.
+
+---
+
+## pages/
+
+Contains screen-level pages.
+
+Current examples:
+
+* `HomePage.tsx`
+* `Menu.tsx`
+
+---
+
+## hooks/
+
+Shared app logic.
+
+Examples:
+
+* `useAppState.ts`
+* `useImportExport.ts`
+* `usePersistence.ts`
+* `useDragDropImport.ts`
+* `useHEVCSupport.ts`
+
+Used to keep UI files cleaner.
+
+---
+
+## components/
+
+UI modules split by responsibility.
+
+### clipsGrid/
+
+Main clip browser.
+
+Handles:
+
+* rendering scene clips
+* hover previews
+* lazy loading
+* multi-select
+* preview-all mode
+* proxy generation for unsupported codecs
+
+### previewPanel/
+
+Focused preview + export controls.
+
+Handles:
+
+* selected clip preview
+* export path
+* merge selected clips
+* export actions
+
+### sidebar/
+
+Navigation + project organization.
+
+Handles:
+
+* Home / Menu nav
+* Episode Panel
+* folders
+* saved imports
+* drag/drop organization
+* rename / delete actions
+
+---
+
+# Sidebar Structure
+
+```
+sidebar/
+├── Sidebar.tsx
+├── SidebarNav.tsx
+├── episodePanel/
+│   ├── EpisodePanel.tsx
+│   ├── EpisodePanelTree.tsx
+│   ├── EpisodeRow.tsx
+│   ├── FolderRow.tsx
+│   ├── EpisodePanelHeader.tsx
+│   ├── EpisodePanelModals.tsx
+│   └── EpisodePanelContextMenus.tsx
+└── hooks/
+    ├── useEpisodePanelStructure.ts
+    ├── useEpisodePanelMenus.ts
+    └── useEpisodePanelDragDrop.ts
+```
+
+The sidebar was split up intentionally so the codebase stays maintainable as features grow.
+
+---
+
+# Backend Structure
+
+```
+backend/
+├── app.py
+├── scene_scanning.py
+├── utils/
+│   ├── video_utils.py
+│   └── hevc_script.py
+├── bin/
+│   ├── ffmpeg.exe
+│   └── ffprobe.exe
+├── deprecated/
+├── test_scripts/
+└── requirements.txt
+```
+
+---
+
+# How Video Import Works
+
+## Step 1
+
+User imports a file.
+
+## Step 2
+
+Frontend calls Rust:
 
 ```ts
-await invoke("detect_scenes", {
-  videoPath,
-  threshold,
-  blocksize
-});
+invoke("detect_scenes", ...)
 ```
 
-The frontend never directly accesses Python. It communicates exclusively with Rust via Tauri’s IPC bridge.
+## Step 3
 
----
+Rust launches Python.
 
-## 2. Tauri (Rust Bridge Layer)
-
-**Purpose:**
-Acts as a secure system-level intermediary between the frontend and backend.
-
-**Responsibilities:**
-
-* Expose Rust functions to the frontend using `#[tauri::command]`
-* Spawn Python subprocesses
-* Manage filesystem access
-* Provide secure asset loading for the WebView
-* Return results to the frontend
-
-**Command Registration:**
-
-```rust
-#[tauri::command]
-fn detect_scenes(...)
-```
-
-Registered via:
-
-```rust
-.invoke_handler(tauri::generate_handler![detect_scenes])
-```
-
----
-
-## 3. Python Backend
-
-**Purpose:**
-Performs scene detection and video trimming.
-
-**Responsibilities:**
-
-* Decode video frames (PyAV)
-* Edge detection (OpenCV)
-* Pooling and cosine similarity comparison
-* Determine scene cut boundaries
-* Trim scenes using FFmpeg
-* Output clip metadata as JSON
-
-**Important:**
-Python writes clip files to disk and prints metadata to stdout.
-
-Example output:
-
-```json
-[
-  {
-    "scene_index": 0,
-    "start": 0.0,
-    "end": 4.2,
-    "path": "C:/Users/.../scene_0000.mp4"
-  }
-]
-```
-
----
-
-# Inter-Process Communication Flow
-
-## Step 1 — Frontend → Rust
-
-```ts
-invoke("detect_scenes", {...})
-```
-
-* Arguments serialized to JSON
-* Sent via Tauri IPC
-
----
-
-## Step 2 — Rust → Python
-
-Rust spawns:
-
-```
-python backend_script.py video.mp4 0.8 3 output_dir
-```
-
-Using:
-
-```rust
-Command::new(python_path)
-```
-
----
-
-## Step 3 — Python Execution
+## Step 4
 
 Python:
 
-1. Processes video
-2. Saves clips to `app_data_dir`
-3. Prints JSON metadata to stdout
+* reads video info
+* finds keyframes
+* splits clips
+* generates thumbnails
+* returns metadata
+
+## Step 5
+
+Frontend displays clips in the grid.
 
 ---
 
-## Step 4 — Rust → Frontend
+# Current Scene Splitting Approach
 
-Rust captures:
+Older versions experimented with frame analysis and similarity detection.
 
-```rust
-output.stdout
+The current version uses keyframes because it is much faster and more reliable in practice.
+
+Workflow:
+
+```txt
+Read keyframes
+→ Cut at keyframes
+→ Generate previews
+→ Let user merge if needed
 ```
 
-Returns JSON string to frontend.
-
-Rust does **not**:
-
-* Read clip files
-* Parse JSON
-* Manipulate scene data
-
-It acts purely as a messenger.
+This matches the actual goal of the product: helping editors move fast.
 
 ---
 
-## Step 5 — Frontend Rendering
+# Performance Notes
 
-React:
+Most responsiveness comes from product decisions, not magic optimization.
 
-```ts
-const scenes = JSON.parse(result);
-```
+Examples:
 
-Transforms:
+## Lazy Video Mounting
 
-```ts
-{
-  id: String(scene_index),
-  src: path
-}
-```
+Videos only load when needed.
 
-Rendered via:
+## Grid Preview Queueing
 
-```tsx
-<video src={convertFileSrc(clip.src)} />
-```
+Preview-all mode avoids mounting everything at once.
 
----
+## Metadata IPC
 
-# File Access & convertFileSrc
+Only metadata is passed between frontend/backend, not raw video data.
 
-## Problem
+## Keyframe Cutting
 
-The WebView cannot load raw filesystem paths:
-
-```
-C:/Users/.../scene_0000.mp4
-```
-
-Browsers block this for security reasons.
+Avoids expensive re-encoding during import.
 
 ---
 
-## Solution: convertFileSrc
+# Persistence
 
-```ts
-convertFileSrc(path)
-```
+The app stores useful local state such as:
 
-This converts a filesystem path into a secure Tauri protocol URL such as:
+* imported episodes
+* folders
+* export directory
+* panel organization
 
-```
-asset://localhost/...
-```
-
-Tauri internally:
-
-1. Intercepts the request
-2. Reads the file from disk
-3. Streams it into the WebView
-
-No file copying occurs.
-
-It is a protocol wrapper, not a file mover.
+This makes reopening the app faster and smoother.
 
 ---
 
-# Data Transfer Model
+# If You’re Editing This Project
 
-Important distinction:
+## Working on UI
 
-AMVerge does **not** transfer video data between layers.
+Check:
 
-Only metadata is transferred:
+* `components/`
+* `pages/`
 
-```
-Python → JSON (paths + metadata) → Rust → React
-```
+## Working on app state
 
-Video files remain on disk and are loaded directly by the WebView via Tauri.
+Check:
 
-This design:
+* `hooks/`
 
-* Minimizes memory usage
-* Prevents unnecessary data duplication
-* Keeps IPC lightweight
+## Working on scene splitting / exports
 
----
+Check:
 
-# Security Model
+* `backend/`
+* `src-tauri/src/main.rs
 
-Tauri enforces:
+## Working on sidebar behavior
 
-* Explicit command exposure (`#[tauri::command]`)
-* Whitelisted filesystem access
-* Controlled dialog permissions
-* Secure protocol-based file loading
+Check:
 
-Frontend cannot directly execute system commands.
-
-All privileged operations pass through Rust.
+* `components/sidebar/`
 
 ---
 
-# Key Architectural Advantages
+# General Code Style
 
-✔ Clear separation of concerns
-✔ Lightweight IPC (metadata only)
-✔ Efficient disk-based media handling
-✔ Secure filesystem abstraction
-✔ Modular backend replacement capability
+The project is moving toward:
 
----
+* smaller components
+* hooks for logic
+* typed props
+* clear folder boundaries
+* reusable modules
 
-# Future Considerations
-
-For production builds:
-
-* Python interpreter must be bundled or embedded
-* Paths should avoid dev-only assumptions
-* Consider returning structured Rust types instead of raw JSON strings
-* Potential migration to embedded Rust-based inference for performance
+If adding something new, prefer extending an existing module before dumping logic into one large file.
 
 ---
 
 # Summary
 
-AMVerge follows a layered architecture:
+AMVerge is a desktop utility for fast clip extraction and previewing.
 
-* React renders UI
-* Tauri bridges system access
-* Python performs heavy computation
-* Filesystem stores media
-* JSON transports metadata only
+React handles the interface.
+Rust handles desktop integration.
+Python handles media processing.
 
-This architecture ensures scalability, security, and performance while maintaining modular development boundaries.
-
----
-
-If you’d like, I can now:
-
-* Convert this into a polished README version
-* Add UML-style diagrams
-* Add sequence diagrams
-* Create a “Developer Onboarding Guide”
-* Or generate a production deployment section
-
-You’re building this like a real software system now.
+Everything is structured around speed, usability, and keeping the workflow lightweight.
