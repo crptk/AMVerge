@@ -20,7 +20,11 @@ export const detectScenes = async (videoPath: string, episodeCacheId: string) =>
       id: crypto.randomUUID(),
       src: s.path,
       thumbnail: s.thumbnail,
-      originalName: s.original_file
+      originalName: s.original_file,
+      originalPath: s.original_path,
+      sceneIndex: typeof s.scene_index === "number" ? s.scene_index : undefined,
+      startSec: typeof s.start === "number" ? s.start : undefined,
+      endSec: typeof s.end === "number" ? s.end : null,
     }));
 };
 
@@ -28,4 +32,3 @@ export function fileNameFromPath(path: string): string {
   const last = path.split(/[/\\]/).pop();
   return last || path;
 }
-

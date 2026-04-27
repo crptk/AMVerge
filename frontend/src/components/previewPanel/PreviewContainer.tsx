@@ -14,6 +14,7 @@ type PreviewContainerProps = {
     enableMerged: boolean,
     mergeFileName?: string
   ) => Promise<void>;
+  handleExportXml: (selectedClips: Set<string>) => Promise<void>;
   exportDir: string | null;
   onPickExportDir: () => void;
   onExportDirChange: (dir: string) => void;
@@ -92,13 +93,22 @@ export default function PreviewContainer (props: PreviewContainerProps) {
             <FaFolderOpen />
           </button>
         </div>
-        <button 
-          className="buttons" 
-          id="file-button"
-          onClick={onExportClick}
-        >
-          Export
-        </button>
+        <div className="export-actions">
+          <button
+            className="buttons"
+            id="file-button"
+            onClick={onExportClick}
+          >
+            Export
+          </button>
+          <button
+            className="buttons xml-export-button"
+            onClick={() => props.handleExportXml(props.selectedClips)}
+            title="Export XML timeline (Premiere/DaVinci)"
+          >
+            Export XML
+          </button>
+        </div>
       </div>
       
       <InfoBox/>

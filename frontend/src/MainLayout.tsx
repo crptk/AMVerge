@@ -21,6 +21,7 @@ type LayoutProps = {
         mergeEnabled: boolean,
         mergeFileName?: string
     ) => Promise<void>;
+    handleExportXml: (selectedClips: Set<string>) => Promise<void>;
     sideBarEnabled: boolean;
     videoIsHEVC: boolean | null;
     userHasHEVC: React.RefObject<boolean>
@@ -120,6 +121,7 @@ export default function MainLayout(props: LayoutProps) {
                     focusedClipThumbnail={focusedClipThumbnail}
                     selectedClips={props.selectedClips}
                     handleExport={props.handleExport}
+                    handleExportXml={props.handleExportXml}
                     videoIsHEVC={props.videoIsHEVC}
                     userHasHEVC={props.userHasHEVC}
                     importToken={props.importToken}

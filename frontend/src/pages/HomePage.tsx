@@ -1,6 +1,7 @@
 import ImportButtons from "../components/ImportButtons";
 import MainLayout from "../MainLayout";
 import { fileNameFromPath } from "../utils/episodeUtils";
+import { ClipItem } from "../types/domain";
 
 interface HomePageProps {
   cols: number;
@@ -15,7 +16,7 @@ interface HomePageProps {
   onImportClick: () => void;
   loading: boolean;
   mainLayoutWrapperRef: React.RefObject<HTMLDivElement | null>;
-  clips: { id: string; src: string; thumbnail: string; originalName?: string }[];
+  clips: ClipItem[];
   importToken: string;
   isEmpty: boolean;
   handleExport: (
@@ -23,6 +24,7 @@ interface HomePageProps {
     mergeEnabled: boolean,
     mergeFileName?: string
   ) => Promise<void>;
+  handleExportXml: (selectedClips: Set<string>) => Promise<void>;
   sideBarEnabled: boolean;
   videoIsHEVC: boolean | null;
   userHasHEVC: React.RefObject<boolean>;
@@ -53,6 +55,7 @@ export default function HomePage({
   importToken,
   isEmpty,
   handleExport,
+  handleExportXml,
   sideBarEnabled,
   videoIsHEVC,
   userHasHEVC,
@@ -91,6 +94,7 @@ export default function HomePage({
           importToken={importToken}
           isEmpty={isEmpty}
           handleExport={handleExport}
+          handleExportXml={handleExportXml}
           sideBarEnabled={sideBarEnabled}
           videoIsHEVC={videoIsHEVC}
           userHasHEVC={userHasHEVC}

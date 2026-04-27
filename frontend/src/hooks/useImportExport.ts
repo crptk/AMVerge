@@ -9,6 +9,7 @@ type ImportExportProps = {
   setFocusedClip: React.Dispatch<React.SetStateAction<string | null>>;
   setSelectedClips: React.Dispatch<React.SetStateAction<Set<string>>>;
   setVideoIsHEVC: React.Dispatch<React.SetStateAction<boolean | null>>;
+  importedVideoPath: string | null;
   setImportedVideoPath: React.Dispatch<React.SetStateAction<string | null>>;
   setClips: React.Dispatch<React.SetStateAction<ClipItem[]>>;
   setEpisodes: React.Dispatch<React.SetStateAction<EpisodeEntry[]>>;
@@ -29,6 +30,24 @@ export default function useImportExport(props: ImportExportProps) {
   const [batchTotal, setBatchTotal] = useState(0);
   const [batchDone, setBatchDone] = useState(0);
   const [batchCurrentFile, setBatchCurrentFile] = useState("");
+
+  const ensureExportDir = async (): Promise<string | null> => {
+    if (props.exportDir) return props.exportDir;
+
+    const picked = await open({ directory: true, multiple: false });
+    if (!picked) return null;
+
+    const resolved = picked as string;
+    props.setExportDir(resolved);
+    return resolved;
+  };
+
+  const sanitizeFileName = (value: string): string =>
+    value
+      .trim()
+      .replace(/[<>:"/\\|?*\u0000-\u001F]/g, "_")
+      .replace(/\s+/g, " ")
+      .slice(0, 120) || "timeline";
   const onImportClick = async () => {
     const files = await open({
       multiple: true,
@@ -189,14 +208,8 @@ export default function useImportExport(props: ImportExportProps) {
     const selected = props.clips.filter((c: ClipItem) => selectedClips.has(c.id));
     if (selected.length === 0) return;
 
-    // If no export directory is set, prompt the user to pick one first
-    let dir = props.exportDir;
-    if (!dir) {
-        const picked = await open({ directory: true, multiple: false });
-        if (!picked) return;
-        dir = picked as string;
-        props.setExportDir(dir);
-    }
+    const dir = await ensureExportDir();
+    if (!dir) return;
 
     try {
         setLoading(true);
@@ -234,6 +247,48 @@ export default function useImportExport(props: ImportExportProps) {
     }
   };
 
+  const handleExportXml = async (selectedClips: Set<string>) => {
+    if (selectedClips.size === 0) return;
+
+    const selected = props.clips.filter((c: ClipItem) => selectedClips.has(c.id));
+    if (selected.length === 0) return;
+
+    const dir = await ensureExportDir();
+    if (!dir) return;
+
+    const originalName = selected[0]?.originalName || "episode";
+    const xmlBaseName = sanitizeFileName(originalName);
+    const savePath = `${dir}\\${xmlBaseName}.xml`;
+
+    try {
+      setLoading(true);
+      props.setProgress(5);
+      props.setProgressMsg("Generating XML timeline...");
+
+      await invoke("export_timeline_xml", {
+        clips: selected.map((clip) => ({
+          id: clip.id,
+          src: clip.src,
+          originalName: clip.originalName,
+          originalPath: clip.originalPath ?? props.importedVideoPath ?? undefined,
+          sceneIndex: clip.sceneIndex,
+          startSec: clip.startSec,
+          endSec: clip.endSec,
+        })),
+        savePath,
+        sequenceName: xmlBaseName,
+      });
+
+      props.setProgress(100);
+      props.setProgressMsg("XML export complete");
+      console.log("XML export complete");
+    } catch (err) {
+      console.log("XML export failed:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handlePickExportDir = async () => {
     const dir = await open({ directory: true, multiple: false });
     if (dir) props.setExportDir(dir as string);
@@ -249,6 +304,7 @@ export default function useImportExport(props: ImportExportProps) {
     onImportClick,
     handleImport,
     handleExport,
+    handleExportXml,
     handlePickExportDir,
     handleBatchImport
   };

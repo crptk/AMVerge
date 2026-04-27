@@ -84,6 +84,22 @@
     color: var(--accent);
 }
 
+.export-actions {
+    display: flex;
+    gap: 8px;
+    width: 100%;
+    max-width: 400px;
+}
+
+.export-actions .buttons {
+    flex: 1;
+}
+
+.xml-export-button {
+    font-size: 0.78rem;
+    letter-spacing: 0.01em;
+}
+
 /* VIDEO */
 
 .video-wrapper {

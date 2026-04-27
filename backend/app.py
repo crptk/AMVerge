@@ -71,6 +71,17 @@ def format_timestamp(seconds: float) -> str:
     return value.rstrip("0").rstrip(".")
 
 
+def probe_video_duration(video_path: str) -> float | None:
+    try:
+        with av.open(video_path) as container:
+            if container.duration is None:
+                return None
+            return float(container.duration / av.time_base)
+    except Exception as error:
+        log(f"Duration probe failed for {video_path}: {error}")
+        return None
+
+
 def make_thumbnail(clip_path: str, thumb_path: str) -> None:
     thumb_width = 360
     thumb_quality = 80
@@ -184,9 +195,15 @@ def collect_scenes(
     output_dir: str,
     file_name: str,
     cut_points: list[float],
+    original_path: str,
+    total_duration: float | None,
 ) -> list[dict[str, Any]]:
     final_scenes: list[dict[str, Any]] = []
     boundaries = [0.0] + cut_points
+
+    if total_duration and total_duration > 0:
+        if not boundaries or total_duration > boundaries[-1]:
+            boundaries.append(total_duration)
 
     for index, start in enumerate(boundaries):
         end = boundaries[index + 1] if index + 1 < len(boundaries) else None
@@ -203,6 +220,7 @@ def collect_scenes(
                     "path": out_path,
                     "thumbnail": thumb_path,
                     "original_file": file_name,
+                    "original_path": original_path,
                 }
             )
 
@@ -214,6 +232,7 @@ def trim_scenes_at_keyframes(video_path: str, output_dir: str) -> list[dict[str,
 
     total_start = time.perf_counter()
     file_name = os.path.splitext(os.path.basename(video_path))[0]
+    total_duration = probe_video_duration(video_path)
 
     emit_progress(10, "Extracting keyframes...")
 
@@ -249,6 +268,8 @@ def trim_scenes_at_keyframes(video_path: str, output_dir: str) -> list[dict[str,
         output_dir=output_dir,
         file_name=file_name,
         cut_points=cut_points,
+        original_path=video_path,
+        total_duration=total_duration,
     )
 
     emit_progress(90, "Generating thumbnails...")
