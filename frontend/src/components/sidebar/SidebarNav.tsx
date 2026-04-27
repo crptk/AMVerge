@@ -10,6 +10,7 @@ type SidebarNavProps = {
 const buttons: { name: string; page: Page }[] = [
   { name: "Home", page: "home" },
   { name: "Menu", page: "menu" },
+  { name: "Settings", page: "settings" },
 ];
 
 export default function SidebarNav({ activePage, setActivePage }: SidebarNavProps) {

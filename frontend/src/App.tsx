@@ -5,6 +5,7 @@ import { Event, listen } from "@tauri-apps/api/event";
 import AppLayout from "./components/AppLayout";
 import HomePage from "./pages/HomePage";
 import Menu from "./pages/Menu";
+import Settings from "./pages/Settings";
 import LoadingOverlay from "./components/LoadingOverlay";
 import { type Page } from "./components/sidebar/types";
 
@@ -447,8 +448,10 @@ function App() {
             openedEpisodeId={state.openedEpisodeId}
             importedVideoPath={state.importedVideoPath}
           />
-        ) : (
+        ) : activePage === "menu" ? (
           <Menu />
+        ) : (
+          <Settings />
         )}
       </div>
     </AppLayout>

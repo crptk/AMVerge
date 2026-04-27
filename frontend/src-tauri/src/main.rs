@@ -150,6 +150,45 @@ struct PreviewProxyLocks {
 }
 
 // ============================================================================
+// Preview proxy locking
+// ============================================================================
+
+#[tauri::command]
+fn save_background_image(app: tauri::AppHandle, source_path: String) -> Result<String, String> {
+    use std::fs;
+    use std::path::Path;
+
+    let source = Path::new(&source_path);
+
+    if !source.exists() {
+        return Err("Selected image does not exist.".to_string());
+    }
+
+    let app_data_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("Failed to get app data directory: {e}"))?;
+
+    let backgrounds_dir = app_data_dir.join("backgrounds");
+
+    fs::create_dir_all(&backgrounds_dir)
+        .map_err(|e| format!("Failed to create backgrounds directory: {e}"))?;
+
+    let extension = source
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .unwrap_or("png");
+
+    let file_name = format!("background.{}", extension);
+    let destination = backgrounds_dir.join(file_name);
+
+    fs::copy(source, &destination)
+        .map_err(|e| format!("Failed to copy background image: {e}"))?;
+
+    Ok(destination.to_string_lossy().to_string())
+}
+
+// ============================================================================
 // Commands: codec checks
 // ============================================================================
 
@@ -1434,6 +1473,7 @@ fn main() {
             ensure_preview_proxy,
             delete_episode_cache,
             clear_episode_panel_cache,
+            save_background_image,
         ])
         .run(tauri::generate_context!())
         .expect("error running app");
