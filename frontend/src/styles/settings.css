@@ -19,7 +19,9 @@
     align-items: center;
     justify-content: space-between;
     gap: 12px;
-    padding: 8px 0;
+    /* background: red; */
+    height: 40px;
+    border: 1px solid black;
 }
 
 .settings-label {
@@ -30,12 +32,18 @@
     display: flex;
     align-items: center;
     gap: 10px;
+    min-width: 0;
+    /* background: green; */
+    height: 100%;
 }
 
 .settings-control > .image-input {
     width: 200px;
 }
 
+.settings-control > button {
+    margin: 0;
+}
 .settings-value {
     display: flex;
     justify-content: center;
@@ -72,4 +80,29 @@
 
 .settings-control input[type="range"]:focus::-webkit-slider-runnable-track {
     background: rgba(255, 255, 255, 0.15);
+}
+.settings-path-value {
+    display: flex;
+    align-items: center;
+
+    min-width: 0;
+    max-width: 360px;
+    height: 84%;
+    padding: 0 8px;
+
+    font-size: 0.8rem;
+    font-family: inherit;
+    color: rgba(255, 255, 255, 0.75);
+    background: rgba(255,255,255,0.08);
+    border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 8px;
+    box-sizing: border-box;
+
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.settings-path-value:hover {
+    border-color: rgba(255,255,255,0.35);
 }

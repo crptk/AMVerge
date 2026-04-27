@@ -1,6 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Event, listen } from "@tauri-apps/api/event";
+import { 
+  applyThemeSettings, 
+  loadThemeSettings, 
+  saveThemeSettings, 
+  DEFAULT_THEME,
+  type ThemeSettings 
+} from "./theme";
 
 import AppLayout from "./components/AppLayout";
 import HomePage from "./pages/HomePage";
@@ -15,6 +22,8 @@ import useImportExport from "./hooks/useImportExport";
 import useHEVCSupport from "./hooks/useHEVCSupport";
 import useDragDropImport from "./hooks/useDragDropImport";
 import usePersistence from "./hooks/usePersistence";
+
+import { remapPathRoot } from "./utils/episodeUtils";
 
 const EPISODE_PANEL_STORAGE_KEY = "amverge_episode_panel_v1";
 const SIDEBAR_WIDTH_STORAGE_KEY = "amverge_sidebar_width_px_v1";
@@ -50,6 +59,29 @@ function App() {
   const [isDragging, setIsDragging] = useState(false);
   const [sideBarEnabled, setSideBarEnabled] = useState(true);
   const [activePage, setActivePage] = useState<Page>("home");
+  const [settings, setSettings] = useState<ThemeSettings>(() => loadThemeSettings());
+
+  useEffect(() => {
+    applyThemeSettings(settings);
+    saveThemeSettings(settings);
+  }, [settings]);
+
+  const handleResetSettings = async () => {
+    try {
+      const resolvedOldPath = await invoke<string>("move_episodes_to_new_dir", {
+        oldDir: settings.episodesPath,
+        newDir: null,
+      });
+
+      const defaultEpisodesPath = await invoke<string>("get_default_episodes_dir");
+
+      remapEpisodePaths(resolvedOldPath, defaultEpisodesPath);
+
+      setSettings(DEFAULT_THEME);
+    } catch (err) {
+      window.alert("Failed to reset episode directory: " + String(err));
+    }
+  };
   const [progress, setProgress] = useState(0);
   const [progressMsg, setProgressMsg] = useState("Starting...");
   const [dividerOffsetPx, setDividerOffsetPx] = useState(0);
@@ -110,6 +142,7 @@ function App() {
     EXPORT_DIR_STORAGE_KEY,
     exportDir,
     setExportDir,
+    episodesPath: settings.episodesPath,
   });
 
   // Episode panel actions
@@ -143,6 +176,28 @@ function App() {
     setImportToken,
   });
 
+
+  const remapEpisodePaths = (oldRoot: string, newRoot: string) => {
+    setEpisodes((prev) =>
+      prev.map((episode) => ({
+        ...episode,
+        clips: episode.clips.map((clip) => ({
+          ...clip,
+          src: remapPathRoot(clip.src, oldRoot, newRoot),
+          thumbnail: remapPathRoot(clip.thumbnail, oldRoot, newRoot),
+        })),
+      }))
+    );
+
+    setClips((prev) =>
+      prev.map((clip) => ({
+        ...clip,
+        src: remapPathRoot(clip.src, oldRoot, newRoot),
+        thumbnail: remapPathRoot(clip.thumbnail, oldRoot, newRoot),
+      }))
+    );
+  };
+    
   // App-level hooks
   useHEVCSupport(userHasHEVC);
 
@@ -260,7 +315,9 @@ function App() {
     dispatch({ type: "setVideoIsHEVC", value: null });
 
     try {
-      await invoke("clear_episode_panel_cache");
+      await invoke("clear_episode_panel_cache", {
+        customPath: settings.episodesPath,
+      });
     } catch (err) {
       console.error("clear_episode_panel_cache failed:", err);
     }
@@ -451,7 +508,12 @@ function App() {
         ) : activePage === "menu" ? (
           <Menu />
         ) : (
-          <Settings />
+          <Settings
+            settings={settings}
+            setSettings={setSettings}
+            onReset={handleResetSettings}
+            onEpisodesPathChanged={remapEpisodePaths}
+          />
         )}
       </div>
     </AppLayout>

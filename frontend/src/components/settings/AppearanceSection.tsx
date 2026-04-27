@@ -172,25 +172,6 @@ export default function AppearanceSection({
         </div>
       </div>
 
-      <div
-        className="settings-row"
-        style={{
-          marginTop: "12px",
-          paddingTop: "12px",
-          borderTop: "1px solid rgb(255 255 255 / 0.1)",
-        }}
-      >
-        <label className="settings-label">Factory Reset</label>
-        <div className="settings-control">
-          <button
-            className="buttons"
-            onClick={onReset}
-            style={{ width: "auto", padding: "0 16px", marginBottom: 0 }}
-          >
-            Reset to Defaults
-          </button>
-        </div>
-      </div>
     </section>
   );
 }

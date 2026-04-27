@@ -1,5 +1,4 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
-
 //! AMVerge Tauri backend entrypoint.
 //!
 //! This file is the bridge between the React frontend and the Python/FFmpeg backend.
@@ -7,7 +6,6 @@
 //! Main responsibilities:
 //! - start/abort scene detection
 //! - emit progress events to the frontend
-//! - export selected clips, either separately or merged
 //! - generate browser-friendly preview proxies for unsupported codecs
 //! - clean episode cache folders
 //!
@@ -25,6 +23,8 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 #[cfg(windows)]
 use std::os::windows::process::CommandExt;
+use std::fs;
+use fs_extra;
 
 use tokio::sync::Mutex as AsyncMutex;
 
@@ -138,6 +138,89 @@ fn clear_files_in_dir(dir: &Path) {
     }
 }
 
+#[tauri::command]
+fn get_default_episodes_dir(app: AppHandle) -> Result<String, String> {
+    let path = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| e.to_string())?
+        .join("episodes");
+
+    Ok(path.to_string_lossy().to_string())
+}
+
+#[tauri::command]
+fn move_episodes_to_new_dir(
+    app: AppHandle,
+    old_dir: Option<String>,
+    new_dir: Option<String>,
+) -> Result<String, String> {
+    let old_path = match old_dir {
+        Some(path) if !path.trim().is_empty() => PathBuf::from(path),
+        _ => app
+            .path()
+            .app_data_dir()
+            .map_err(|e| e.to_string())?
+            .join("episodes"),
+    };
+
+    let new_path = match new_dir {
+        Some(path) if !path.trim().is_empty() => PathBuf::from(path),
+        _ => app
+            .path()
+            .app_data_dir()
+            .map_err(|e| e.to_string())?
+            .join("episodes"),
+    };
+    let old_path_string = old_path.to_string_lossy().to_string();
+
+    if old_path == new_path {
+        return Ok(old_path_string);
+    }
+
+    if !old_path.exists() {
+        return Ok(old_path_string);
+    }
+
+    fs::create_dir_all(&new_path)
+        .map_err(|e| format!("Failed to create new directory: {e}"))?;
+
+    for entry in fs::read_dir(&old_path)
+        .map_err(|e| format!("Failed to read old directory: {e}"))?
+    {
+        let entry = entry.map_err(|e| format!("Failed to read entry: {e}"))?;
+
+        let src = entry.path();
+        let dest = new_path.join(entry.file_name());
+
+        fs::rename(&src, &dest).or_else(|_| {
+            if src.is_dir() {
+                let mut options = fs_extra::dir::CopyOptions::new();
+                options.copy_inside = true;
+
+                fs::create_dir_all(&dest)
+                    .map_err(|e| format!("Failed to create destination folder: {e}"))?;
+
+                fs_extra::dir::copy(&src, &dest, &options)
+                    .map_err(|e| format!("Failed to copy directory: {e}"))?;
+
+                fs::remove_dir_all(&src)
+                    .map_err(|e| format!("Failed to remove old directory: {e}"))?;
+            } else {
+                fs::copy(&src, &dest)
+                    .map_err(|e| format!("Failed to copy file: {e}"))?;
+
+                fs::remove_file(&src)
+                    .map_err(|e| format!("Failed to remove old file: {e}"))?;
+            }
+
+            Ok::<(), String>(())
+        })?;
+    }
+
+    Ok(old_path_string)
+}
+
 // ============================================================================
 // Preview proxy locking
 // ============================================================================
@@ -155,9 +238,6 @@ struct PreviewProxyLocks {
 
 #[tauri::command]
 fn save_background_image(app: tauri::AppHandle, source_path: String) -> Result<String, String> {
-    use std::fs;
-    use std::path::Path;
-
     let source = Path::new(&source_path);
 
     if !source.exists() {
@@ -268,15 +348,21 @@ async fn detect_scenes(
     sidecar_state: State<'_, ActiveSidecar>,
     video_path: String,
     episode_cache_id: Option<String>,
+    custom_path: Option<String>,
 ) -> Result<String, String> {
     let video_name = file_name_only(&video_path);
-    let app_data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    
+    let base_dir = if let Some(p) = custom_path {
+        PathBuf::from(p)
+    } else {
+        app.path().app_data_dir().map_err(|e| e.to_string())?.join("episodes")
+    };
 
     let output_dir = if let Some(raw_id) = episode_cache_id.as_deref() {
         let id = sanitize_episode_cache_id(raw_id)?;
-        app_data_dir.join("episodes").join(id)
+        base_dir.join(id)
     } else {
-        app_data_dir.clone()
+        base_dir
     };
 
     std::fs::create_dir_all(&output_dir).map_err(|e| e.to_string())?;
@@ -520,11 +606,22 @@ async fn abort_detect_scenes(sidecar_state: State<'_, ActiveSidecar>) -> Result<
 // ============================================================================
 
 #[tauri::command]
-async fn delete_episode_cache(app: AppHandle, episode_cache_id: String) -> Result<(), String> {
+async fn delete_episode_cache(
+    app: AppHandle,
+    episode_cache_id: String,
+    custom_path: Option<String>,
+) -> Result<(), String> {
     let id = sanitize_episode_cache_id(&episode_cache_id)?;
-    let app_data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    let base_dir = if let Some(p) = custom_path {
+        PathBuf::from(p)
+    } else {
+        app.path()
+            .app_data_dir()
+            .map_err(|e| e.to_string())?
+            .join("episodes")
+    };
 
-    let episode_dir = app_data_dir.join("episodes").join(id);
+    let episode_dir = base_dir.join(id);
     if episode_dir.exists() {
         std::fs::remove_dir_all(&episode_dir).map_err(|e| e.to_string())?;
     }
@@ -532,9 +629,15 @@ async fn delete_episode_cache(app: AppHandle, episode_cache_id: String) -> Resul
 }
 
 #[tauri::command]
-async fn clear_episode_panel_cache(app: AppHandle) -> Result<(), String> {
-    let app_data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
-    let episodes_dir = app_data_dir.join("episodes");
+async fn clear_episode_panel_cache(app: AppHandle, custom_path: Option<String>) -> Result<(), String> {
+    let episodes_dir = if let Some(p) = custom_path {
+        PathBuf::from(p)
+    } else {
+        app.path()
+            .app_data_dir()
+            .map_err(|e| e.to_string())?
+            .join("episodes")
+    };
 
     if episodes_dir.exists() {
         std::fs::remove_dir_all(&episodes_dir).map_err(|e| e.to_string())?;
@@ -1474,6 +1577,8 @@ fn main() {
             delete_episode_cache,
             clear_episode_panel_cache,
             save_background_image,
+            move_episodes_to_new_dir,
+            get_default_episodes_dir,
         ])
         .run(tauri::generate_context!())
         .expect("error running app");
