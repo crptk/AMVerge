@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { applyThemeSettings, loadThemeSettings } from "../theme";
-import { EpisodeEntry, EpisodeFolder } from "../types";
+import { EpisodeEntry, EpisodeFolder } from "../types/domain";
 
 type UsePersistenceProps = {
   episodePanelStorageKey: string;

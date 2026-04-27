@@ -1,7 +1,7 @@
 import { useState, useRef, startTransition } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
-import { ClipItem, EpisodeEntry } from "../types"
+import { ClipItem, EpisodeEntry } from "../types/domain"
 import { fileNameFromPath, truncateFileName, detectScenes } from "../utils/episodeUtils";
 type ImportExportProps = {
   abortedRef: React.MutableRefObject<boolean>;

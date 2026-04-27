@@ -1,26 +1,18 @@
 import { useEffect, useRef, useState } from "react";
 import type { RefObject } from "react";
-import { FaExpand, FaPause, FaPlay, FaVolumeMute, FaVolumeUp } from "react-icons/fa";
-import { convertFileSrc, invoke } from "@tauri-apps/api/core";
+import { invoke } from "@tauri-apps/api/core";
 
-type VideoPlayerProps = {
+type UseVideoPlayerArgs = {
     selectedClip: string;
     videoIsHEVC: boolean | null;
     userHasHEVC: RefObject<boolean>;
-    posterPath: string | null;
-    importToken: string;
 };
 
-export default function VideoPlayer({
+export function useVideoPlayer({
     selectedClip,
     videoIsHEVC,
     userHasHEVC,
-    posterPath,
-    importToken,
-}: VideoPlayerProps) {
-    // --------------------
-    // Refs / State
-    // --------------------
+}: UseVideoPlayerArgs) {
     const videoRef = useRef<HTMLVideoElement | null>(null);
     const progressRef = useRef<HTMLDivElement | null>(null);
 
@@ -44,9 +36,6 @@ export default function VideoPlayer({
 
     const hasHevcSupport = userHasHEVC.current === true;
 
-    // --------------------
-    // Helpers
-    // --------------------
     const requestFirstFrame = (video: HTMLVideoElement) => {
         if (hasFirstFrameRef.current) return;
         if (!(video as any).requestVideoFrameCallback) return;
@@ -68,15 +57,9 @@ export default function VideoPlayer({
 
         if (proxyInFlightRef.current) return;
         if (!selectedClip) return;
-
-        // Only proxy for HEVC-missing-support scenarios.
         if (hasHevcSupport) return;
         if (videoIsHEVC !== true) return;
-
-        // Only auto-proxy when we are still trying to play the original.
         if (!effectiveClip || effectiveClip !== selectedClip) return;
-
-        // Avoid retry loops for the same clip.
         if (proxyAttemptedForClipRef.current === selectedClip) return;
 
         proxyAttemptedForClipRef.current = selectedClip;
@@ -94,13 +77,11 @@ export default function VideoPlayer({
 
         invoke<string>("ensure_preview_proxy", { clipPath: selectedClip })
             .then((proxyPath) => {
-                if (!proxyPath) {
-                    proxyInFlightRef.current = false;
-                    return;
-                }
+                proxyInFlightRef.current = false;
+                if (!proxyPath) return;
 
                 setEffectiveClip(proxyPath);
-                proxyInFlightRef.current = false;
+
                 setTimeout(() => {
                     const v = videoRef.current;
                     if (!v) return;
@@ -109,19 +90,19 @@ export default function VideoPlayer({
                 }, 0);
             })
             .catch((err) => {
-                if (import.meta.env.DEV) console.warn("ensure_preview_proxy failed", err);
                 proxyInFlightRef.current = false;
+                if (import.meta.env.DEV) console.warn("ensure_preview_proxy failed", err);
             });
     };
 
     const safePlay = (video: HTMLVideoElement) => {
         if (!video.src || video.readyState === 0) return;
+
         requestFirstFrame(video);
 
         video.play().catch((err: any) => {
             const name = err?.name as string | undefined;
 
-            // AbortError can happen during rapid src changes.
             if (name === "AbortError") return;
 
             if (import.meta.env.DEV) {
@@ -132,7 +113,6 @@ export default function VideoPlayer({
                 });
             }
 
-            // If the codec/container is unsupported, proactively proxy.
             if (name === "NotSupportedError") {
                 triggerProxyFallback("play_rejected_NotSupportedError");
             }
@@ -146,6 +126,7 @@ export default function VideoPlayer({
         const rect = target.getBoundingClientRect();
         const x = Math.min(Math.max(0, e.clientX - rect.left), rect.width);
         const percentage = x / rect.width;
+
         video.currentTime = percentage * duration;
     };
 
@@ -173,17 +154,52 @@ export default function VideoPlayer({
     const goFullScreen = () => {
         const video = videoRef.current;
         if (!video) return;
+
         if (video.requestFullscreen) video.requestFullscreen();
     };
 
-    // --------------------
-    // Effects
-    // --------------------
+    const handleLoadedMetadata = (video: HTMLVideoElement) => {
+        video.style.setProperty("--aspect-ratio", `${video.videoWidth} / ${video.videoHeight}`);
+        setDuration(video.duration);
+        requestFirstFrame(video);
+        safePlay(video);
+    };
+
+    const handleLoadedData = () => {
+        setIsVideoReady(true);
+    };
+
+    const handleTimeUpdate = () => {
+        const video = videoRef.current;
+        if (!video) return;
+
+        setCurrentTime(video.currentTime);
+    };
+
+    const handlePlay = (video: HTMLVideoElement) => {
+        requestFirstFrame(video);
+        setIsPlaying(true);
+        setIsVideoReady(true);
+    };
+
+    const handlePause = () => {
+        setIsPlaying(false);
+    };
+
+    const handleProgressMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+        const video = videoRef.current;
+        if (!video) return;
+
+        wasPlayingRef.current = !video.paused;
+        video.pause();
+        setIsScrubbing(true);
+        seekFromMouseEvent(e, e.currentTarget);
+    };
+
     useEffect(() => {
         selectedClipRef.current = selectedClip;
     }, [selectedClip]);
 
-    // Reset UI state for the newly selected clip.
     useEffect(() => {
         const video = videoRef.current;
         if (!video || !selectedClip) return;
@@ -199,6 +215,7 @@ export default function VideoPlayer({
                 // ignore
             }
         }
+
         videoFrameCallbackIdRef.current = null;
 
         setEffectiveClip(null);
@@ -208,10 +225,6 @@ export default function VideoPlayer({
         setIsPlaying(false);
     }, [selectedClip]);
 
-    // HEVC source selection:
-    // - If the WebView can decode HEVC, always use the original clip.
-    // - If it can't decode HEVC and the imported video is HEVC, proactively switch to H.264 proxy.
-    // - If codec info is unknown, keep src empty to avoid black-screen attempts.
     useEffect(() => {
         if (!selectedClip) {
             setEffectiveClip(null);
@@ -237,13 +250,13 @@ export default function VideoPlayer({
             return;
         }
 
-        // HEVC + no support: request and use proxy.
-        if (effectiveClip && effectiveClip !== selectedClip) return; // already on a proxy
+        if (effectiveClip && effectiveClip !== selectedClip) return;
         if (proxyInFlightRef.current) return;
         if (proxyAttemptedForClipRef.current === selectedClip) return;
 
         proxyAttemptedForClipRef.current = selectedClip;
         proxyInFlightRef.current = true;
+
         setEffectiveClip(null);
         setIsVideoReady(false);
 
@@ -251,16 +264,16 @@ export default function VideoPlayer({
             .then((proxyPath) => {
                 proxyInFlightRef.current = false;
                 if (!proxyPath) return;
-
                 if (selectedClipRef.current !== selectedClip) return;
 
                 setEffectiveClip(proxyPath);
                 setIsVideoReady(false);
+
                 setTimeout(() => {
-                    const v = videoRef.current;
-                    if (!v) return;
-                    v.load();
-                    safePlay(v);
+                    const video = videoRef.current;
+                    if (!video) return;
+                    video.load();
+                    safePlay(video);
                 }, 0);
             })
             .catch((err) => {
@@ -271,7 +284,6 @@ export default function VideoPlayer({
 
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
-            // Ignore typing in inputs/textareas.
             if (
                 e.target instanceof HTMLInputElement ||
                 e.target instanceof HTMLTextAreaElement ||
@@ -284,14 +296,8 @@ export default function VideoPlayer({
             if (!video) return;
 
             if (e.code === "Space") {
-                e.preventDefault(); // stops page scroll
-                if (video.paused) {
-                    video.play();
-                    setIsPlaying(true);
-                } else {
-                    video.pause();
-                    setIsPlaying(false);
-                }
+                e.preventDefault();
+                togglePlay();
             }
 
             if (e.code === "ArrowRight") {
@@ -301,7 +307,7 @@ export default function VideoPlayer({
 
             if (e.code === "ArrowLeft") {
                 e.preventDefault();
-                video.currentTime = Math.min(video.duration, video.currentTime - 1);
+                video.currentTime = Math.max(0, video.currentTime - 1);
             }
 
             if (e.code === "KeyF") {
@@ -319,6 +325,7 @@ export default function VideoPlayer({
 
         const handleMouseMove = (e: MouseEvent) => {
             if (rafRef.current) return;
+
             rafRef.current = requestAnimationFrame(() => {
                 const progressEl = progressRef.current;
                 if (progressEl) seekFromMouseEvent(e, progressEl);
@@ -346,87 +353,28 @@ export default function VideoPlayer({
         };
     }, [isScrubbing, duration]);
 
-    // --------------------
-    // Render
-    // --------------------
-    return (
-        <div className="video-wrapper">
-            <div className="video-frame">
-                <video
-                    ref={videoRef}
-                    src={effectiveClip ? `${convertFileSrc(effectiveClip)}?v=${importToken}` : undefined}
-                    poster={posterPath ? `${convertFileSrc(posterPath)}?v=${importToken}` : undefined}
-                    preload="metadata"
-                    muted
-                    loop
-                    draggable={false}
-                    onDragStart={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                    }}
-                    style={{ opacity: isVideoReady ? 1 : 0 }}
-                    onError={(e) => {
-                        const v = e.currentTarget;
-                        triggerProxyFallback(`onError_${v.error?.code ?? "unknown"}`);
-                    }}
-                    onLoadedMetadata={(e) => {
-                        const video = e.currentTarget;
-                        video.style.setProperty("--aspect-ratio", `${video.videoWidth} / ${video.videoHeight}`);
-                        setDuration(video.duration);
-                        requestFirstFrame(video);
-                        safePlay(video);
-                    }}
-                    onLoadedData={() => {
-                        setIsVideoReady(true);
-                    }}
-                    onTimeUpdate={() => {
-                        const v = videoRef.current;
-                        if (!v) return;
-                        setCurrentTime(v.currentTime);
-                    }}
-                    onPlay={(e) => {
-                        requestFirstFrame(e.currentTarget);
-                        setIsPlaying(true);
-                        setIsVideoReady(true);
-                    }}
-                    onPause={() => setIsPlaying(false)}
-                    onClick={togglePlay}
-                />
+    return {
+        videoRef,
+        progressRef,
 
-                <div id="video-controls" className="controls" data-state="hidden">
-                    <button type="button" onClick={togglePlay}>
-                        {isPlaying ? <FaPause /> : <FaPlay />}
-                    </button>
+        effectiveClip,
+        isVideoReady,
+        isPlaying,
+        isMuted,
+        currentTime,
+        duration,
 
-                    <div
-                        ref={progressRef}
-                        className="progress"
-                        onClick={(e) => {
-                            if (!videoRef.current || !duration) return;
-                            seekFromMouseEvent(e, e.currentTarget);
-                        }}
-                        onMouseDown={(e) => {
-                            const video = videoRef.current;
-                            if (!video) return;
-                            wasPlayingRef.current = !video.paused;
-                            video.pause();
-                            setIsScrubbing(true);
-                            seekFromMouseEvent(e, e.currentTarget);
-                        }}
-                    >
-                        <progress value={currentTime} max={duration}>
-                            <span id="progress-bar"></span>
-                        </progress>
-                    </div>
+        togglePlay,
+        toggleMute,
+        goFullScreen,
+        seekFromMouseEvent,
+        triggerProxyFallback,
 
-                    <button id="mute" type="button" onClick={toggleMute}>
-                        {isMuted ? <FaVolumeMute /> : <FaVolumeUp />}
-                    </button>
-                    <button id="fs" type="button" onClick={goFullScreen}>
-                        <FaExpand />
-                    </button>
-                </div>
-            </div>
-        </div>
-    );
+        handleLoadedMetadata,
+        handleLoadedData,
+        handleTimeUpdate,
+        handlePlay,
+        handlePause,
+        handleProgressMouseDown,
+    };
 }

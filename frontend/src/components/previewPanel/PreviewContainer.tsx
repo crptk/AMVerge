@@ -1,4 +1,4 @@
-import VideoPlayer from "./VideoPlayer.tsx"
+import VideoPlayer from "./videoPlayer/VideoPlayer.tsx"
 import InfoBox from "./InfoBox.tsx"
 import React from "react";
 import { FaFolderOpen } from "react-icons/fa";

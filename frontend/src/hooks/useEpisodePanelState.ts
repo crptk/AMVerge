@@ -1,6 +1,6 @@
-import { EpisodeEntry, EpisodeFolder } from "../types";
+import { EpisodeEntry, EpisodeFolder } from "../types/domain";
 import { startTransition }  from "react";
-import { ClipItem } from "../types"
+import { ClipItem } from "../types/domain"
 
 type episodePanelProps = {
   episodes: EpisodeEntry[];

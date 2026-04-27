@@ -1,5 +1,5 @@
 import React, { useReducer } from "react";
-import { ClipItem, EpisodeEntry, EpisodeFolder } from "../types";
+import { ClipItem, EpisodeEntry, EpisodeFolder } from "../types/domain";
 
 export type AppState = {
   focusedClip: string | null;
