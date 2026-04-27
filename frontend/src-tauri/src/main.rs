@@ -38,6 +38,32 @@ struct ProgressPayload {
     message: String,
 }
 
+#[derive(Serialize, Clone)]
+struct ConsoleLogPayload {
+    source: String,
+    level: String,
+    message: String,
+}
+
+// ============================================================================
+// Log collection helper
+// ============================================================================
+
+fn emit_console_log(app: &AppHandle, source: &str, level: &str, message: &str) {
+    let message = sanitize_for_console(message);
+
+    println!("AMVERGE|{}|{}|{}", source, level, message);
+
+    let _ = app.emit(
+        "console_log",
+        ConsoleLogPayload {
+            source: source.to_string(),
+            level: level.to_string(),
+            message,
+        },
+    );
+}
+
 // ============================================================================
 // Shared app state
 // ============================================================================
@@ -460,49 +486,46 @@ async fn detect_scenes(
     let stderr = child.stderr.take().ok_or("Failed to capture stderr")?;
 
     let stderr_accum = Arc::new(Mutex::new(String::new()));
-    let app_for_thread = app.clone();
+    let app_for_stderr = app.clone();
+    let app_for_stdout = app.clone();
     let stderr_accum_for_thread = Arc::clone(&stderr_accum);
-
-    let input_full_for_thread = video_path.clone();
-    let input_base_for_thread = video_name.clone();
-    let output_full_for_thread = output_dir_str.clone();
-    let output_base_for_thread = output_dir_base.clone();
 
     let stderr_handle = tokio::task::spawn_blocking(move || {
         let reader = BufReader::new(stderr);
-        const STDERR_CAP: usize = 256 * 1024; // 256 KB
+
         for line in reader.lines().flatten() {
-            if !line.starts_with("PROGRESS|") {
-                let sanitized = sanitize_line_with_known_paths(
-                    &line,
-                    &input_full_for_thread,
-                    &input_base_for_thread,
-                    &output_full_for_thread,
-                    &output_base_for_thread,
-                );
-                console_log("BACKEND", &sanitized);
-            }
-            if let Ok(mut buf) = stderr_accum_for_thread.lock() {
-                if buf.len() < STDERR_CAP {
-                    buf.push_str(&line);
-                    buf.push('\n');
-                }
+            let sanitized = sanitize_for_console(&line);
+
+            if let Ok(mut acc) = stderr_accum_for_thread.lock() {
+                acc.push_str(&line);
+                acc.push('\n');
             }
 
+            // formatting from [PROGRESS|##|msg] -> [PROGRESS ##% - msg] for console
             if let Some(rest) = line.strip_prefix("PROGRESS|") {
                 let mut parts = rest.splitn(2, '|');
                 let p_str = parts.next().unwrap_or("");
                 let msg = parts.next().unwrap_or("").to_string();
 
                 if let Ok(p) = p_str.parse::<u8>() {
-                    let _ = app_for_thread.emit(
+                    let _ = app_for_stderr.emit(
                         "scene_progress",
                         ProgressPayload {
                             percent: p,
-                            message: msg,
+                            message: msg.clone(),
                         },
                     );
+
+                    emit_console_log(
+                        &app_for_stderr,
+                        "python",
+                        "log",
+                        &format!("PROGRESS {p}% - {msg}"),
+                    );
                 }
+            } else {
+                // if the line doesn't start ith PROGRESS|, just print raw backend log
+                emit_console_log(&app_for_stderr, "python", "log", &sanitized);
             }
         }
     });
@@ -553,7 +576,7 @@ async fn detect_scenes(
                 &output_dir_base,
             );
             if !sanitized.trim().is_empty() && !sanitized.starts_with("PROGRESS|") {
-                console_log("BACKEND", &sanitized);
+                emit_console_log(&app_for_stdout, "python", "log", &sanitized);
             }
         }
         console_log("ERROR|detect_scenes", "backend_stderr_dump_end");
@@ -716,7 +739,7 @@ async fn export_clips(
             "scene_progress",
             ProgressPayload {
                 percent: p,
-                message: msg,
+                message: msg.clone(),
             },
         );
     }

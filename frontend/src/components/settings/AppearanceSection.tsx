@@ -6,13 +6,11 @@ import { getDarkerColor, type ThemeSettings } from "../../theme";
 type AppearanceSectionProps = {
   settings: ThemeSettings;
   setSettings: React.Dispatch<React.SetStateAction<ThemeSettings>>;
-  onReset: () => void;
 };
 
 export default function AppearanceSection({
   settings,
   setSettings,
-  onReset,
 }: AppearanceSectionProps) {
   const accentId = useId();
   const bgGradientId = useId();

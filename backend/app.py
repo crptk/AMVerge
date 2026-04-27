@@ -26,6 +26,14 @@ else:
 
 FFMPEG = get_binary("ffmpeg.exe")
 
+def run_stage(percent: int, message: str, fn):
+    emit_progress(percent, message)
+
+    try:
+        return fn()
+    except Exception as error:
+        log(f"ERROR during '{message}': {error}")
+        raise
 
 def get_log_dir() -> str:
     # In installed builds, the sidecar exe often lives under a read-only
@@ -55,11 +63,17 @@ DEBUG_LOG = os.path.join(DEBUG_LOG_DIR, "backend_debug.txt")
 
 
 def log(message: str) -> None:
+    text = str(message)
+
+    try:
+        print(text, file=sys.stderr, flush=True)
+    except Exception:
+        pass
+
     try:
         with open(DEBUG_LOG, "a", encoding="utf-8") as file:
-            file.write(message + "\n")
+            file.write(text + "\n")
     except Exception:
-        # Never crash the backend due to logging.
         pass
 
 
@@ -215,14 +229,16 @@ def trim_scenes_at_keyframes(video_path: str, output_dir: str) -> list[dict[str,
     total_start = time.perf_counter()
     file_name = os.path.splitext(os.path.basename(video_path))[0]
 
-    emit_progress(10, "Extracting keyframes...")
-
-    keyframes = generate_keyframes(
-        video_path=video_path,
-        progress_cb=emit_progress,
-        progress_base=10,
-        progress_range=30,
-        progress_interval_s=1.0,
+    keyframes = run_stage(
+        10,
+        "Extracting keyframes...",
+        lambda: generate_keyframes(
+            video_path=video_path,
+            progress_cb=emit_progress,
+            progress_base=10,
+            progress_range=30,
+            progress_interval_s=1.0,
+        )
     )
 
     log(f"Keyframes found: {len(keyframes)}")
@@ -238,20 +254,30 @@ def trim_scenes_at_keyframes(video_path: str, output_dir: str) -> list[dict[str,
     # Guard against pathological keyframe lists creating tiny/1-frame segments.
     cut_points = merge_short_scenes([0.0] + cut_points, min_duration=0.25)[1:]
 
-    emit_progress(50, f"Cutting {len(cut_points)} scenes...")
-
     output_pattern = os.path.join(output_dir, f"{file_name}_%04d.mp4")
-    run_ffmpeg_segment(video_path, output_pattern, cut_points)
+
+    run_stage(
+        50,
+        f"Cutting {len(cut_points)} scenes...",
+        lambda: run_ffmpeg_segment(video_path, output_pattern, cut_points)         
+    )
 
     emit_progress(75, "Building scenes...")
 
-    final_scenes = collect_scenes(
+    final_scenes = run_stage(
+        75,
+        "Building scenes...",    
+        lambda: collect_scenes(
         output_dir=output_dir,
         file_name=file_name,
-        cut_points=cut_points,
+        cut_points=cut_points)
     )
 
-    emit_progress(90, "Generating thumbnails...")
+    run_stage(
+        90,
+        "Generating thumbnails...",
+        lambda: generate_thumbnails(output_dir, final_scenes, file_name)
+    )
 
     thumb_start = time.perf_counter()
     log(f"TIMING|thumbs_start|scenes={len(final_scenes)}")

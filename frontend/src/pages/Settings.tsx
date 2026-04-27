@@ -57,7 +57,6 @@ export default function Settings({
               <AppearanceSection
                 settings={settings}
                 setSettings={setSettings}
-                onReset={onReset}
               />
             )}
           </div>

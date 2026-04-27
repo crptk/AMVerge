@@ -330,13 +330,20 @@
     display: flex;
     flex-direction: column;
     min-height: 0;
-    height: 82vh;
+    height: 100%;
+    margin-bottom: 6px;
+    margin-right: 6px;
+    margin-left: 6px;
 }
 
 .about-content {
     flex: 1 1 auto;
     overflow-y: auto;
     min-height: 0;
+    overflow-y: auto;
+    padding: 12px;
+    /* background: red; */
+    box-sizing: border-box;
     scrollbar-width: thin;
     scrollbar-color: var(--accent) transparent;
 }
@@ -369,4 +376,104 @@
 .about-section h4 {
     font-size: 15px;
     margin: 0;
+}
+
+/* --------------------
+        CONSOLE
+-------------------- */
+.console-section {
+    display: flex;
+    flex-direction: column;
+    height: 82vh;
+    min-height: 0;
+    gap: 12px;
+    margin-bottom: 6px;
+    margin-right: 6px;
+    margin-left: 6px;
+}
+
+.console-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 16px;
+}
+
+.console-header h3 {
+    margin: 0;
+}
+
+.console-header p {
+    margin: 4px 0 0 0;
+    color: rgba(255, 255, 255, 0.65);
+    font-size: 14px;
+}
+
+.console-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.console-output {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    background: rgba(0, 0, 0, 0.72);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    border-radius: 10px;
+    padding: 12px;
+    font-family: Consolas, "Courier New", monospace;
+    font-size: 13px;
+    line-height: 1.45;
+    white-space: pre-wrap;
+    word-break: break-word;
+    scrollbar-width: thin;
+    scrollbar-color: var(--accent) transparent;
+}
+
+.console-output::-webkit-scrollbar {
+    width: 10px;
+}
+
+.console-output::-webkit-scrollbar-thumb {
+    background: var(--accent);
+    border-radius: 8px;
+}
+
+.console-empty {
+    color: rgba(255, 255, 255, 0.45);
+    margin: 0;
+}
+
+.console-line {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 4px;
+}
+
+.console-time {
+    color: rgba(255, 255, 255, 0.45);
+    flex-shrink: 0;
+}
+
+.console-source {
+    color: var(--accent);
+    flex-shrink: 0;
+}
+
+.console-level {
+    color: rgba(255, 255, 255, 0.65);
+    flex-shrink: 0;
+}
+
+.console-message {
+    color: white;
+}
+
+.console-line-warn .console-message {
+    color: #ffd166;
+}
+
+.console-line-error .console-message {
+    color: #ff6b6b;
 }
