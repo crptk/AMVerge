@@ -1,6 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Event, listen } from "@tauri-apps/api/event";
+import { 
+  applyThemeSettings, 
+  loadThemeSettings, 
+  saveThemeSettings, 
+  DEFAULT_THEME,
+  type ThemeSettings 
+} from "./theme";
 
 import AppLayout from "./components/AppLayout";
 import HomePage from "./pages/HomePage";
@@ -50,6 +57,18 @@ function App() {
   const [isDragging, setIsDragging] = useState(false);
   const [sideBarEnabled, setSideBarEnabled] = useState(true);
   const [activePage, setActivePage] = useState<Page>("home");
+  const [settings, setSettings] = useState<ThemeSettings>(() => loadThemeSettings());
+
+  useEffect(() => {
+    applyThemeSettings(settings);
+    saveThemeSettings(settings);
+  }, [settings]);
+
+  const handleResetSettings = () => {
+    if (window.confirm("Are you sure you want to reset all visual settings to default?")) {
+      setSettings(DEFAULT_THEME);
+    }
+  };
   const [progress, setProgress] = useState(0);
   const [progressMsg, setProgressMsg] = useState("Starting...");
   const [dividerOffsetPx, setDividerOffsetPx] = useState(0);
@@ -110,6 +129,7 @@ function App() {
     EXPORT_DIR_STORAGE_KEY,
     exportDir,
     setExportDir,
+    episodesPath: settings.episodesPath,
   });
 
   // Episode panel actions
@@ -260,7 +280,9 @@ function App() {
     dispatch({ type: "setVideoIsHEVC", value: null });
 
     try {
-      await invoke("clear_episode_panel_cache");
+      await invoke("clear_episode_panel_cache", {
+        customPath: settings.episodesPath,
+      });
     } catch (err) {
       console.error("clear_episode_panel_cache failed:", err);
     }
@@ -451,7 +473,11 @@ function App() {
         ) : activePage === "menu" ? (
           <Menu />
         ) : (
-          <Settings />
+          <Settings
+            settings={settings}
+            setSettings={setSettings}
+            onReset={handleResetSettings}
+          />
         )}
       </div>
     </AppLayout>

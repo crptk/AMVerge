@@ -268,15 +268,21 @@ async fn detect_scenes(
     sidecar_state: State<'_, ActiveSidecar>,
     video_path: String,
     episode_cache_id: Option<String>,
+    custom_path: Option<String>,
 ) -> Result<String, String> {
     let video_name = file_name_only(&video_path);
-    let app_data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    
+    let base_dir = if let Some(p) = custom_path {
+        PathBuf::from(p)
+    } else {
+        app.path().app_data_dir().map_err(|e| e.to_string())?.join("episodes")
+    };
 
     let output_dir = if let Some(raw_id) = episode_cache_id.as_deref() {
         let id = sanitize_episode_cache_id(raw_id)?;
-        app_data_dir.join("episodes").join(id)
+        base_dir.join(id)
     } else {
-        app_data_dir.clone()
+        base_dir
     };
 
     std::fs::create_dir_all(&output_dir).map_err(|e| e.to_string())?;
@@ -520,11 +526,22 @@ async fn abort_detect_scenes(sidecar_state: State<'_, ActiveSidecar>) -> Result<
 // ============================================================================
 
 #[tauri::command]
-async fn delete_episode_cache(app: AppHandle, episode_cache_id: String) -> Result<(), String> {
+async fn delete_episode_cache(
+    app: AppHandle,
+    episode_cache_id: String,
+    custom_path: Option<String>,
+) -> Result<(), String> {
     let id = sanitize_episode_cache_id(&episode_cache_id)?;
-    let app_data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    let base_dir = if let Some(p) = custom_path {
+        PathBuf::from(p)
+    } else {
+        app.path()
+            .app_data_dir()
+            .map_err(|e| e.to_string())?
+            .join("episodes")
+    };
 
-    let episode_dir = app_data_dir.join("episodes").join(id);
+    let episode_dir = base_dir.join(id);
     if episode_dir.exists() {
         std::fs::remove_dir_all(&episode_dir).map_err(|e| e.to_string())?;
     }
@@ -532,9 +549,15 @@ async fn delete_episode_cache(app: AppHandle, episode_cache_id: String) -> Resul
 }
 
 #[tauri::command]
-async fn clear_episode_panel_cache(app: AppHandle) -> Result<(), String> {
-    let app_data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
-    let episodes_dir = app_data_dir.join("episodes");
+async fn clear_episode_panel_cache(app: AppHandle, custom_path: Option<String>) -> Result<(), String> {
+    let episodes_dir = if let Some(p) = custom_path {
+        PathBuf::from(p)
+    } else {
+        app.path()
+            .app_data_dir()
+            .map_err(|e| e.to_string())?
+            .join("episodes")
+    };
 
     if episodes_dir.exists() {
         std::fs::remove_dir_all(&episodes_dir).map_err(|e| e.to_string())?;

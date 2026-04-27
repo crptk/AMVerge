@@ -1,33 +1,21 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import GeneralSection from "../components/settings/GeneralSection";
 import AppearanceSection from "../components/settings/AppearanceSection";
-import {
-  applyThemeSettings,
-  loadThemeSettings,
-  saveThemeSettings,
-  DEFAULT_THEME,
-  type ThemeSettings,
-} from "../theme";
+import { type ThemeSettings } from "../theme";
 
 const PAGES = [
   { key: "general", label: "General" },
   { key: "appearance", label: "Appearance" },
 ];
 
-export default function Settings() {
+type SettingsProps = {
+  settings: ThemeSettings;
+  setSettings: React.Dispatch<React.SetStateAction<ThemeSettings>>;
+  onReset: () => void;
+};
+
+export default function Settings({ settings, setSettings, onReset }: SettingsProps) {
   const [activeTab, setActiveTab] = useState("general");
-  const [settings, setSettings] = useState<ThemeSettings>(() => loadThemeSettings());
-
-  useEffect(() => {
-    applyThemeSettings(settings);
-    saveThemeSettings(settings);
-  }, [settings]);
-
-  const handleReset = () => {
-    if (window.confirm("Are you sure you want to reset all visual settings to default?")) {
-      setSettings(DEFAULT_THEME);
-    }
-  };
 
   return (
     <div className="menu-page">
@@ -47,14 +35,22 @@ export default function Settings() {
       </div>
       <div className="menu-content">
         <div className="menu-section">
-          {activeTab === "general" && <GeneralSection />}
-          {activeTab === "appearance" && (
-            <AppearanceSection
-              settings={settings}
-              setSettings={setSettings}
-              onReset={handleReset}
-            />
-          )}
+          <div className="tab-content" style={{ flex: 1 }}>
+            {activeTab === "general" && (
+              <GeneralSection
+                settings={settings}
+                setSettings={setSettings}
+                onReset={onReset}
+              />
+            )}
+            {activeTab === "appearance" && (
+              <AppearanceSection
+                settings={settings}
+                setSettings={setSettings}
+                onReset={onReset}
+              />
+            )}
+          </div>
         </div>
       </div>
     </div>
