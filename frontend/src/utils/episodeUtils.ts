@@ -34,3 +34,26 @@ export function fileNameFromPath(path: string): string {
   return last || path;
 }
 
+export function remapPathRoot(path: string, oldRoot: string, newRoot: string): string {
+  const normalize = (p: string) =>
+    p.replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase();
+
+  const displayNormalize = (p: string) =>
+    p.replace(/\\/g, "/").replace(/\/+$/, "");
+
+  const normalizedPath = normalize(path);
+  const normalizedOldRoot = normalize(oldRoot);
+  const cleanNewRoot = displayNormalize(newRoot);
+
+  if (
+    normalizedPath !== normalizedOldRoot &&
+    !normalizedPath.startsWith(normalizedOldRoot + "/")
+  ) {
+    return path;
+  }
+
+  const cleanOriginalPath = displayNormalize(path);
+  const relativePath = cleanOriginalPath.slice(displayNormalize(oldRoot).length);
+
+  return cleanNewRoot + relativePath;
+}

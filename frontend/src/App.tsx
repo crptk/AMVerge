@@ -23,6 +23,8 @@ import useHEVCSupport from "./hooks/useHEVCSupport";
 import useDragDropImport from "./hooks/useDragDropImport";
 import usePersistence from "./hooks/usePersistence";
 
+import { remapPathRoot } from "./utils/episodeUtils";
+
 const EPISODE_PANEL_STORAGE_KEY = "amverge_episode_panel_v1";
 const SIDEBAR_WIDTH_STORAGE_KEY = "amverge_sidebar_width_px_v1";
 const EXPORT_DIR_STORAGE_KEY = "amverge_export_dir_v1";
@@ -64,9 +66,20 @@ function App() {
     saveThemeSettings(settings);
   }, [settings]);
 
-  const handleResetSettings = () => {
-    if (window.confirm("Are you sure you want to reset all visual settings to default?")) {
+  const handleResetSettings = async () => {
+    try {
+      const resolvedOldPath = await invoke<string>("move_episodes_to_new_dir", {
+        oldDir: settings.episodesPath,
+        newDir: null,
+      });
+
+      const defaultEpisodesPath = await invoke<string>("get_default_episodes_dir");
+
+      remapEpisodePaths(resolvedOldPath, defaultEpisodesPath);
+
       setSettings(DEFAULT_THEME);
+    } catch (err) {
+      window.alert("Failed to reset episode directory: " + String(err));
     }
   };
   const [progress, setProgress] = useState(0);
@@ -163,6 +176,28 @@ function App() {
     setImportToken,
   });
 
+
+  const remapEpisodePaths = (oldRoot: string, newRoot: string) => {
+    setEpisodes((prev) =>
+      prev.map((episode) => ({
+        ...episode,
+        clips: episode.clips.map((clip) => ({
+          ...clip,
+          src: remapPathRoot(clip.src, oldRoot, newRoot),
+          thumbnail: remapPathRoot(clip.thumbnail, oldRoot, newRoot),
+        })),
+      }))
+    );
+
+    setClips((prev) =>
+      prev.map((clip) => ({
+        ...clip,
+        src: remapPathRoot(clip.src, oldRoot, newRoot),
+        thumbnail: remapPathRoot(clip.thumbnail, oldRoot, newRoot),
+      }))
+    );
+  };
+    
   // App-level hooks
   useHEVCSupport(userHasHEVC);
 
@@ -477,6 +512,7 @@ function App() {
             settings={settings}
             setSettings={setSettings}
             onReset={handleResetSettings}
+            onEpisodesPathChanged={remapEpisodePaths}
           />
         )}
       </div>

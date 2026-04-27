@@ -1,17 +1,23 @@
 import { open } from "@tauri-apps/plugin-dialog";
+import { invoke } from "@tauri-apps/api/core";
 import { type ThemeSettings } from "../../theme";
+import { useState } from "react";
 
 type GeneralSectionProps = {
   settings: ThemeSettings;
   setSettings: React.Dispatch<React.SetStateAction<ThemeSettings>>;
   onReset: () => void;
+  onEpisodesPathChanged: (oldPath: string, newPath: string) => void;
 };
 
 export default function GeneralSection({
   settings,
   setSettings,
   onReset,
+  onEpisodesPathChanged,
 }: GeneralSectionProps) {
+  const [loading, setLoading] = useState(false);
+
   const handlePickDir = async () => {
     const selected = await open({
       multiple: false,
@@ -20,13 +26,39 @@ export default function GeneralSection({
     });
 
     if (selected && typeof selected === "string") {
-      setSettings((prev) => ({ ...prev, episodesPath: selected }));
+      if (settings.episodesPath !== selected) {
+        setLoading(true);
+
+        try {
+          const resolvedOldPath = await invoke<string>("move_episodes_to_new_dir", {
+            oldDir: settings.episodesPath,
+            newDir: selected,
+          });
+
+          onEpisodesPathChanged(resolvedOldPath, selected);
+          
+          setSettings((prev) => ({ ...prev, episodesPath: selected }));
+        } catch (err) {
+          window.alert("Failed to move existing episodes: " + String(err));
+        } finally {
+          setLoading(false);
+        }
+      }
     }
   };
 
   return (
     <section className="settings-section">
       <h3>General</h3>
+
+      {loading && (
+        <div className="settings-row">
+          <span className="settings-value" style={{ color: "#ff0" }}>
+            Moving episodes to new directory...
+          </span>
+        </div>
+      )}
+
       <div className="settings-row">
         <label className="settings-label">Application Version</label>
         <div className="settings-control">
@@ -39,20 +71,17 @@ export default function GeneralSection({
       <div className="settings-row">
         <label className="settings-label">Episodes storage path</label>
         <div className="settings-control">
-          <button className="buttons" type="button" onClick={handlePickDir}>
+          <button
+            className="buttons"
+            type="button"
+            onClick={handlePickDir}
+            disabled={loading}
+          >
             {settings.episodesPath ? "Change" : "Select Path"}
           </button>
+
           <span
-            className="settings-value"
-            style={{
-              width: "auto",
-              maxWidth: "250px",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
-              fontSize: "12px",
-              opacity: 0.6,
-            }}
+            className="settings-path-value"
             title={settings.episodesPath || "Default (App Data)"}
           >
             {settings.episodesPath || "Default (App Data)"}
@@ -74,6 +103,7 @@ export default function GeneralSection({
             className="buttons"
             onClick={onReset}
             style={{ width: "auto", padding: "0 16px", marginBottom: 0 }}
+            disabled={loading}
           >
             Reset to Defaults
           </button>
