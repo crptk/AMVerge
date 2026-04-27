@@ -1,4 +1,5 @@
 import { useEffect, useId, useState } from "react";
+import { open } from "@tauri-apps/plugin-dialog";
 import {
   applyThemeSettings,
   loadThemeSettings,
@@ -6,19 +7,11 @@ import {
   type ThemeSettings,
 } from "../../theme";
 
-async function fileToDataUrl(file: File): Promise<string> {
-  return await new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onerror = () => reject(new Error("Failed to read file"));
-    reader.onload = () => resolve(String(reader.result));
-    reader.readAsDataURL(file);
-  });
-}
-
 export default function SettingsSection() {
   const accentId = useId();
   const bgGradientId = useId();
-  const bgId = useId();
+  const bgOpacityId = useId();
+  const bgBlurId = useId();
 
   const [settings, setSettings] = useState<ThemeSettings>(() => loadThemeSettings());
 
@@ -26,6 +19,21 @@ export default function SettingsSection() {
     applyThemeSettings(settings);
     saveThemeSettings(settings);
   }, [settings]);
+
+  const handlePickImage = async () => {
+    const selected = await open({
+      multiple: false,
+      filters: [
+        {
+          name: "Image",
+          extensions: ["png", "jpg", "jpeg", "webp", "gif"],
+        },
+      ],
+    });
+    if (selected && typeof selected === "string") {
+      setSettings((prev) => ({ ...prev, backgroundImagePath: selected }));
+    }
+  };
 
   return (
     <section className="settings-section">
@@ -72,34 +80,79 @@ export default function SettingsSection() {
         </div>
 
         <div className="settings-row">
-            <label className="settings-label" htmlFor={bgId}>
+            <label className="settings-label">
             Background image
             </label>
             <div className="settings-control">
-                <input
-                    className="image-input"
-                    id={bgId}
-                    type="file"
-                    accept="image/*"
-                    onChange={async (e) => {
-                    const file = e.target.files?.[0];
-                    if (!file) return;
-                    const dataUrl = await fileToDataUrl(file);
-                    setSettings((prev) => ({ ...prev, backgroundImageDataUrl: dataUrl }));
-                    }}
-                />
+                <button
+                    className="buttons"
+                    type="button"
+                    onClick={handlePickImage}
+                >
+                    {settings.backgroundImagePath ? "Change" : "Upload"}
+                </button>
                 <button
                     className="buttons"
                     type="button"
                     onClick={() =>
-                    setSettings((prev) => ({ ...prev, backgroundImageDataUrl: null }))
+                    setSettings((prev) => ({ ...prev, backgroundImagePath: null }))
                     }
-                    disabled={!settings.backgroundImageDataUrl}
+                    disabled={!settings.backgroundImagePath}
                 >
                     Clear
                 </button>
             </div>
         </div>
+
+        <div className="settings-row">
+            <label className="settings-label" htmlFor={bgOpacityId}>
+            Background opacity
+            </label>
+            <div className="settings-control">
+            <input
+                id={bgOpacityId}
+                type="range"
+                min="0"
+                max="1"
+                step="0.01"
+                value={settings.backgroundOpacity}
+                onChange={(e) =>
+                setSettings((prev) => ({
+                    ...prev,
+                    backgroundOpacity: parseFloat(e.target.value),
+                }))
+                }
+            />
+            <span className="settings-value">
+                {Math.round(settings.backgroundOpacity * 100)}%
+            </span>
+            </div>
+        </div>
+
+        <div className="settings-row">
+            <label className="settings-label" htmlFor={bgBlurId}>
+            Background blur
+            </label>
+            <div className="settings-control">
+            <input
+                id={bgBlurId}
+                type="range"
+                min="0"
+                max="100"
+                step="1"
+                value={settings.backgroundBlur}
+                onChange={(e) =>
+                setSettings((prev) => ({
+                    ...prev,
+                    backgroundBlur: parseInt(e.target.value),
+                }))
+                }
+            />
+            <span className="settings-value">
+                {settings.backgroundBlur}px
+            </span>
+            </div>
+        </div>
     </section>
   );
-}
+}

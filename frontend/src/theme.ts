@@ -1,15 +1,21 @@
+import { convertFileSrc } from "@tauri-apps/api/core";
+
 export type ThemeSettings = {
   accentColor: string; // hex, e.g. "#22c55e"
   backgroundGradientColor: string; // hex, e.g. "#001a00"
-  backgroundImageDataUrl: string | null;
+  backgroundImagePath: string | null;
+  backgroundOpacity: number; // 0 to 1
+  backgroundBlur: number; // pixels
 };
 
-const STORAGE_KEY = "amverge.theme.v1";
+const STORAGE_KEY = "amverge.theme.v2";
 
 const DEFAULTS: ThemeSettings = {
   accentColor: "#22c55e",
   backgroundGradientColor: "#001a00",
-  backgroundImageDataUrl: null,
+  backgroundImagePath: null,
+  backgroundOpacity: 1.0,
+  backgroundBlur: 0,
 };
 
 function clampByte(value: number) {
@@ -31,7 +37,20 @@ function hexToRgbTriplet(hex: string): string | null {
 export function loadThemeSettings(): ThemeSettings {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return DEFAULTS;
+    if (!raw) {
+      // Check for v1 migration if needed, but here we just return defaults for simplicity
+      // or handle the old key if it exists.
+      const oldRaw = localStorage.getItem("amverge.theme.v1");
+      if (oldRaw) {
+        const oldParsed = JSON.parse(oldRaw);
+        return {
+          ...DEFAULTS,
+          accentColor: oldParsed.accentColor || DEFAULTS.accentColor,
+          backgroundGradientColor: oldParsed.backgroundGradientColor || DEFAULTS.backgroundGradientColor,
+        };
+      }
+      return DEFAULTS;
+    }
 
     const parsed = JSON.parse(raw) as Partial<ThemeSettings>;
     return {
@@ -43,10 +62,18 @@ export function loadThemeSettings(): ThemeSettings {
           : typeof parsed.accentColor === "string"
             ? parsed.accentColor
             : DEFAULTS.backgroundGradientColor,
-      backgroundImageDataUrl:
-        typeof parsed.backgroundImageDataUrl === "string"
-          ? parsed.backgroundImageDataUrl
+      backgroundImagePath:
+        typeof parsed.backgroundImagePath === "string"
+          ? parsed.backgroundImagePath
           : null,
+      backgroundOpacity:
+        typeof parsed.backgroundOpacity === "number"
+          ? parsed.backgroundOpacity
+          : DEFAULTS.backgroundOpacity,
+      backgroundBlur:
+        typeof parsed.backgroundBlur === "number"
+          ? parsed.backgroundBlur
+          : DEFAULTS.backgroundBlur,
     };
   } catch {
     return DEFAULTS;
@@ -73,9 +100,16 @@ export function applyThemeSettings(settings: ThemeSettings) {
     body.style.setProperty("--accent-rgb", rgb);
   }
 
-  const bgValue = settings.backgroundImageDataUrl
-    ? `url("${settings.backgroundImageDataUrl}")`
+  const bgValue = settings.backgroundImagePath
+    ? `url("${convertFileSrc(settings.backgroundImagePath)}")`
     : "none";
+  
   root.style.setProperty("--app-bg-image", bgValue);
   body.style.setProperty("--app-bg-image", bgValue);
+  
+  root.style.setProperty("--app-bg-opacity", String(settings.backgroundOpacity));
+  body.style.setProperty("--app-bg-opacity", String(settings.backgroundOpacity));
+  
+  root.style.setProperty("--app-bg-blur", `${settings.backgroundBlur}px`);
+  body.style.setProperty("--app-bg-blur", `${settings.backgroundBlur}px`);
 }
