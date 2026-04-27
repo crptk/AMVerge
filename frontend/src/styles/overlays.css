@@ -1,39 +1,104 @@
-/* overlays.css */
-.loading-overlay,
-.dragging-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0,0,0,.6);
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  z-index: 1000;
-}
+/* --------------------
+   LOADING OVERLAY
+-------------------- */
 
-.dragging-overlay {
-  opacity: 0;
-  animation: fadeIn .15s ease forwards;
-  pointer-events: none;
+.loading-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.6);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+    flex-direction: column;
 }
 
 .spinner {
-  width: 60px;
-  height: 60px;
-  border: 6px solid rgba(255,255,255,.2);
-  border-top: 6px solid var(--accent);
-  border-radius: 50%;
-  animation: spin 1s linear infinite;
+    width: 60px;
+    height: 60px;
+    border: 6px solid rgba(255,255,255,0.2);
+    border-top: 6px solid var(--accent);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+.loading-text {
+    margin-top: 5px;
+    text-align: center;
 }
 
 .progress-bar {
-  width: 150px;
-  height: 8px;
-  background: #333;
-  border-radius: 4px;
-  overflow: hidden;
+    margin-top: 5px;
+    margin-left: auto;
+    margin-right: auto;
+    width: 150px;
+    height: 8px;
+    background: #333;
+    border-radius: 4px;
+    overflow: hidden;
 }
 
 .progress-fill {
-  height: 100%;
-  background: var(--accent);
+    height: 100%;
+    background: var(--accent);
+    transition: width 0.2s ease;
+}
+
+.batch-progress {
+    margin-top: 14px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+}
+
+.batch-counter {
+    font-size: 0.85rem;
+    color: rgba(255,255,255,0.7);
+}
+
+.batch-file-name {
+    font-size: 0.75rem;
+    color: rgba(255,255,255,0.45);
+    font-family: monospace;
+    max-width: 260px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.abort-button {
+    margin-top: 6px;
+    padding: 6px 24px;
+    border-radius: 6px;
+    border: 1px solid white;
+    background: black;
+    color: red;
+    cursor: pointer;
+}
+
+.abort-button:hover {
+    background: #420700;
+}
+
+/* --------------------
+   DRAGGING OVERLAY
+-------------------- */
+
+.dragging-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.6);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    color: white;
+    opacity: 0;
+    animation: fadeIn 0.15s ease forwards;
+    z-index: 900;
+    pointer-events: none;
+}
+
+.dragging-overlay > h1 {
+    font-weight: 15;
 }

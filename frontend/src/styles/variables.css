@@ -1,9 +1,8 @@
-/* variables.css */
 @import url('https://fonts.googleapis.com/css2?family=Jersey+10&display=swap');
 
 :root {
-  --accent: #22c55e;
-  --accent-rgb: 34 197 94;
-  --app-bg-image: none;
-  --bg-accent: #001a00;
+    --accent: #22c55e;
+    --accent-rgb: 34 197 94;
+    --app-bg-image: none;
+    --bg-accent: #001a00;
 }

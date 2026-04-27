@@ -1,56 +1,89 @@
 .app-root {
-  display: flex;
-  flex-direction: column;
-  height: 100vh;
-  min-height: 0;
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    min-height: 0;
 }
 
-.main,
+.main {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+    min-width: 0;
+}
+
+.window-wrapper {
+    display: flex;
+}
+
 .window-wrapper,
 .content-wrapper,
-.main-content,
-.split-layout,
-.main-layout-wrapper {
-  display: flex;
-  flex: 1;
-  min-width: 0;
-  min-height: 0;
+.main-content {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+    min-width: 0;
 }
 
 .content-wrapper,
-.main-content,
+.main-content {
+    flex-direction: column;
+}
+
+/* --------------------
+      LAYOUT SPLIT
+-------------------- */
+
+.split-layout {
+    display: flex;
+    flex: 1;
+    width: 100%;
+    min-width: 0;
+    min-height: 0;
+}
+
 .main-layout-wrapper {
-  flex-direction: column;
+    display: flex;
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
+    flex-direction: column;
 }
 
 .left-pane,
 .right-pane {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  min-height: 0;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    min-width: 0;
+}
+
+.left-pane {
+    min-width: 0;
 }
 
 .right-pane {
-  min-width: 280px;
+    min-width: 280px;
 }
 
 .divider {
-  width: 10px;
-  height: 50%;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  align-self: center;
-  cursor: col-resize;
+    display: flex;
+    flex-direction: row;
+    width: 10px;
+    height: 50%;
+    cursor: col-resize;
+    justify-content: space-between;
+    align-items: center;
+    align-self: center;
 }
 
+/* Align sidebar divider vertically with main divider */
 .divider.sidebar-splitter {
-  transform: translateY(var(--amverge-divider-offset, 0px));
+    transform: translateY(var(--amverge-divider-offset, 0px));
 }
 
 .subdivider {
-  width: 1px;
-  height: 100%;
-  background: rgb(var(--accent-rgb) / 0.5);
+    background: rgb(var(--accent-rgb) / 0.5);
+    width: 1px;
+    height: 100%;
 }

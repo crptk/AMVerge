@@ -15,8 +15,6 @@ import useHEVCSupport from "./hooks/useHEVCSupport";
 import useDragDropImport from "./hooks/useDragDropImport";
 import usePersistence from "./hooks/usePersistence";
 
-import "./App.css";
-
 const EPISODE_PANEL_STORAGE_KEY = "amverge_episode_panel_v1";
 const SIDEBAR_WIDTH_STORAGE_KEY = "amverge_sidebar_width_px_v1";
 const EXPORT_DIR_STORAGE_KEY = "amverge_export_dir_v1";

@@ -1,34 +1,69 @@
+/* --------------------
+   UNIVERSAL STYLING
+-------------------- */
+
+/* disable all text highlighting */
+* {
+    -webkit-user-select: none;
+    -moz-user-select: none; 
+    -ms-user-select: none;
+    user-select: none; 
+}
+
 *,
 *::before,
 *::after {
-  box-sizing: border-box;
-  -webkit-user-select: none;
-  -moz-user-select: none;
-  -ms-user-select: none;
-  user-select: none;
+    box-sizing: border-box;
 }
 
 body {
-  margin: 0;
-  overflow: hidden;
-  color: white;
-  font-family: 'Jersey 10', system-ui, sans-serif;
-
-  background-image:
-    var(--app-bg-image),
-    linear-gradient(160deg, #000000 50%, var(--bg-accent) 100%);
-  background-size: cover, cover;
-  background-position: center, center;
-  background-repeat: no-repeat, no-repeat;
+    /* Layer 1: optional user-selected image. Layer 2: theme gradient. */
+    background-image:
+        var(--app-bg-image),
+        linear-gradient(160deg, #000000 50%, var(--bg-accent) 100%);
+    background-size: cover, cover;
+    background-position: center, center;
+    background-repeat: no-repeat, no-repeat;
+    color: white;
+    margin: 0;
+    overflow: hidden;
+    font-family: 'Jersey 10', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
 }
 
+/* all buttons */
 .buttons {
-  height: 30px;
-  width: 100px;
-  font-size: 20px;
-  border: 1px solid white;
-  background: black;
-  color: white;
-  border-radius: 8px;
-  cursor: pointer;
+    height: 30px;
+    width: 100px;
+    font-family: 'Jersey 10', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+    font-size: 20px;
+    border: 1px solid white;
+    margin-bottom: 5px;
+    background: black;
+    color: white;
+    border-radius: 8px;
+    cursor: pointer;
+}
+
+.status-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 999px;
+    flex: 0 0 10px;
+    background: #666;
+    box-shadow: 0 0 6px rgba(255, 255, 255, 0.15);
+}
+
+.status-dot.ok {
+    background: rgba(0, 255, 34, 0.9);
+    box-shadow: 0 0 8px rgba(0, 255, 34, 0.9);
+}
+
+.status-dot.bad {
+    background: #ff3b3b;
+    box-shadow: 0 0 8px rgba(255, 59, 59, 0.9);
+}
+
+.status-dot.unknown {
+    background: #777;
+    box-shadow: 0 0 8px rgba(180, 180, 180, 0.5);
 }
