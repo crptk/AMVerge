@@ -184,36 +184,19 @@ pyinstaller backend_script.spec
 
 ---
 
-## Notes
-
-### `backend/deprecated/`
-
-Contains older scene detection systems and retired experiments.
-
-### `backend/bin/`
-
-Bundled FFmpeg tools used by the backend.
-
-### `frontend/src/components/sidebar/`
-
-Contains the project management / episode organization system.
-
----
-
 ## Current Focus
 
-AMVerge is built around speed and workflow efficiency.
+- More export formats
+- Export using original codec/settings by default
+- Dual-stream export support
+- Quality slider for export bitrate
+- Hover audio playback (toggleable)
+- Clip timestamps from original episode
+- Optional timestamps shown under grid clips
+- Original aspect ratio clip cells
+- Better merge-export stability
+- Fix occasional merged clip stutter
+- Performance optimization for freezes during heavy exports
+- Ability to combine clips from multiple episodes into one compilation
+- Setting to move the episode list location inside Menu > Settings
 
-The goal is simple:
-
-* get clips fast
-* review clips fast
-* export only what matters
-
----
-
-## Summary
-
-AMVerge is a desktop utility for editors who want fast scene extraction without bloated workflows.
-
-Import. Preview. Merge. Export.
