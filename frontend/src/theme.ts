@@ -10,7 +10,7 @@ export type ThemeSettings = {
 
 const STORAGE_KEY = "amverge.theme.v2";
 
-const DEFAULTS: ThemeSettings = {
+export const DEFAULT_THEME: ThemeSettings = {
   accentColor: "#22c55e",
   backgroundGradientColor: "#001a00",
   backgroundImagePath: null,
@@ -44,24 +44,24 @@ export function loadThemeSettings(): ThemeSettings {
       if (oldRaw) {
         const oldParsed = JSON.parse(oldRaw);
         return {
-          ...DEFAULTS,
-          accentColor: oldParsed.accentColor || DEFAULTS.accentColor,
-          backgroundGradientColor: oldParsed.backgroundGradientColor || DEFAULTS.backgroundGradientColor,
+          ...DEFAULT_THEME,
+          accentColor: oldParsed.accentColor || DEFAULT_THEME.accentColor,
+          backgroundGradientColor: oldParsed.backgroundGradientColor || DEFAULT_THEME.backgroundGradientColor,
         };
       }
-      return DEFAULTS;
+      return DEFAULT_THEME;
     }
 
     const parsed = JSON.parse(raw) as Partial<ThemeSettings>;
     return {
       accentColor:
-        typeof parsed.accentColor === "string" ? parsed.accentColor : DEFAULTS.accentColor,
+        typeof parsed.accentColor === "string" ? parsed.accentColor : DEFAULT_THEME.accentColor,
       backgroundGradientColor:
         typeof parsed.backgroundGradientColor === "string"
           ? parsed.backgroundGradientColor
           : typeof parsed.accentColor === "string"
             ? parsed.accentColor
-            : DEFAULTS.backgroundGradientColor,
+            : DEFAULT_THEME.backgroundGradientColor,
       backgroundImagePath:
         typeof parsed.backgroundImagePath === "string"
           ? parsed.backgroundImagePath
@@ -69,14 +69,14 @@ export function loadThemeSettings(): ThemeSettings {
       backgroundOpacity:
         typeof parsed.backgroundOpacity === "number"
           ? parsed.backgroundOpacity
-          : DEFAULTS.backgroundOpacity,
+          : DEFAULT_THEME.backgroundOpacity,
       backgroundBlur:
         typeof parsed.backgroundBlur === "number"
           ? parsed.backgroundBlur
-          : DEFAULTS.backgroundBlur,
+          : DEFAULT_THEME.backgroundBlur,
     };
   } catch {
-    return DEFAULTS;
+    return DEFAULT_THEME;
   }
 }
 
@@ -112,4 +112,20 @@ export function applyThemeSettings(settings: ThemeSettings) {
   
   root.style.setProperty("--app-bg-blur", `${settings.backgroundBlur}px`);
   body.style.setProperty("--app-bg-blur", `${settings.backgroundBlur}px`);
+}
+
+export function getDarkerColor(hex: string, factor = 0.5): string {
+  const cleaned = hex.trim().replace(/^#/, "");
+  if (!/^[0-9a-fA-F]{6}$/.test(cleaned)) return "#000000";
+
+  const r = parseInt(cleaned.slice(0, 2), 16);
+  const g = parseInt(cleaned.slice(2, 4), 16);
+  const b = parseInt(cleaned.slice(4, 6), 16);
+
+  const dr = clampByte(r * factor);
+  const dg = clampByte(g * factor);
+  const db = clampByte(b * factor);
+
+  const toHex = (n: number) => n.toString(16).padStart(2, "0");
+  return `#${toHex(dr)}${toHex(dg)}${toHex(db)}`;
 }

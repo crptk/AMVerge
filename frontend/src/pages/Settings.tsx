@@ -1,6 +1,13 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import GeneralSection from "../components/settings/GeneralSection";
 import AppearanceSection from "../components/settings/AppearanceSection";
+import {
+  applyThemeSettings,
+  loadThemeSettings,
+  saveThemeSettings,
+  DEFAULT_THEME,
+  type ThemeSettings,
+} from "../theme";
 
 const PAGES = [
   { key: "general", label: "General" },
@@ -9,6 +16,18 @@ const PAGES = [
 
 export default function Settings() {
   const [activeTab, setActiveTab] = useState("general");
+  const [settings, setSettings] = useState<ThemeSettings>(() => loadThemeSettings());
+
+  useEffect(() => {
+    applyThemeSettings(settings);
+    saveThemeSettings(settings);
+  }, [settings]);
+
+  const handleReset = () => {
+    if (window.confirm("Are you sure you want to reset all visual settings to default?")) {
+      setSettings(DEFAULT_THEME);
+    }
+  };
 
   return (
     <div className="menu-page">
@@ -29,7 +48,13 @@ export default function Settings() {
       <div className="menu-content">
         <div className="menu-section">
           {activeTab === "general" && <GeneralSection />}
-          {activeTab === "appearance" && <AppearanceSection />}
+          {activeTab === "appearance" && (
+            <AppearanceSection
+              settings={settings}
+              setSettings={setSettings}
+              onReset={handleReset}
+            />
+          )}
         </div>
       </div>
     </div>
