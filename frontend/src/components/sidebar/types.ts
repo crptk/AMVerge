@@ -1,7 +1,7 @@
 // Shared sidebar types. Defines props, menu state, modal state, drag/drop state, and page types.
 import type React from "react";
 
-export type Page = "home" | "menu";
+export type Page = "home" | "menu" | "settings";
 
 export type SidebarProps = {
   activePage: Page;
