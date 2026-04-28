@@ -67,6 +67,57 @@ export default function GeneralSection({
           </span>
         </div>
       </div>
+      <p style={{ fontSize: "0.8rem", opacity: 0.6, marginLeft: "24px", marginBottom: "16px", marginTop: "-4px" }}>
+        The current version of the AMVerge application.
+      </p>
+
+      <div className="settings-row">
+        <label className="settings-label">Audio Playback Hover</label>
+        <div className="settings-control">
+          <label className="custom-checkbox">
+            <input
+              type="checkbox"
+              className="checkbox"
+              checked={generalSettings.audioPlaybackHover}
+              onChange={(e) =>
+                setGeneralSettings((prev) => ({
+                  ...prev,
+                  audioPlaybackHover: e.target.checked,
+                }))
+              }
+            />
+            <span className="checkmark"></span>
+          </label>
+        </div>
+      </div>
+      <p style={{ fontSize: "0.8rem", opacity: 0.6, marginLeft: "24px", marginBottom: "16px", marginTop: "-4px" }}>
+        Automatically play clip audio when hovering over items in the grid.
+      </p>
+
+      <div className="settings-row">
+        <label className="settings-label">Playback Volume</label>
+        <div className="settings-control">
+          <input
+            type="range"
+            min="0"
+            max="1"
+            step="0.01"
+            value={generalSettings.playbackVolume}
+            onChange={(e) =>
+              setGeneralSettings((prev) => ({
+                ...prev,
+                playbackVolume: parseFloat(e.target.value),
+              }))
+            }
+          />
+          <span className="settings-value">
+            {Math.round(generalSettings.playbackVolume * 100)}%
+          </span>
+        </div>
+      </div>
+      <p style={{ fontSize: "0.8rem", opacity: 0.6, marginLeft: "24px", marginBottom: "16px", marginTop: "-4px" }}>
+        Adjust the master volume level for clip previews and audio playback.
+      </p>
 
       <div className="settings-row">
         <label className="settings-label">Episodes storage path</label>
@@ -87,6 +138,9 @@ export default function GeneralSection({
           </span>
         </div>
       </div>
+      <p style={{ fontSize: "0.8rem", opacity: 0.6, marginLeft: "24px", marginBottom: "16px", marginTop: "-4px" }}>
+        The location where your processed episodes and clips are stored.
+      </p>
 
       <div
         className="settings-row"
@@ -108,6 +162,9 @@ export default function GeneralSection({
           </button>
         </div>
       </div>
+      <p style={{ fontSize: "0.8rem", opacity: 0.6, marginLeft: "24px", marginBottom: "16px", marginTop: "0" }}>
+        Revert all general settings and preferences back to their original state.
+      </p>
     </section>
   );
 }
