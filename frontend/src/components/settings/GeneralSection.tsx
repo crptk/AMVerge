@@ -1,7 +1,7 @@
 import { open } from "@tauri-apps/plugin-dialog";
 import { invoke } from "@tauri-apps/api/core";
 import { type GeneralSettings } from "../../settings/generalSettings";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 type GeneralSectionProps = {
   generalSettings: GeneralSettings;
@@ -17,6 +17,21 @@ export default function GeneralSection({
   onEpisodesPathChanged,
 }: GeneralSectionProps) {
   const [loading, setLoading] = useState(false);
+  const [showFactoryResetConfirm, setShowFactoryResetConfirm] = useState(false);
+  const factoryResetConfirmation =
+    "Are you sure you'd like to factory reset? This will restore your episodes folder back to AppData as well as other changes you may have made";
+  useEffect(() => {
+    if (!showFactoryResetConfirm) return;
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setShowFactoryResetConfirm(false);
+      }
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [showFactoryResetConfirm]);
 
   const handlePickDir = async () => {
     const selected = await open({
@@ -136,7 +151,9 @@ export default function GeneralSection({
         <div className="settings-control">
           <button
             className="buttons"
-            onClick={onGeneralSettingsReset}
+            onClick={() => {
+              setShowFactoryResetConfirm(true);
+            }}
             style={{ width: "auto", padding: "0 16px", marginBottom: 0 }}
             disabled={loading}
           >
@@ -144,6 +161,37 @@ export default function GeneralSection({
           </button>
         </div>
       </div>
+
+      {showFactoryResetConfirm && (
+        <div
+          className="episode-modal-overlay"
+          onMouseDown={() => setShowFactoryResetConfirm(false)}
+        >
+          <div className="episode-modal" onMouseDown={(e) => e.stopPropagation()}>
+            <div className="episode-modal-title">Factory Reset</div>
+            <div className="episode-modal-message">{factoryResetConfirmation}</div>
+            <div className="episode-modal-actions">
+              <button
+                type="button"
+                className="episode-modal-btn"
+                onClick={() => setShowFactoryResetConfirm(false)}
+              >
+                No
+              </button>
+              <button
+                type="button"
+                className="episode-modal-btn primary"
+                onClick={() => {
+                  setShowFactoryResetConfirm(false);
+                  void onGeneralSettingsReset();
+                }}
+              >
+                Yes
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </section>
   );
 }

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { FaCopy, FaTrashAlt } from "react-icons/fa";
 import {
   clearConsoleLogs,
   subscribeToConsoleLogs,
@@ -41,11 +42,23 @@ export default function Console() {
         </div>
 
         <div className="console-actions">
-          <button className="buttons" type="button" onClick={handleCopy}>
-            Copy Logs
+          <button
+            className="console-action-icon"
+            type="button"
+            onClick={handleCopy}
+            aria-label="Copy Logs"
+            title="Copy Logs"
+          >
+            <FaCopy aria-hidden="true" />
           </button>
-          <button className="buttons" type="button" onClick={handleClear}>
-            Clear
+          <button
+            className="console-action-icon"
+            type="button"
+            onClick={handleClear}
+            aria-label="Clear Logs"
+            title="Clear Logs"
+          >
+            <FaTrashAlt aria-hidden="true" />
           </button>
         </div>
       </div>
