@@ -10,7 +10,6 @@ export default function useDiscordRPC(generalSettings: GeneralSettings, activePa
     try {
       await invoke("start_discord_rpc");
       isStartedRef.current = true;
-      console.log("Discord RPC started");
 
       // Initial status
       updateRPC({
@@ -28,7 +27,6 @@ export default function useDiscordRPC(generalSettings: GeneralSettings, activePa
     try {
       await invoke("stop_discord_rpc");
       isStartedRef.current = false;
-      console.log("Discord RPC stopped");
     } catch (err) {
       console.error("Failed to stop Discord RPC:", err);
     }

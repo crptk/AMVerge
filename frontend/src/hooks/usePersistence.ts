@@ -29,10 +29,6 @@ export default function usePersistence(props: UsePersistenceProps) {
     try {
       const raw = localStorage.getItem(props.episodePanelStorageKey);
       if (!raw) return;
-
-
-      console.log("EPISODE PANEL RAW STORAGE:");
-      console.log(raw);
             
       const parsed = JSON.parse(raw) as {
         episodeFolders?: EpisodeFolder[];

@@ -1,5 +1,7 @@
-import React, { useReducer } from "react";
+import React, { useCallback, useReducer } from "react";
 import { ClipItem, EpisodeEntry, EpisodeFolder } from "../types/domain";
+
+type SetterValue<T> = T | ((prev: T) => T);
 
 export type AppState = {
   focusedClip: string | null;
@@ -15,16 +17,16 @@ export type AppState = {
 };
 
 export type AppAction =
-  | { type: "setFocusedClip"; value: string | null }
-  | { type: "setSelectedClips"; value: Set<string> }
-  | { type: "setClips"; value: ClipItem[] }
-  | { type: "setEpisodes"; value: EpisodeEntry[] }
-  | { type: "setSelectedEpisodeId"; value: string | null }
-  | { type: "setEpisodeFolders"; value: EpisodeFolder[] }
-  | { type: "setOpenedEpisodeId"; value: string | null }
-  | { type: "setSelectedFolderId"; value: string | null }
-  | { type: "setImportedVideoPath"; value: string | null }
-  | { type: "setVideoIsHEVC"; value: boolean | null };
+  | { type: "setFocusedClip"; value: SetterValue<string | null> }
+  | { type: "setSelectedClips"; value: SetterValue<Set<string>> }
+  | { type: "setClips"; value: SetterValue<ClipItem[]> }
+  | { type: "setEpisodes"; value: SetterValue<EpisodeEntry[]> }
+  | { type: "setSelectedEpisodeId"; value: SetterValue<string | null> }
+  | { type: "setEpisodeFolders"; value: SetterValue<EpisodeFolder[]> }
+  | { type: "setOpenedEpisodeId"; value: SetterValue<string | null> }
+  | { type: "setSelectedFolderId"; value: SetterValue<string | null> }
+  | { type: "setImportedVideoPath"; value: SetterValue<string | null> }
+  | { type: "setVideoIsHEVC"; value: SetterValue<boolean | null> };
 
 const initialState: AppState = {
   focusedClip: null,
@@ -39,48 +41,83 @@ const initialState: AppState = {
   videoIsHEVC: null,
 };
 
+function resolveSetterValue<T>(prev: T, value: SetterValue<T>): T {
+  return typeof value === "function"
+    ? (value as (current: T) => T)(prev)
+    : value;
+}
+
 function appReducer(state: AppState, action: AppAction): AppState {
   switch (action.type) {
-    case "setFocusedClip": return { ...state, focusedClip: action.value };
-    case "setSelectedClips": return { ...state, selectedClips: action.value };
-    case "setClips": return { ...state, clips: action.value };
-    case "setEpisodes": return { ...state, episodes: action.value };
-    case "setSelectedEpisodeId": return { ...state, selectedEpisodeId: action.value };
-    case "setEpisodeFolders": return { ...state, episodeFolders: action.value };
-    case "setOpenedEpisodeId": return { ...state, openedEpisodeId: action.value };
-    case "setSelectedFolderId": return { ...state, selectedFolderId: action.value };
-    case "setImportedVideoPath": return { ...state, importedVideoPath: action.value };
-    case "setVideoIsHEVC": return { ...state, videoIsHEVC: action.value };
+    case "setFocusedClip":
+      return { ...state, focusedClip: resolveSetterValue(state.focusedClip, action.value) };
+    case "setSelectedClips":
+      return { ...state, selectedClips: resolveSetterValue(state.selectedClips, action.value) };
+    case "setClips":
+      return { ...state, clips: resolveSetterValue(state.clips, action.value) };
+    case "setEpisodes":
+      return { ...state, episodes: resolveSetterValue(state.episodes, action.value) };
+    case "setSelectedEpisodeId":
+      return { ...state, selectedEpisodeId: resolveSetterValue(state.selectedEpisodeId, action.value) };
+    case "setEpisodeFolders":
+      return { ...state, episodeFolders: resolveSetterValue(state.episodeFolders, action.value) };
+    case "setOpenedEpisodeId":
+      return { ...state, openedEpisodeId: resolveSetterValue(state.openedEpisodeId, action.value) };
+    case "setSelectedFolderId":
+      return { ...state, selectedFolderId: resolveSetterValue(state.selectedFolderId, action.value) };
+    case "setImportedVideoPath":
+      return { ...state, importedVideoPath: resolveSetterValue(state.importedVideoPath, action.value) };
+    case "setVideoIsHEVC":
+      return { ...state, videoIsHEVC: resolveSetterValue(state.videoIsHEVC, action.value) };
     default: return state;
   }
 }
 
 export default function useAppState() {
   const [state, dispatch] = useReducer(appReducer, initialState);
-
-  function makeReducerSetter<T>(type: AppAction["type"], current: T) {
-    return (value: React.SetStateAction<T>) => {
-      const resolved =
-        typeof value === "function"
-          ? (value as (prev: T) => T)(current)
-          : value;
-
-      dispatch({ type, value: resolved } as AppAction);
-    };
-  }
+  const setFocusedClip = useCallback((value: React.SetStateAction<string | null>) => {
+    dispatch({ type: "setFocusedClip", value });
+  }, [dispatch]);
+  const setSelectedClips = useCallback((value: React.SetStateAction<Set<string>>) => {
+    dispatch({ type: "setSelectedClips", value });
+  }, [dispatch]);
+  const setClips = useCallback((value: React.SetStateAction<ClipItem[]>) => {
+    dispatch({ type: "setClips", value });
+  }, [dispatch]);
+  const setEpisodes = useCallback((value: React.SetStateAction<EpisodeEntry[]>) => {
+    dispatch({ type: "setEpisodes", value });
+  }, [dispatch]);
+  const setSelectedEpisodeId = useCallback((value: React.SetStateAction<string | null>) => {
+    dispatch({ type: "setSelectedEpisodeId", value });
+  }, [dispatch]);
+  const setEpisodeFolders = useCallback((value: React.SetStateAction<EpisodeFolder[]>) => {
+    dispatch({ type: "setEpisodeFolders", value });
+  }, [dispatch]);
+  const setOpenedEpisodeId = useCallback((value: React.SetStateAction<string | null>) => {
+    dispatch({ type: "setOpenedEpisodeId", value });
+  }, [dispatch]);
+  const setSelectedFolderId = useCallback((value: React.SetStateAction<string | null>) => {
+    dispatch({ type: "setSelectedFolderId", value });
+  }, [dispatch]);
+  const setImportedVideoPath = useCallback((value: React.SetStateAction<string | null>) => {
+    dispatch({ type: "setImportedVideoPath", value });
+  }, [dispatch]);
+  const setVideoIsHEVC = useCallback((value: React.SetStateAction<boolean | null>) => {
+    dispatch({ type: "setVideoIsHEVC", value });
+  }, [dispatch]);
 
   return {
     state,
     dispatch,
-    setFocusedClip: makeReducerSetter<string | null>("setFocusedClip", state.focusedClip),
-    setSelectedClips: makeReducerSetter<Set<string>>("setSelectedClips", state.selectedClips),
-    setClips: makeReducerSetter<ClipItem[]>("setClips", state.clips),
-    setEpisodes: makeReducerSetter<EpisodeEntry[]>("setEpisodes", state.episodes),
-    setSelectedEpisodeId: makeReducerSetter<string | null>("setSelectedEpisodeId", state.selectedEpisodeId),
-    setEpisodeFolders: makeReducerSetter<EpisodeFolder[]>("setEpisodeFolders", state.episodeFolders),
-    setOpenedEpisodeId: makeReducerSetter<string | null>("setOpenedEpisodeId", state.openedEpisodeId),
-    setSelectedFolderId: makeReducerSetter<string | null>("setSelectedFolderId", state.selectedFolderId),
-    setImportedVideoPath: makeReducerSetter<string | null>("setImportedVideoPath", state.importedVideoPath),
-    setVideoIsHEVC: makeReducerSetter<boolean | null>("setVideoIsHEVC", state.videoIsHEVC),
+    setFocusedClip,
+    setSelectedClips,
+    setClips,
+    setEpisodes,
+    setSelectedEpisodeId,
+    setEpisodeFolders,
+    setOpenedEpisodeId,
+    setSelectedFolderId,
+    setImportedVideoPath,
+    setVideoIsHEVC,
   };
 }

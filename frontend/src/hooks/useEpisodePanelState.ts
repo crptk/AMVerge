@@ -45,7 +45,6 @@ export default function useEpisodePanelState(props: episodePanelProps) {
 		startTransition(() => {
 			props.setClips(selectedEpisode.clips);
 		});
-		console.log(selectedEpisode.clips);
 	};
 
 	const handleSelectFolder = (folderId: string | null) => {
