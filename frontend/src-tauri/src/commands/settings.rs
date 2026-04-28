@@ -173,23 +173,18 @@ pub async fn crop_and_save_image(
 
         let crop_json = serde_json::to_string(&crop).map_err(|e| e.to_string())?;
         
-        // Find python path (prefer venv in backend/venv/Scripts/python.exe relative to workspace root)
-        let exe_dir = std::env::current_exe()
-            .ok()
-            .and_then(|p| p.parent().map(|p| p.to_path_buf()))
-            .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
+        let current_dir = std::env::current_dir().unwrap_or_default();
+        
+        // Detect project root (handle both root and src-tauri dirs)
+        let project_root = if current_dir.ends_with("src-tauri") {
+            current_dir.parent().and_then(|p| p.parent()).map(|p| p.to_path_buf()).unwrap_or(current_dir)
+        } else {
+            current_dir
+        };
 
-        // Go up to workspace root (from src-tauri/target or src-tauri)
-        let workspace_root = exe_dir
-            .join("..") // target -> src
-            .join("..") // src -> src-tauri
-            .join("..") // src-tauri -> frontend
-            .join("..") // frontend -> root
-            .canonicalize()
-            .unwrap_or_else(|_| exe_dir.clone());
-
+        // Find python path (prefer venv)
         let python_path = if cfg!(windows) {
-            workspace_root.join("backend").join("venv").join("Scripts").join("python.exe")
+            project_root.join("backend").join("venv").join("Scripts").join("python.exe")
         } else {
             Path::new("python3").to_path_buf()
         };
@@ -201,11 +196,7 @@ pub async fn crop_and_save_image(
             "python".to_string()
         };
 
-        let script_path = workspace_root
-            .join("backend")
-            .join("utils")
-            .join("image_processor.py");
-        let script_path = script_path.canonicalize().unwrap_or(script_path);
+        let script_path = project_root.join("backend").join("utils").join("image_processor.py");
 
         let output = std::process::Command::new(python_cmd)
             .arg(script_path)

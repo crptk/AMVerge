@@ -1,16 +1,17 @@
 import React from "react";
-import { FaDownload } from "react-icons/fa";
+import { FiDownload } from "react-icons/fi";
 
 type DownloadButtonProps = {
   onClick: (e: React.MouseEvent) => void;
   loading?: boolean;
+  tone?: "light" | "dark";
 };
 
 /**
  * A small download button designed to sit on a clip tile.
  * Animated on hover for a premium feel.
  */
-export const DownloadButton: React.FC<DownloadButtonProps> = ({ onClick, loading }) => {
+export const DownloadButton: React.FC<DownloadButtonProps> = ({ onClick, loading, tone = "light" }) => {
   return (
     <button
       className={`clip-download-btn ${loading ? "loading" : ""}`}
@@ -21,7 +22,7 @@ export const DownloadButton: React.FC<DownloadButtonProps> = ({ onClick, loading
       title="Download this clip"
       disabled={loading}
     >
-      <FaDownload />
+      <FiDownload className={`clip-download-icon download-tone-${tone}`} />
     </button>
   );
 };

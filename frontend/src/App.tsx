@@ -26,6 +26,7 @@ import { type Page } from "./components/sidebar/types";
 import useAppState from "./hooks/useAppState";
 import useEpisodePanelState from "./hooks/useEpisodePanelState";
 import useImportExport from "./hooks/useImportExport";
+import useDiscordRPC from "./hooks/useDiscordRPC";
 import useHEVCSupport from "./hooks/useHEVCSupport";
 import useDragDropImport from "./hooks/useDragDropImport";
 import usePersistence from "./hooks/usePersistence";
@@ -126,6 +127,8 @@ function App() {
   const isEmpty = state.clips.length === 0;
 
   // Import/export
+  const { updateRPC } = useDiscordRPC(generalSettings, activePage);
+
   const {
     loading,
     importToken,
@@ -158,6 +161,8 @@ function App() {
     setExportDir,
     episodesPath: generalSettings.episodesPath,
     exportFormat: generalSettings.exportFormat,
+    onRPCUpdate: updateRPC,
+    generalSettings,
   });
 
   // Episode panel actions

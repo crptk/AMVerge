@@ -12,3 +12,8 @@ pub struct ActiveSidecar {
 pub struct PreviewProxyLocks {
     pub inner: AsyncMutex<HashMap<String, Arc<AsyncMutex<()>>>>,
 }
+
+#[derive(Default)]
+pub struct DiscordRPCState {
+    pub child: Mutex<Option<std::process::Child>>,
+}

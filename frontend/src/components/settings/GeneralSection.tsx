@@ -82,6 +82,9 @@ export default function GeneralSection({
           </span>
         </div>
       </div>
+      <p style={{ fontSize: "0.8rem", opacity: 0.6, marginLeft: "24px", marginBottom: "16px", marginTop: "-4px" }}>
+        The current version of the AMVerge application.
+      </p>
 
       <div className="settings-row">
         <label className="settings-label">Audio Playback Hover</label>
@@ -100,6 +103,15 @@ export default function GeneralSection({
             />
             <span className="checkmark"></span>
           </label>
+        </div>
+      </div>
+      <p style={{ fontSize: "0.8rem", opacity: 0.6, marginLeft: "24px", marginBottom: "16px", marginTop: "-4px" }}>
+        Automatically play clip audio when hovering over items in the grid.
+      </p>
+
+      <div className="settings-row">
+        <label className="settings-label">Playback Volume</label>
+        <div className="settings-control">
           <input
             type="range"
             min="0"
@@ -118,6 +130,9 @@ export default function GeneralSection({
           </span>
         </div>
       </div>
+      <p style={{ fontSize: "0.8rem", opacity: 0.6, marginLeft: "24px", marginBottom: "16px", marginTop: "-4px" }}>
+        Adjust the master volume level for clip previews and audio playback.
+      </p>
 
       <div className="settings-row">
         <label className="settings-label">Episodes storage path</label>
@@ -138,6 +153,9 @@ export default function GeneralSection({
           </span>
         </div>
       </div>
+      <p style={{ fontSize: "0.8rem", opacity: 0.6, marginLeft: "24px", marginBottom: "16px", marginTop: "-4px" }}>
+        The location where your processed episodes and clips are stored.
+      </p>
 
       <div
         className="settings-row"

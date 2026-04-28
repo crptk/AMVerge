@@ -99,6 +99,9 @@ export default function AppearanceSection({
           <span className="settings-value">{themeSettings.accentColor.toUpperCase()}</span>
         </div>
       </div>
+      <p style={{ fontSize: "0.8rem", opacity: 0.6, marginLeft: "24px", marginBottom: "16px", marginTop: "-4px" }}>
+        Customize the primary color used for buttons, highlights, and icons.
+      </p>
 
       <div className="settings-row">
         <label className="settings-label" htmlFor={bgGradientId}>
@@ -119,6 +122,9 @@ export default function AppearanceSection({
           </span>
         </div>
       </div>
+      <p style={{ fontSize: "0.8rem", opacity: 0.6, marginLeft: "24px", marginBottom: "16px", marginTop: "-4px" }}>
+        Choose the secondary color for the background gradient effect.
+      </p>
 
       <div className="settings-row">
         <label className="settings-label">Background image</label>
@@ -138,6 +144,9 @@ export default function AppearanceSection({
           </button>
         </div>
       </div>
+      <p style={{ fontSize: "0.8rem", opacity: 0.6, marginLeft: "24px", marginBottom: "16px", marginTop: "-4px" }}>
+        Upload a custom image to use as your application background.
+      </p>
 
       <div className="settings-row">
         <label className="settings-label" htmlFor={bgOpacityId}>
@@ -163,6 +172,9 @@ export default function AppearanceSection({
           </span>
         </div>
       </div>
+      <p style={{ fontSize: "0.8rem", opacity: 0.6, marginLeft: "24px", marginBottom: "16px", marginTop: "-4px" }}>
+        Adjust the transparency of the background image.
+      </p>
 
       <div className="settings-row">
         <label className="settings-label" htmlFor={bgBlurId}>
@@ -186,6 +198,9 @@ export default function AppearanceSection({
           <span className="settings-value">{themeSettings.backgroundBlur}px</span>
         </div>
       </div>
+      <p style={{ fontSize: "0.8rem", opacity: 0.6, marginLeft: "24px", marginBottom: "16px", marginTop: "-4px" }}>
+        Apply a blur effect to the background image for better readability.
+      </p>
 
       <div className="settings-row">
         <label className="settings-label">Show download button</label>
@@ -226,6 +241,9 @@ export default function AppearanceSection({
           </button>
         </div>
       </div>
+      <p style={{ fontSize: "0.8rem", opacity: 0.6, marginLeft: "24px", marginBottom: "16px", marginTop: "0" }}>
+        Revert all appearance and theme settings back to their default values.
+      </p>
 
       {imageToCrop && (
         <CropModal

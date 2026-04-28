@@ -1,0 +1,483 @@
+/* --------------------
+      TOP BUTTONS
+-------------------- */
+
+.clips-import {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    width: 100%;
+    height: auto;
+    min-height: 2.5rem;
+    padding-top: 6px;
+    margin-bottom: 5px;
+    gap: 8px;
+    align-items: center;
+}
+
+.import-buttons-container {
+    display: flex;
+    flex-direction: row;
+    min-width: 5rem;
+    padding-left: 15px;
+    padding-right: 5px;
+    padding-top: 5px;
+    align-items: center;
+}
+
+.import-buttons-container > button {
+    min-height: 2.2rem;
+    max-height: 2.5rem;
+    min-width: 5rem;
+    margin-right: 5px;
+    margin-bottom: 5px;
+    font-family: 'Jersey 10', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+    font-size: 18px;
+    background: black;
+    color: white;
+    border: 1px solid #555555;
+    border-radius: 8px;
+}
+
+#file-button {
+    transition: border 0.2s ease, 
+                box-shadow 0.2s ease, 
+                color 0.2s ease;
+}
+
+#file-button:hover {
+    cursor: pointer;
+    box-shadow: 0 0 15px rgb(var(--accent-rgb) / 0.4);
+    border: 1px solid var(--accent);
+    color: var(--accent);
+}
+
+.grid-checkboxes { 
+    display: flex;
+    align-items: center;
+    flex: 1;
+    justify-content: space-between;
+    gap: 8px;
+    min-width: 0;
+}
+
+.selectable-checkboxes {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.checkbox-row {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    height: 2.2rem;
+    padding: 2px;
+    margin-right: 5px;
+    white-space: nowrap;
+}
+
+.checkbox-row > span {
+    font-weight: 500;
+    font-size: 1.5rem;
+}
+
+.checkbox-row > p {
+    font-size: 20px;
+    margin: 0;
+    text-align: center;
+}
+
+.custom-checkbox {
+    display: inline-flex;
+    align-items: center;
+    cursor: pointer;
+    margin-right: 5px;
+    width: 25px;
+    height: 25px;
+}
+
+.custom-checkbox input {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.custom-checkbox > .checkmark {
+    width: 100%;
+    height: 100%;
+    border: 1.5px solid white;
+    border-radius: 4px;
+    background: transparent;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s ease;
+}
+
+.custom-checkbox > .checkmark:hover {
+    border: 1.5px solid var(--accent);
+}
+
+.custom-checkbox:has(input:disabled) {
+    cursor: not-allowed;
+}
+
+.custom-checkbox input:disabled + .checkmark {
+    border-color: #555;
+    opacity: 0.4;
+}
+
+.custom-checkbox input:checked + .checkmark::after {
+    content: "";
+    width: 6px;
+    height: 10.5px;
+    border-right: 2px solid var(--accent);
+    border-bottom: 2px solid var(--accent);
+    transform: rotate(45deg) translateY(-1px) translateX(-1px);
+}
+
+.zoomWrapper {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    padding-right: 10px;
+}
+
+.zoomWrapper > form {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 3px;
+}
+
+.zoomWrapper span {
+    color: rgb(146, 146, 146);
+}
+
+.zoomWrapper button {
+    width: 30px;
+    height: 30px;
+    background: black;
+    color: var(--accent);
+    outline: none;
+    border: 1px solid white;
+    border-radius: 5px;
+    font-size: 20px;
+    transition: border 0.1s ease;
+}
+
+.zoomWrapper button:hover {
+    border: 1px solid var(--accent);
+    cursor: pointer;
+}
+
+.info-bar {
+    height: 3%;
+    width: 100%;
+    display: flex;
+    align-items: center;
+    padding-left: 8px;
+}
+
+.info-bar-filename {
+    font-size: 0.75rem;
+    color: var(--text-secondary, rgba(255, 255, 255, 0.5));
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    user-select: text;
+}
+
+/* --------------------
+   NAVBAR
+-------------------- */
+
+.navbar {
+    display: flex;
+    justify-content: space-between;
+}
+
+.navbar svg { 
+    width: 35px;
+    height: 35px;
+    color: white;
+    transition: filter 0.2s ease;
+}
+
+.navbar svg:hover {
+    cursor: pointer;
+    filter: drop-shadow(0 0 12px rgba(255, 255, 255, 0.7));
+}
+
+.navbar > .hevc-check {
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+    align-items: flex-end;
+    margin-right: 8px;
+    margin-top: 8px;
+    gap: 4px;
+}
+
+.navbar h1 {
+    margin: 0;
+    font-size: 35px;
+    font-weight: 10;
+}
+
+.navbar > .left-nav {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 0px;
+}
+
+.navbar span {
+    color: var(--accent);
+}
+
+.hevc-row {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+/* --------------------
+   MENU
+-------------------- */
+
+.menu-page {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+    width: 100%;
+}
+
+.menu-header {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    padding-top: 24px;
+    padding-bottom: 8px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.menu-title {
+    text-align: center;
+    margin: 0 0 8px 0;
+}
+
+.menu-nav {
+    display: flex;
+    justify-content: center;
+    gap: 16px;
+    margin-bottom: 0;
+}
+
+.menu-nav-btn {
+    padding: 8px 24px;
+    border-radius: 8px;
+    border: 1px solid #ffffff;
+    background: #000;
+    color: #fff;
+    font-size: 1.1rem;
+    font-family: inherit;
+    cursor: pointer;
+    transition: background 0.15s, border 0.15s ease, color 0.15s;
+}
+
+.menu-nav-btn.active {
+    background: var(--accent);
+    border: 1px solid var(--accent);
+    color: #000;
+}
+
+.menu-nav-btn:hover {
+    border: 1px solid var(--accent);
+    color: var(--accent);
+}
+
+.menu-nav-btn.active:hover {
+    color: #000;
+}
+
+.menu-content {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    width: 100%;
+    overflow: hidden;
+}
+
+.menu-section {
+    width: 100%;
+    max-width: 900px;
+    margin: 0 auto;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
+/* --------------------
+   ABOUT
+-------------------- */
+
+.about-section {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    height: 100%;
+    margin-bottom: 6px;
+    margin-right: 6px;
+    margin-left: 6px;
+}
+
+.about-content {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 12px;
+    /* background: red; */
+    box-sizing: border-box;
+    scrollbar-width: thin;
+    scrollbar-color: var(--accent) transparent;
+}
+
+.about-content::-webkit-scrollbar {
+    width: 10px;
+    background: transparent;
+}
+
+.about-content::-webkit-scrollbar-thumb {
+    background: var(--accent);
+    border-radius: 8px;
+}
+
+.about-content::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.about-content ul,
+.about-content ol {
+    margin-left: 1.5em;
+    margin-bottom: 1em;
+}
+
+.about-section p {
+    font-weight: normal;
+    font-size: 15px;
+}
+
+.about-section h4 {
+    font-size: 15px;
+    margin: 0;
+}
+
+/* --------------------
+        CONSOLE
+-------------------- */
+.console-section {
+    display: flex;
+    flex-direction: column;
+    height: 82vh;
+    min-height: 0;
+    gap: 12px;
+    margin-bottom: 6px;
+    margin-right: 6px;
+    margin-left: 6px;
+}
+
+.console-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 16px;
+}
+
+.console-header h3 {
+    margin: 0;
+}
+
+.console-header p {
+    margin: 4px 0 0 0;
+    color: rgba(255, 255, 255, 0.65);
+    font-size: 14px;
+}
+
+.console-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.console-output {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    background: rgba(0, 0, 0, 0.72);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    border-radius: 10px;
+    padding: 12px;
+    font-family: Consolas, "Courier New", monospace;
+    font-size: 13px;
+    line-height: 1.45;
+    white-space: pre-wrap;
+    word-break: break-word;
+    scrollbar-width: thin;
+    scrollbar-color: var(--accent) transparent;
+}
+
+.console-output::-webkit-scrollbar {
+    width: 10px;
+}
+
+.console-output::-webkit-scrollbar-thumb {
+    background: var(--accent);
+    border-radius: 8px;
+}
+
+.console-empty {
+    color: rgba(255, 255, 255, 0.45);
+    margin: 0;
+}
+
+.console-line {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 4px;
+}
+
+.console-time {
+    color: rgba(255, 255, 255, 0.45);
+    flex-shrink: 0;
+}
+
+.console-source {
+    color: var(--accent);
+    flex-shrink: 0;
+}
+
+.console-level {
+    color: rgba(255, 255, 255, 0.65);
+    flex-shrink: 0;
+}
+
+.console-message {
+    color: white;
+}
+
+.console-line-warn .console-message {
+    color: #ffd166;
+}
+
+.console-line-error .console-message {
+    color: #ff6b6b;
+}
