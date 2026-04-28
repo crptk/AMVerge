@@ -4,7 +4,7 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { ClipItem, EpisodeEntry } from "../types/domain"
 import { fileNameFromPath, truncateFileName, detectScenes } from "../utils/episodeUtils";
 type ImportExportProps = {
-  abortedRef: React.MutableRefObject<boolean>;
+  abortedRef: React.RefObject<boolean>;
   clips: ClipItem[];
   setFocusedClip: React.Dispatch<React.SetStateAction<string | null>>;
   setSelectedClips: React.Dispatch<React.SetStateAction<Set<string>>>;
@@ -73,7 +73,7 @@ export default function useImportExport(props: ImportExportProps) {
 
       const formatted = await detectScenes(file, episodeId, props.episodesPath);
 
-      // A newer import started while we were waiting — discard stale results.
+      // A newer import started while we were waiting - discard stale results.
       if (importGenRef.current !== gen) return;
 
       const inferredName = formatted[0]?.originalName || fileNameFromPath(file);

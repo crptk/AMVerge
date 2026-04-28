@@ -1,7 +1,8 @@
 import { useState } from "react";
 import GeneralSection from "../components/settings/GeneralSection";
 import AppearanceSection from "../components/settings/AppearanceSection";
-import { type ThemeSettings } from "../theme";
+import { type ThemeSettings } from "../settings/themeSettings";
+import { type GeneralSettings } from "../settings/generalSettings";
 
 const PAGES = [
   { key: "general", label: "General" },
@@ -9,17 +10,23 @@ const PAGES = [
 ];
 
 type SettingsProps = {
-  settings: ThemeSettings;
-  setSettings: React.Dispatch<React.SetStateAction<ThemeSettings>>;
-  onReset: () => void;
+  themeSettings: ThemeSettings;
+  setThemeSettings: React.Dispatch<React.SetStateAction<ThemeSettings>>;
+  generalSettings: GeneralSettings;
+  setGeneralSettings: React.Dispatch<React.SetStateAction<GeneralSettings>>;
+  onGeneralSettingsReset: () => void;
   onEpisodesPathChanged: (oldPath: string, newPath: string) => void;
+  onThemeReset: () => void;
 };
 
 export default function Settings({
-  settings,
-  setSettings,
-  onReset,
+  themeSettings,
+  setThemeSettings,
+  generalSettings,
+  setGeneralSettings,
+  onGeneralSettingsReset,
   onEpisodesPathChanged,
+  onThemeReset,
 }: SettingsProps) {
   const [activeTab, setActiveTab] = useState("general");
 
@@ -46,17 +53,18 @@ export default function Settings({
           <div className="tab-content" style={{ flex: 1 }}>
             {activeTab === "general" && (
               <GeneralSection
-                settings={settings}
-                setSettings={setSettings}
-                onReset={onReset}
+                generalSettings={generalSettings}
+                setGeneralSettings={setGeneralSettings}
+                onGeneralSettingsReset={onGeneralSettingsReset}
                 onEpisodesPathChanged={onEpisodesPathChanged}
               />
             )}
 
             {activeTab === "appearance" && (
               <AppearanceSection
-                settings={settings}
-                setSettings={setSettings}
+                themeSettings={themeSettings}
+                setThemeSettings={setThemeSettings}
+                onThemeReset={onThemeReset}
               />
             )}
           </div>

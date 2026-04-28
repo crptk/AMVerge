@@ -6,7 +6,6 @@ export type ThemeSettings = {
   backgroundImagePath: string | null;
   backgroundOpacity: number; // 0 to 1
   backgroundBlur: number; // pixels
-  episodesPath: string | null;
 };
 
 const STORAGE_KEY = "amverge.theme.v2";
@@ -17,7 +16,6 @@ export const DEFAULT_THEME: ThemeSettings = {
   backgroundImagePath: null,
   backgroundOpacity: 1.0,
   backgroundBlur: 0,
-  episodesPath: null,
 };
 
 function clampByte(value: number) {
@@ -49,7 +47,6 @@ export function loadThemeSettings(): ThemeSettings {
           ...DEFAULT_THEME,
           accentColor: oldParsed.accentColor || DEFAULT_THEME.accentColor,
           backgroundGradientColor: oldParsed.backgroundGradientColor || DEFAULT_THEME.backgroundGradientColor,
-          episodesPath: oldParsed.episodesPath || DEFAULT_THEME.episodesPath,
         };
       }
       return DEFAULT_THEME;
@@ -77,10 +74,6 @@ export function loadThemeSettings(): ThemeSettings {
         typeof parsed.backgroundBlur === "number"
           ? parsed.backgroundBlur
           : DEFAULT_THEME.backgroundBlur,
-      episodesPath:
-        typeof parsed.episodesPath === "string"
-          ? parsed.episodesPath
-          : DEFAULT_THEME.episodesPath,
     };
   } catch {
     return DEFAULT_THEME;

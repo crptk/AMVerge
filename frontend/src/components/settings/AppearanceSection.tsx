@@ -1,16 +1,18 @@
 import { useId } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { invoke } from "@tauri-apps/api/core";
-import { getDarkerColor, type ThemeSettings } from "../../theme";
+import { getDarkerColor, type ThemeSettings } from "../../settings/themeSettings";
 
 type AppearanceSectionProps = {
-  settings: ThemeSettings;
-  setSettings: React.Dispatch<React.SetStateAction<ThemeSettings>>;
+  themeSettings: ThemeSettings;
+  setThemeSettings: React.Dispatch<React.SetStateAction<ThemeSettings>>;
+  onThemeReset: () => void;
 };
 
 export default function AppearanceSection({
-  settings,
-  setSettings,
+  themeSettings,
+  setThemeSettings,
+  onThemeReset
 }: AppearanceSectionProps) {
   const accentId = useId();
   const bgGradientId = useId();
@@ -35,7 +37,7 @@ export default function AppearanceSection({
         sourcePath: selected,
       });
 
-      setSettings((prev) => ({
+      setThemeSettings((prev) => ({
         ...prev,
         backgroundImagePath: storedPath,
       }));
@@ -55,10 +57,10 @@ export default function AppearanceSection({
           <input
             id={accentId}
             type="color"
-            value={settings.accentColor}
+            value={themeSettings.accentColor}
             onChange={(e) => {
               const newColor = e.target.value;
-              setSettings((prev) => {
+              setThemeSettings((prev) => {
                 const currentDark = getDarkerColor(prev.accentColor);
                 // Sync if gradient is the default dark green or matches the current darkened accent
                 const isDefaultGradient =
@@ -76,7 +78,7 @@ export default function AppearanceSection({
             }}
             aria-label="Accent color"
           />
-          <span className="settings-value">{settings.accentColor.toUpperCase()}</span>
+          <span className="settings-value">{themeSettings.accentColor.toUpperCase()}</span>
         </div>
       </div>
 
@@ -88,9 +90,9 @@ export default function AppearanceSection({
           <input
             id={bgGradientId}
             type="color"
-            value={settings.backgroundGradientColor}
+            value={themeSettings.backgroundGradientColor}
             onChange={(e) =>
-              setSettings((prev) => ({
+              setThemeSettings((prev) => ({
                 ...prev,
                 backgroundGradientColor: e.target.value,
               }))
@@ -98,7 +100,7 @@ export default function AppearanceSection({
             aria-label="Background gradient color"
           />
           <span className="settings-value">
-            {settings.backgroundGradientColor.toUpperCase()}
+            {themeSettings.backgroundGradientColor.toUpperCase()}
           </span>
         </div>
       </div>
@@ -107,15 +109,15 @@ export default function AppearanceSection({
         <label className="settings-label">Background image</label>
         <div className="settings-control">
           <button className="buttons" type="button" onClick={handlePickImage}>
-            {settings.backgroundImagePath ? "Change" : "Upload"}
+            {themeSettings.backgroundImagePath ? "Change" : "Upload"}
           </button>
           <button
             className="buttons"
             type="button"
             onClick={() =>
-              setSettings((prev) => ({ ...prev, backgroundImagePath: null }))
+              setThemeSettings((prev) => ({ ...prev, backgroundImagePath: null }))
             }
-            disabled={!settings.backgroundImagePath}
+            disabled={!themeSettings.backgroundImagePath}
           >
             Clear
           </button>
@@ -133,16 +135,16 @@ export default function AppearanceSection({
             min="0"
             max="1"
             step="0.01"
-            value={settings.backgroundOpacity}
+            value={themeSettings.backgroundOpacity}
             onChange={(e) =>
-              setSettings((prev) => ({
+              setThemeSettings((prev) => ({
                 ...prev,
                 backgroundOpacity: parseFloat(e.target.value),
               }))
             }
           />
           <span className="settings-value">
-            {Math.round(settings.backgroundOpacity * 100)}%
+            {Math.round(themeSettings.backgroundOpacity * 100)}%
           </span>
         </div>
       </div>
@@ -158,18 +160,38 @@ export default function AppearanceSection({
             min="0"
             max="100"
             step="1"
-            value={settings.backgroundBlur}
+            value={themeSettings.backgroundBlur}
             onChange={(e) =>
-              setSettings((prev) => ({
+              setThemeSettings((prev) => ({
                 ...prev,
                 backgroundBlur: parseInt(e.target.value),
               }))
             }
           />
-          <span className="settings-value">{settings.backgroundBlur}px</span>
+          <span className="settings-value">{themeSettings.backgroundBlur}px</span>
         </div>
       </div>
 
+      <div
+        className="settings-row"
+        style={{
+          marginTop: "12px",
+          paddingTop: "12px",
+          borderTop: "1px solid rgb(255 255 255 / 0.1)",
+        }}
+      >
+        <label className="settings-label">Factory Reset</label>
+        <div className="settings-control">
+          <button
+            className="buttons"
+            onClick={onThemeReset}
+            style={{ width: "auto", padding: "0 16px", marginBottom: 0 }}
+            // disabled={loading}
+          >
+            Reset to Defaults
+          </button>
+        </div>
+      </div>
     </section>
   );
 }

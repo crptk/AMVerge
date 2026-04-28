@@ -7,7 +7,14 @@ import {
   saveThemeSettings, 
   DEFAULT_THEME,
   type ThemeSettings 
-} from "./theme";
+} from "./settings/themeSettings";
+
+import {
+  loadGeneralSettings,
+  saveGeneralSettings,
+  DEFAULT_GENERAL_SETTINGS,
+  type GeneralSettings,
+} from "./settings/generalSettings";
 
 import AppLayout from "./components/AppLayout";
 import HomePage from "./pages/HomePage";
@@ -24,7 +31,6 @@ import useDragDropImport from "./hooks/useDragDropImport";
 import usePersistence from "./hooks/usePersistence";
 
 import { remapPathRoot } from "./utils/episodeUtils";
-
 const EPISODE_PANEL_STORAGE_KEY = "amverge_episode_panel_v1";
 const SIDEBAR_WIDTH_STORAGE_KEY = "amverge_sidebar_width_px_v1";
 const EXPORT_DIR_STORAGE_KEY = "amverge_export_dir_v1";
@@ -59,29 +65,39 @@ function App() {
   const [isDragging, setIsDragging] = useState(false);
   const [sideBarEnabled, setSideBarEnabled] = useState(true);
   const [activePage, setActivePage] = useState<Page>("home");
-  const [settings, setSettings] = useState<ThemeSettings>(() => loadThemeSettings());
+  const [themeSettings, setThemeSettings] = useState<ThemeSettings>(() => loadThemeSettings());
+  const [generalSettings, setGeneralSettings] = useState<GeneralSettings>(() => loadGeneralSettings());
 
   useEffect(() => {
-    applyThemeSettings(settings);
-    saveThemeSettings(settings);
-  }, [settings]);
+    applyThemeSettings(themeSettings);
+    saveThemeSettings(themeSettings);
+  }, [themeSettings]);
 
-  const handleResetSettings = async () => {
+  useEffect(() => {
+    saveGeneralSettings(generalSettings);
+  }, [generalSettings]);
+
+  const handleResetGeneralSettings = async () => {
     try {
       const resolvedOldPath = await invoke<string>("move_episodes_to_new_dir", {
-        oldDir: settings.episodesPath,
+        oldDir: generalSettings.episodesPath,
         newDir: null,
       });
 
       const defaultEpisodesPath = await invoke<string>("get_default_episodes_dir");
 
-      remapEpisodePaths(resolvedOldPath, defaultEpisodesPath);
-
-      setSettings(DEFAULT_THEME);
+      remapEpisodePaths(resolvedOldPath, defaultEpisodesPath);      
+      saveGeneralSettings(DEFAULT_GENERAL_SETTINGS);
+      setGeneralSettings(DEFAULT_GENERAL_SETTINGS);
     } catch (err) {
       window.alert("Failed to reset episode directory: " + String(err));
     }
   };
+
+  const handleResetTheme = async() => {
+    setThemeSettings(DEFAULT_THEME);
+  }
+
   const [progress, setProgress] = useState(0);
   const [progressMsg, setProgressMsg] = useState("Starting...");
   const [dividerOffsetPx, setDividerOffsetPx] = useState(0);
@@ -92,10 +108,7 @@ function App() {
       const raw = localStorage.getItem(SIDEBAR_WIDTH_STORAGE_KEY);
       const parsed = raw ? Number.parseInt(raw, 10) : NaN;
       if (Number.isFinite(parsed) && parsed > 0) return parsed;
-    } catch {
-      // ignore
-    }
-
+    } catch {}
     return 280;
   });
 
@@ -142,7 +155,7 @@ function App() {
     EXPORT_DIR_STORAGE_KEY,
     exportDir,
     setExportDir,
-    episodesPath: settings.episodesPath,
+    episodesPath: generalSettings.episodesPath,
   });
 
   // Episode panel actions
@@ -174,7 +187,7 @@ function App() {
     setFocusedClip,
     setImportedVideoPath,
     setImportToken,
-    episodesPath: settings.episodesPath,
+    episodesPath: generalSettings.episodesPath,
   });
 
   const remapEpisodePaths = (oldRoot: string, newRoot: string) => {
@@ -318,7 +331,7 @@ function App() {
 
     try {
       await invoke("clear_episode_panel_cache", {
-        customPath: settings.episodesPath,
+        customPath: generalSettings.episodesPath,
       });
     } catch (err) {
       console.error("clear_episode_panel_cache failed:", err);
@@ -511,10 +524,13 @@ function App() {
           <Menu />
         ) : (
           <Settings
-            settings={settings}
-            setSettings={setSettings}
-            onReset={handleResetSettings}
+            themeSettings={themeSettings}
+            setThemeSettings={setThemeSettings}
+            generalSettings={generalSettings}
+            setGeneralSettings={setGeneralSettings}
+            onGeneralSettingsReset={handleResetGeneralSettings}
             onEpisodesPathChanged={remapEpisodePaths}
+            onThemeReset={handleResetTheme}
           />
         )}
       </div>

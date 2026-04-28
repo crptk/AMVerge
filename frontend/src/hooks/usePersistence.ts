@@ -24,6 +24,7 @@ type UsePersistenceProps = {
 };
 
 export default function usePersistence(props: UsePersistenceProps) {
+  // This runs once on startup to load everything
   useEffect(() => {
     try {
       const raw = localStorage.getItem(props.episodePanelStorageKey);
@@ -62,11 +63,10 @@ export default function usePersistence(props: UsePersistenceProps) {
       if (typeof parsed.selectedEpisodeId === "string" || parsed.selectedEpisodeId === null) {
         props.handleSelectEpisodeFromStorage(parsed.selectedEpisodeId, parsed.episodes);
       }
-    } catch {
-      // ignore corrupt storage
-    }
+    } catch {}
   }, []);
 
+  // Automatically saves episodePanel data whenever episodes states are modified
   useEffect(() => {
     const handle = window.setTimeout(() => {
       try {
@@ -92,14 +92,14 @@ export default function usePersistence(props: UsePersistenceProps) {
     props.selectedEpisodeId,
   ]);
 
+  // Automatically updates the width of the sidebar whenever its state is modified 
   useEffect(() => {
     try {
       localStorage.setItem(props.sidebarWidthStorageKey, String(props.sidebarWidthPx));
-    } catch {
-      // ignore
-    }
+    } catch {}
   }, [props.sidebarWidthPx]);
 
+  // Automatically updates the export Directory whenever its state is modified
   useEffect(() => {
     try {
       if (props.exportDir) {
@@ -107,8 +107,6 @@ export default function usePersistence(props: UsePersistenceProps) {
       } else {
         localStorage.removeItem(props.exportDirStorageKey);
       }
-    } catch {
-      // ignore
-    }
+    } catch {}
   }, [props.exportDir]);
 }
