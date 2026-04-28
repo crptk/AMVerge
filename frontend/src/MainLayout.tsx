@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { GeneralSettings } from "./settings/generalSettings";
+import { ThemeSettings } from "./settings/themeSettings";
 import ClipsContainer from "./components/clipsGrid/ClipsContainer.tsx";
 import PreviewContainer from "./components/previewPanel/PreviewContainer.tsx";
+import { ClipItem } from "./types/domain";
 
 type LayoutProps = {
     cols: number;
@@ -33,6 +35,8 @@ type LayoutProps = {
     defaultMergedName: string;
     generalSettings: GeneralSettings;
     setGeneralSettings: React.Dispatch<React.SetStateAction<GeneralSettings>>;
+    onDownloadClip: (clip: ClipItem) => void;
+    themeSettings: ThemeSettings;
 };
 
 export default function MainLayout(props: LayoutProps) {
@@ -104,6 +108,8 @@ export default function MainLayout(props: LayoutProps) {
                     setFocusedClip={props.setFocusedClip}
                     focusedClip={props.focusedClip}
                     generalSettings={props.generalSettings}
+                    onDownloadClip={props.onDownloadClip}
+                    themeSettings={props.themeSettings}
                  />
             </div>
             

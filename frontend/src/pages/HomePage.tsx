@@ -2,6 +2,8 @@ import ImportButtons from "../components/ImportButtons";
 import MainLayout from "../MainLayout";
 import { fileNameFromPath } from "../utils/episodeUtils";
 import { GeneralSettings } from "../settings/generalSettings";
+import { ThemeSettings } from "../settings/themeSettings";
+import { ClipItem } from "../types/domain";
 
 interface HomePageProps {
   cols: number;
@@ -37,6 +39,8 @@ interface HomePageProps {
   importedVideoPath: string | null;
   generalSettings: GeneralSettings;
   setGeneralSettings: React.Dispatch<React.SetStateAction<GeneralSettings>>;
+  onDownloadClip: (clip: ClipItem) => void;
+  themeSettings: ThemeSettings;
 }
 
 export default function HomePage({
@@ -69,6 +73,8 @@ export default function HomePage({
   importedVideoPath,
   generalSettings,
   setGeneralSettings,
+  onDownloadClip,
+  themeSettings,
 }: HomePageProps) {
   return (
     <>
@@ -110,6 +116,8 @@ export default function HomePage({
           loading={loading}
           generalSettings={generalSettings}
           setGeneralSettings={setGeneralSettings}
+          onDownloadClip={onDownloadClip}
+          themeSettings={themeSettings}
         />
 
         <div className="info-bar">

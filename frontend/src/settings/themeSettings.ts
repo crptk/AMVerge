@@ -6,6 +6,7 @@ export type ThemeSettings = {
   backgroundImagePath: string | null;
   backgroundOpacity: number; // 0 to 1
   backgroundBlur: number; // pixels
+  showDownloadButton: boolean;
 };
 
 const STORAGE_KEY = "amverge.theme.v2";
@@ -16,6 +17,7 @@ export const DEFAULT_THEME: ThemeSettings = {
   backgroundImagePath: null,
   backgroundOpacity: 1.0,
   backgroundBlur: 0,
+  showDownloadButton: true,
 };
 
 function clampByte(value: number) {
@@ -74,6 +76,10 @@ export function loadThemeSettings(): ThemeSettings {
         typeof parsed.backgroundBlur === "number"
           ? parsed.backgroundBlur
           : DEFAULT_THEME.backgroundBlur,
+      showDownloadButton:
+        typeof parsed.showDownloadButton === "boolean"
+          ? parsed.showDownloadButton
+          : DEFAULT_THEME.showDownloadButton,
     };
   } catch {
     return DEFAULT_THEME;

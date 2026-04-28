@@ -143,6 +143,8 @@ export default function ClipsContainer(props: ClipContainerProps) {
                   videoIsHEVC={props.videoIsHEVC}
                   userHasHEVC={props.userHasHEVC}
                   generalSettings={props.generalSettings}
+                  onDownloadClip={props.onDownloadClip}
+                  themeSettings={props.themeSettings}
                 />
               ))}
         </div>

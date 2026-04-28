@@ -8,6 +8,7 @@ import { memo, useState, useRef, useEffect, useCallback } from "react"
 import { invoke } from "@tauri-apps/api/core";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { LazyClipProps } from "./types.ts"
+import { DownloadButton } from "./DownloadButton.tsx";
 
 
 export const LazyClip = memo(function LazyClip({
@@ -26,6 +27,8 @@ export const LazyClip = memo(function LazyClip({
   videoIsHEVC,
   userHasHEVC,
   generalSettings,
+  onDownloadClip,
+  themeSettings,
 }: LazyClipProps) {
   // state and refs for tile visibility, hover, video element, and proxy state
   const [isVisible, setIsVisible] = useState(false);
@@ -434,6 +437,9 @@ export const LazyClip = memo(function LazyClip({
                 })();
               }}
             />
+          )}
+          {themeSettings.showDownloadButton && (
+            <DownloadButton onClick={() => onDownloadClip(clip)} />
           )}
         </>
       ) : (

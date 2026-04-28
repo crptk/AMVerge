@@ -1,6 +1,6 @@
 import { useState, useRef, startTransition } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { open } from "@tauri-apps/plugin-dialog";
+import { open, save } from "@tauri-apps/plugin-dialog";
 import { ClipItem, EpisodeEntry } from "../types/domain"
 import { fileNameFromPath, truncateFileName, detectScenes } from "../utils/episodeUtils";
 type ImportExportProps = {
@@ -251,6 +251,33 @@ export default function useImportExport(props: ImportExportProps) {
     if (dir) props.setExportDir(dir as string);
   };
 
+  const handleDownloadSingleClip = async (clip: ClipItem) => {
+    try {
+      const format = props.exportFormat || "mp4";
+      const fileName = clip.originalName || fileNameFromPath(clip.src);
+      const defaultPath = `${fileName}.${format}`;
+
+      const savePath = await save({
+        defaultPath,
+        filters: [{ name: "Video", extensions: [format] }],
+      });
+
+      if (!savePath) return;
+
+      setLoading(true);
+      await invoke("export_clips", {
+        clips: [clip.src],
+        savePath: savePath,
+        mergeEnabled: false,
+      });
+      console.log("Single clip download complete");
+    } catch (err) {
+      console.error("Single clip download failed:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return {
     loading,
     importToken,
@@ -262,6 +289,7 @@ export default function useImportExport(props: ImportExportProps) {
     handleImport,
     handleExport,
     handlePickExportDir,
-    handleBatchImport
+    handleBatchImport,
+    handleDownloadSingleClip
   };
 }
