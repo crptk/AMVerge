@@ -1,12 +1,14 @@
 import { useState } from "react";
 import GeneralSection from "../components/settings/GeneralSection";
 import AppearanceSection from "../components/settings/AppearanceSection";
+import DiscordRPCSection from "../components/settings/DiscordRPCSection";
 import { type ThemeSettings } from "../settings/themeSettings";
 import { type GeneralSettings } from "../settings/generalSettings";
 
 const PAGES = [
   { key: "general", label: "General" },
   { key: "appearance", label: "Appearance" },
+  { key: "discord", label: "Discord RPC" },
 ];
 
 type SettingsProps = {
@@ -65,6 +67,13 @@ export default function Settings({
                 themeSettings={themeSettings}
                 setThemeSettings={setThemeSettings}
                 onThemeReset={onThemeReset}
+              />
+            )}
+
+            {activeTab === "discord" && (
+              <DiscordRPCSection
+                generalSettings={generalSettings}
+                setGeneralSettings={setGeneralSettings}
               />
             )}
           </div>

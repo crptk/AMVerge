@@ -303,6 +303,10 @@
     color: var(--accent);
 }
 
+.menu-nav-btn.active:hover {
+    color: #000;
+}
+
 .menu-content {
     flex: 1 1 auto;
     min-height: 0;

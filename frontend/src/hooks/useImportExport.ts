@@ -3,6 +3,8 @@ import { invoke } from "@tauri-apps/api/core";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { ClipItem, EpisodeEntry } from "../types/domain"
 import { fileNameFromPath, truncateFileName, detectScenes } from "../utils/episodeUtils";
+import { GeneralSettings } from "../settings/generalSettings";
+
 type ImportExportProps = {
   abortedRef: React.RefObject<boolean>;
   clips: ClipItem[];
@@ -22,6 +24,8 @@ type ImportExportProps = {
   setProgressMsg: React.Dispatch<React.SetStateAction<string>>;
   episodesPath: string | null;
   exportFormat: "mp4" | "mkv" | "mov" | "avi";
+  onRPCUpdate?: (data: any) => void;
+  generalSettings: GeneralSettings;
 };
 
 export default function useImportExport(props: ImportExportProps) {
@@ -71,6 +75,22 @@ export default function useImportExport(props: ImportExportProps) {
       props.setImportedVideoPath(file);
       props.setVideoIsHEVC(null);
       setImportToken(Date.now().toString());
+
+      const rpcButtons = [];
+      if (props.generalSettings.rpcShowButtons) {
+        rpcButtons.push({ label: "Discord Server", url: "https://discord.gg/asJkqwqb" });
+        rpcButtons.push({ label: "Website", url: "https://amverge.app/" });
+      }
+
+      props.onRPCUpdate?.({
+        type: "update",
+        details: `Detecting: ${props.generalSettings.rpcShowFilename ? fileNameFromPath(file) : "Video"}`,
+        state: "Processing Video",
+        large_image: "amverge_logo",
+        small_image: props.generalSettings.rpcShowMiniIcons ? "loading_icon_new" : undefined,
+        small_text: props.generalSettings.rpcShowMiniIcons ? "Detecting..." : undefined,
+        buttons: props.generalSettings.rpcShowButtons,
+      });
 
       const formatted = await detectScenes(file, episodeId, props.episodesPath);
 
@@ -140,7 +160,7 @@ export default function useImportExport(props: ImportExportProps) {
             invoke("delete_episode_cache", {
               episodeCacheId: episodeId,
               customPath: props.episodesPath,
-            }).catch(() => {});
+            }).catch(() => { });
             break;
           }
 
@@ -162,14 +182,14 @@ export default function useImportExport(props: ImportExportProps) {
             invoke("delete_episode_cache", {
               episodeCacheId: episodeId,
               customPath: props.episodesPath,
-            }).catch(() => {});
+            }).catch(() => { });
             break;
           }
           console.error(`Detection failed for ${fileName}:`, err);
           invoke("delete_episode_cache", {
             episodeCacheId: episodeId,
             customPath: props.episodesPath,
-          }).catch(() => {});
+          }).catch(() => { });
         }
       }
 
@@ -194,7 +214,7 @@ export default function useImportExport(props: ImportExportProps) {
     }
   };
 
-  const handleExport = async(selectedClips: Set<string>, mergeEnabled: boolean, mergeFileName?: string) => {
+  const handleExport = async (selectedClips: Set<string>, mergeEnabled: boolean, mergeFileName?: string) => {
     if (selectedClips.size === 0) return;
 
     const selected = props.clips.filter((c: ClipItem) => selectedClips.has(c.id));
@@ -203,28 +223,39 @@ export default function useImportExport(props: ImportExportProps) {
     // If no export directory is set, prompt the user to pick one first
     let dir = props.exportDir;
     if (!dir) {
-        const picked = await open({ directory: true, multiple: false });
-        if (!picked) return;
-        dir = picked as string;
-        props.setExportDir(dir);
+      const picked = await open({ directory: true, multiple: false });
+      if (!picked) return;
+      dir = picked as string;
+      props.setExportDir(dir);
     }
 
     try {
-        setLoading(true);
+      setLoading(true);
 
-        const clipArray = selected.map((c: ClipItem) => c.src);
-        const format = props.exportFormat || "mp4";
+      const clipArray = selected.map((c: ClipItem) => c.src);
+      const format = props.exportFormat || "mp4";
 
-        if (mergeEnabled) {
+      const rpcButtons = [];
+      props.onRPCUpdate?.({
+        type: "update",
+        details: `Exporting ${selected.length} clips`,
+        state: "Saving Progress",
+        large_image: "amverge_logo",
+        small_image: props.generalSettings.rpcShowMiniIcons ? "save_icon_new" : undefined,
+        small_text: props.generalSettings.rpcShowMiniIcons ? "Exporting..." : undefined,
+        buttons: props.generalSettings.rpcShowButtons,
+      });
+
+      if (mergeEnabled) {
         const baseName = mergeFileName || ((selected[0]?.originalName || "episode") + "_merged");
         const savePath = `${dir}\\${baseName}.${format}`;
 
         await invoke("export_clips", {
-            clips: clipArray,
-            savePath: savePath,
-            mergeEnabled: mergeEnabled,
+          clips: clipArray,
+          savePath: savePath,
+          mergeEnabled: mergeEnabled,
         });
-        } else {
+      } else {
         const firstClipPath = selected[0]?.src || "";
         const firstFile = firstClipPath.split(/[/\\]/).pop() || `episode_0000.${format}`;
         const firstStem = firstFile.replace(/\.[^/.]+$/, "");
@@ -232,17 +263,38 @@ export default function useImportExport(props: ImportExportProps) {
         const savePath = `${dir}\\${defaultBase}_####.${format}`;
 
         await invoke("export_clips", {
-            clips: clipArray,
-            savePath: savePath,
-            mergeEnabled: false,
+          clips: clipArray,
+          savePath: savePath,
+          mergeEnabled: false,
         });
-        }
-        
-        console.log("Export complete");
+      }
+
+      props.onRPCUpdate?.({
+        type: "update",
+        details: "Export Finished!",
+        state: "Success",
+        large_image: "amverge_logo",
+        small_image: props.generalSettings.rpcShowMiniIcons ? "check_icon_new" : undefined,
+        small_text: props.generalSettings.rpcShowMiniIcons ? "Done" : undefined,
+        buttons: props.generalSettings.rpcShowButtons,
+      });
+
+      // Revert back to normal state after 10 seconds
+      setTimeout(() => {
+        props.onRPCUpdate?.({
+          type: "update",
+          details: "Editing Episode",
+          state: "Ready",
+          large_image: "amverge_logo",
+          small_image: props.generalSettings.rpcShowMiniIcons ? "edit_icon_new" : undefined,
+          small_text: props.generalSettings.rpcShowMiniIcons ? "Editing" : undefined,
+          buttons: props.generalSettings.rpcShowButtons,
+        });
+      }, 10000);
     } catch (err) {
-        console.log("Export failed:", err)
+      console.log("Export failed:", err)
     } finally {
-        setLoading(false);
+      setLoading(false);
     }
   };
 

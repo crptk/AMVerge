@@ -34,6 +34,37 @@
     gap: 8px;
 }
 
+.console-action-icon {
+    width: 36px;
+    height: 30px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: black;
+    color: white;
+    border: 1px solid white;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: border 0.2s ease, box-shadow 0.2s ease, color 0.2s ease;
+}
+
+.console-action-icon:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+    box-shadow: 0 0 15px rgb(var(--accent-rgb) / 0.4);
+}
+
+.console-action-icon:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    box-shadow: none;
+}
+
+.console-action-icon svg {
+    width: 14px;
+    height: 14px;
+}
+
 .console-output {
     flex: 1;
     min-height: 0;
