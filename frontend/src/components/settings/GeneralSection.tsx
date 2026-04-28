@@ -19,7 +19,7 @@ export default function GeneralSection({
   const [loading, setLoading] = useState(false);
   const [showFactoryResetConfirm, setShowFactoryResetConfirm] = useState(false);
   const factoryResetConfirmation =
-    "Are you sure you'd like to factory reset? This will restore your episodes folder back to AppData as well as other changes you may have made";
+    "This will restore AMVerge to its default settings and move your episode storage folder back to AppData. Any custom settings or storage location changes you made will be reset.";
   useEffect(() => {
     if (!showFactoryResetConfirm) return;
 
