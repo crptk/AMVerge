@@ -11,7 +11,7 @@ export type GeneralSettings = {
 export const DEFAULT_GENERAL_SETTINGS: GeneralSettings = {
     episodesPath: null,
     exportFormat: "mp4",
-    audioPlaybackHover: true,
+    audioPlaybackHover: false,
     playbackVolume: 0.2,
 }
 
