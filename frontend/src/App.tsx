@@ -156,6 +156,7 @@ function App() {
     exportDir,
     setExportDir,
     episodesPath: generalSettings.episodesPath,
+    exportFormat: generalSettings.exportFormat,
   });
 
   // Episode panel actions
@@ -519,6 +520,8 @@ function App() {
             defaultMergedName={(state.clips[0]?.originalName || "episode") + "_merged"}
             openedEpisodeId={state.openedEpisodeId}
             importedVideoPath={state.importedVideoPath}
+            generalSettings={generalSettings}
+            setGeneralSettings={setGeneralSettings}
           />
         ) : activePage === "menu" ? (
           <Menu />

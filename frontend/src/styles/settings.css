@@ -104,3 +104,31 @@
 .settings-path-value:hover {
     border-color: rgba(255,255,255,0.35);
 }
+
+.settings-select {
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 8px;
+    color: rgba(255, 255, 255, 0.85);
+    padding: 6px 12px;
+    font-size: 16px;
+    font-family: inherit;
+    cursor: pointer;
+    outline: none;
+    transition: all 0.2s ease;
+}
+
+.settings-select:hover {
+    border-color: rgba(255, 255, 255, 0.35);
+    background: rgba(255, 255, 255, 0.12);
+}
+
+.settings-select:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 8px var(--accent-low-alpha, rgba(255, 255, 255, 0.1));
+}
+
+.settings-select option {
+    background: #1a1a1a;
+    color: white;
+}

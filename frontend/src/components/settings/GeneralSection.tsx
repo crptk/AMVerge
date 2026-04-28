@@ -79,7 +79,6 @@ export default function GeneralSection({
           >
             {generalSettings.episodesPath ? "Change" : "Select Path"}
           </button>
-
           <span
             className="settings-path-value"
             title={generalSettings.episodesPath || "Default (App Data)"}

@@ -316,49 +316,57 @@ pub async fn export_clips(
     }
 
     fn ffmpeg_reencode_ae_args(input: &str, output: &str) -> Vec<String> {
-        // Timestamp normalization + re-encode to broadly compatible H.264/AAC MP4.
+        // Timestamp normalization + re-encode to broadly compatible H.264/AAC.
         // This avoids common NLE import issues (black frames, odd timebases, missing PTS).
-        vec![
-            "-y",
-            "-i",
-            input,
-            "-fflags",
-            "+genpts",
-            "-avoid_negative_ts",
-            "make_zero",
+        let mut args = vec![
+            "-y".to_string(),
+            "-i".to_string(),
+            input.to_string(),
+            "-fflags".to_string(),
+            "+genpts".to_string(),
+            "-avoid_negative_ts".to_string(),
+            "make_zero".to_string(),
             // Video
-            "-c:v",
-            "libx264",
-            "-pix_fmt",
-            "yuv420p",
-            "-profile:v",
-            "high",
-            "-level",
-            "4.1",
-            "-preset",
-            "medium",
-            "-crf",
-            "18",
+            "-c:v".to_string(),
+            "libx264".to_string(),
+            "-pix_fmt".to_string(),
+            "yuv420p".to_string(),
+            "-profile:v".to_string(),
+            "high".to_string(),
+            "-level".to_string(),
+            "4.1".to_string(),
+            "-preset".to_string(),
+            "medium".to_string(),
+            "-crf".to_string(),
+            "18".to_string(),
             // Audio
-            "-c:a",
-            "aac",
-            "-b:a",
-            "192k",
-            "-ar",
-            "48000",
-            "-ac",
-            "2",
-            // MP4 faststart
-            "-movflags",
-            "+faststart",
-            // Avoid rare muxing queue overflows on tricky inputs.
-            "-max_muxing_queue_size",
-            "1024",
-            output,
-        ]
-        .into_iter()
-        .map(|s| s.to_string())
-        .collect()
+            "-c:a".to_string(),
+            "aac".to_string(),
+            "-b:a".to_string(),
+            "192k".to_string(),
+            "-ar".to_string(),
+            "48000".to_string(),
+            "-ac".to_string(),
+            "2".to_string(),
+        ];
+
+        // MP4/MOV faststart
+        let ext = Path::new(output)
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("")
+            .to_lowercase();
+        if ext == "mp4" || ext == "mov" {
+            args.push("-movflags".to_string());
+            args.push("+faststart".to_string());
+        }
+
+        // Avoid rare muxing queue overflows on tricky inputs.
+        args.push("-max_muxing_queue_size".to_string());
+        args.push("1024".to_string());
+        args.push(output.to_string());
+
+        args
     }
 
     if merge_enabled {
@@ -402,7 +410,7 @@ pub async fn export_clips(
 
         emit_export_progress(&app, 50, "Merging...", export_start_time);
 
-        let args = vec![
+        let mut args = vec![
             "-y".into(),
             "-f".into(),
             "concat".into(),
@@ -427,8 +435,19 @@ pub async fn export_clips(
             "veryfast".into(),
             "-crf".into(),
             "18".into(),
-            "-movflags".into(),
-            "+faststart".into(),
+        ];
+
+        let ext = save_path
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("")
+            .to_lowercase();
+        if ext == "mp4" || ext == "mov" {
+            args.push("-movflags".into());
+            args.push("+faststart".into());
+        }
+
+        args.extend([
             "-max_muxing_queue_size".into(),
             "1024".into(),
             "-c:a".into(),
@@ -440,7 +459,7 @@ pub async fn export_clips(
             "-ac".into(),
             "2".into(),
             out_str.clone(),
-        ];
+        ]);
 
         let app_for_ffmpeg = app.clone();
         let ffmpeg_clone = ffmpeg.clone();

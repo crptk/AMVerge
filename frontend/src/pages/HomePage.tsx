@@ -1,6 +1,7 @@
 import ImportButtons from "../components/ImportButtons";
 import MainLayout from "../MainLayout";
 import { fileNameFromPath } from "../utils/episodeUtils";
+import { GeneralSettings } from "../settings/generalSettings";
 
 interface HomePageProps {
   cols: number;
@@ -34,6 +35,8 @@ interface HomePageProps {
   defaultMergedName: string;
   openedEpisodeId: string | null;
   importedVideoPath: string | null;
+  generalSettings: GeneralSettings;
+  setGeneralSettings: React.Dispatch<React.SetStateAction<GeneralSettings>>;
 }
 
 export default function HomePage({
@@ -64,6 +67,8 @@ export default function HomePage({
   defaultMergedName,
   openedEpisodeId,
   importedVideoPath,
+  generalSettings,
+  setGeneralSettings,
 }: HomePageProps) {
   return (
     <>
@@ -103,6 +108,8 @@ export default function HomePage({
           selectedClips={selectedClips}
           setSelectedClips={setSelectedClips}
           loading={loading}
+          generalSettings={generalSettings}
+          setGeneralSettings={setGeneralSettings}
         />
 
         <div className="info-bar">

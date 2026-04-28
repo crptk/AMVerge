@@ -1,0 +1,106 @@
+.custom-dropdown {
+  position: relative;
+  display: inline-block;
+  min-width: 80px;
+  user-select: none;
+  font-family: inherit;
+  z-index: 100;
+}
+
+.dropdown-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 8px;
+  padding: 6px 10px;
+  color: rgba(255, 255, 255, 0.9);
+  cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  height: 32px;
+  box-sizing: border-box;
+}
+
+.dropdown-trigger:hover {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.35);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+.custom-dropdown.open .dropdown-trigger {
+  border-color: var(--accent);
+  background: rgba(255, 255, 255, 0.15);
+  box-shadow: 0 0 10px rgba(var(--accent-rgb), 0.3);
+}
+
+.dropdown-value {
+  font-size: 0.85rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.dropdown-icon {
+  font-size: 0.75rem;
+  margin-left: 8px;
+  transition: transform 0.3s ease;
+  opacity: 0.7;
+}
+
+.dropdown-icon.rotate {
+  transform: rotate(180deg);
+  opacity: 1;
+}
+
+.dropdown-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  background: rgba(20, 20, 20, 0.95);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 8px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  overflow: hidden;
+  animation: dropdown-fade-in 0.2s ease-out;
+  z-index: 1000;
+}
+
+@keyframes dropdown-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.dropdown-item {
+  padding: 8px 12px;
+  font-size: 0.8rem;
+  color: rgba(255, 255, 255, 0.7);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-transform: uppercase;
+}
+
+.dropdown-item:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: white;
+  padding-left: 16px;
+}
+
+.dropdown-item.active {
+  background: var(--accent);
+  color: white;
+  font-weight: 600;
+}
+
+.custom-dropdown.disabled {
+  opacity: 0.5;
+  pointer-events: none;
+}

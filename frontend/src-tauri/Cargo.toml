@@ -28,3 +28,5 @@ tokio = { version = "1", features = ["rt-multi-thread"] }
 tauri-plugin-shell = "2"
 tempfile = "3"
 fs_extra = "1.3.0"
+base64 = "0.21"
+image = { version = "0.24", features = ["gif", "jpeg", "png", "webp"] }

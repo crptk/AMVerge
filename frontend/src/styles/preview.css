@@ -9,6 +9,28 @@
     flex-direction: column;
     align-items: center;
     padding: 15px;
+    overflow-y: auto;
+    overflow-x: hidden;
+}
+
+.preview-container::-webkit-scrollbar {
+    width: 8px;
+}
+
+.preview-container::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.02);
+    border-radius: 10px;
+}
+
+.preview-container::-webkit-scrollbar-thumb {
+    background: rgba(var(--accent-rgb), 0.3);
+    border-radius: 10px;
+    border: 2px solid transparent;
+    background-clip: content-box;
+}
+
+.preview-container::-webkit-scrollbar-thumb:hover {
+    background: rgba(var(--accent-rgb), 0.5);
 }
 
 .preview-window {
@@ -23,65 +45,205 @@
     overflow: hidden;
 }
 
-.preview-export {
+/* EXPORT PANEL */
+.export-panel {
+    width: 100%;
+    max-width: 450px;
+    margin-top: 20px;
+    background: rgba(0, 0, 0, 0.45);
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 12px;
+    padding: 16px;
     display: flex;
     flex-direction: column;
-    margin-left: 10px;
-    width: 100%;
+    gap: 16px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+}
+
+.export-header {
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    padding-bottom: 8px;
+    margin-bottom: 4px;
+    display: flex;
     align-items: center;
-    justify-content: center;
+    gap: 10px;
+}
+
+.header-icon {
+    color: var(--accent);
+    font-size: 1.2rem;
+    opacity: 0.9;
+}
+
+.export-title {
+    font-size: 1.1rem;
+    color: var(--accent);
+    letter-spacing: 2px;
+    font-weight: 500;
+}
+
+.export-settings-row {
+    display: flex;
+    gap: 20px;
+    align-items: flex-start;
+}
+
+.export-setting-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    flex: 1;
+}
+
+.export-label {
+    font-size: 0.8rem;
+    color: rgba(255, 255, 255, 0.5);
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.label-icon {
+    color: var(--accent);
+    font-size: 0.85rem;
+    opacity: 0.6;
+}
+
+.export-format-select {
+    width: 100% !important;
+    background: transparent !important;
+    border: none !important;
+}
+
+.export-format-select .dropdown-trigger {
+    height: 36px !important;
+    background: rgba(255, 255, 255, 0.05) !important;
+    border: 1px solid rgba(255, 255, 255, 0.2) !important;
+    border-radius: 8px !important;
+    transition: all 0.2s ease !important;
+}
+
+.export-format-select .dropdown-trigger:hover {
+    border-color: rgba(var(--accent-rgb), 0.5) !important;
+    background: rgba(255, 255, 255, 0.08) !important;
+}
+
+.export-format-select .dropdown-value {
+    letter-spacing: 1px !important;
+}
+
+.export-format-select .dropdown-item.active {
+    color: black !important;
+}
+
+.export-path-section {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
 }
 
 .export-dir-row {
     display: flex;
-    align-items: stretch;
-    gap: 4px;
-    margin-bottom: 6px;
+    gap: 8px;
     width: 100%;
-    max-width: 400px;
-    box-sizing: border-box;
 }
 
 .export-dir-input {
     flex: 1;
-    min-width: 0;
-    padding: 4px 8px;
-    font-size: 0.8rem;
-    font-family: inherit;
-    color: inherit;
-    background: rgba(255,255,255,0.08);
-    border: 1px solid rgba(255,255,255,0.15);
+    height: 36px;
+    padding: 0 12px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.15);
     border-radius: 8px;
+    color: white;
+    font-family: inherit;
+    font-size: 0.9rem;
     outline: none;
-    box-sizing: border-box;
-    max-width: 50vh;
+    transition: border-color 0.2s ease;
 }
 
 .export-dir-input:focus {
-    border-color: rgba(255,255,255,0.35);
-}
-
-.export-dir-input::placeholder {
-    color: rgba(255,255,255,0.35);
+    border-color: var(--accent);
 }
 
 .export-dir-browse {
-    width: 32px;
-    height: 32px;
-    padding: 0;
-    margin: 0;
+    width: 36px !important;
+    height: 36px !important;
+    min-width: 36px;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 1rem;
-    flex-shrink: 0;
-    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    background: rgba(255, 255, 255, 0.05) !important;
+    border: 1px solid rgba(var(--accent-rgb), 0.3) !important;
+    border-radius: 8px !important;
+    color: rgba(255, 255, 255, 0.8);
+    cursor: pointer;
+    transition: all 0.2s ease !important;
 }
 
 .export-dir-browse:hover {
-    box-shadow: 0 0 10px rgb(var(--accent-rgb) / 0.7);
-    border: 1px solid var(--accent);
-    color: var(--accent);
+    background: var(--accent) !important;
+    color: black !important;
+    border-color: var(--accent) !important;
+    box-shadow: 0 0 15px rgba(var(--accent-rgb), 0.3);
+}
+
+.export-main-button {
+    width: 100% !important;
+    height: 42px !important;
+    margin-top: 4px !important;
+    background: transparent !important;
+    color: var(--accent) !important;
+    border: 1px solid var(--accent) !important;
+    font-size: 1.2rem !important;
+    font-weight: 600 !important;
+    letter-spacing: 1.5px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    transition: all 0.2s ease !important;
+}
+
+.btn-icon {
+    font-size: 1rem;
+}
+
+.export-main-button:hover {
+    background: var(--accent) !important;
+    color: black !important;
+    transform: translateY(-2px);
+    box-shadow: 0 0 25px rgba(var(--accent-rgb), 0.4);
+}
+
+.export-main-button:active {
+    transform: translateY(0);
+    background: rgba(var(--accent-rgb), 0.8) !important;
+}
+
+.export-panel .checkbox-row {
+    height: 36px;
+    margin-right: 0;
+}
+
+.export-panel .checkbox-row p {
+    font-size: 16px;
+    color: white;
+    opacity: 0.9;
+    letter-spacing: 0.8px;
+}
+
+.export-panel .custom-checkbox {
+    width: 20px;
+    height: 20px;
+}
+
+.export-panel .custom-checkbox > .checkmark {
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.05);
 }
 
 /* VIDEO */
@@ -169,46 +331,208 @@
     border-radius: 999px;
 }
 
-/* INFO */
-
-.info-box {
-    color: white;
-    font-size: 1rem;
-    font-weight: 100;
-}
-
-.info-box h3 {
-    font-weight: 100;
-    margin-top: 18px;
-    margin-bottom: 5px;
-}
-
-.info-box p {
-    margin: 0;
-    color: #bebebecc;
-}
-
-.dot-switcher {
-    display: flex;
-    justify-content: center;
-    gap: 10px;
+/* INFO PANEL */
+.info-panel {
+    width: 100%;
+    max-width: 450px;
     margin-top: 12px;
+    background: rgba(0, 0, 0, 0.4);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 14px;
+    overflow: hidden;
+    transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+    display: flex;
+    flex-direction: column;
 }
 
-.dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background: rgba(255,255,255,0.3);
+.info-panel.expanded {
+    background: rgba(0, 0, 0, 0.55);
+}
+
+.info-header {
+    padding: 12px 16px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
     cursor: pointer;
+    user-select: none;
+    transition: background 0.2s ease;
+}
+
+.info-header:hover {
+    background: rgba(255, 255, 255, 0.03);
+}
+
+.info-header-left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.info-icon {
+    color: var(--accent);
+    font-size: 1.1rem;
+    opacity: 0.8;
+}
+
+.info-title {
+    font-size: 0.9rem;
+    color: var(--accent);
+    letter-spacing: 2px;
+    font-weight: 600;
+}
+
+.info-toggle {
+    background: transparent;
+    border: none;
+    color: rgba(255, 255, 255, 0.6);
+    font-size: 0.8rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.info-content {
+    padding: 0 16px 16px 16px;
+    border-top: 1px solid rgba(255, 255, 255, 0.05);
+    animation: slideDown 0.3s ease-out;
+    display: flex;
+    flex-direction: column;
+    max-height: 250px; /* Limit height for readability on small windows */
+    overflow: hidden;
+}
+
+@keyframes slideDown {
+    from { opacity: 0; transform: translateY(-10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.platform-switcher {
+    display: flex;
+    gap: 8px;
+    margin: 12px 0 16px 0;
+    padding: 4px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 8px;
+}
+
+.platform-btn {
+    flex: 1;
+    padding: 6px;
+    border: none;
+    background: transparent;
+    color: rgba(255, 255, 255, 0.5);
+    font-size: 0.75rem;
+    font-family: inherit;
+    cursor: pointer;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    letter-spacing: 1px;
     transition: all 0.2s ease;
 }
 
-.dot:hover {
-    background: rgba(255,255,255,0.6);
+.platform-btn.active {
+    background: rgba(255, 255, 255, 0.1);
+    color: white;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
 }
 
-.dot.active {
-    background: white;
-    transform: scale(1.2);
+.platform-btn:hover:not(.active) {
+    color: rgba(255, 255, 255, 0.8);
+}
+
+.info-steps {
+    position: relative;
+    overflow-y: auto;
+    padding-right: 8px;
+    margin-right: -8px;
+}
+
+.info-steps::after {
+    content: "";
+    position: sticky;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 30px;
+    background: linear-gradient(to top, rgba(0, 0, 0, 0.4), transparent);
+    pointer-events: none;
+    transition: opacity 0.3s ease;
+}
+
+/* Hide fade when at bottom - optional, but let's keep it simple for now */
+
+/* Custom scrollbar for info-steps - High Visibility */
+.info-steps::-webkit-scrollbar {
+    width: 6px;
+}
+
+.info-steps::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: 10px;
+}
+
+.info-steps::-webkit-scrollbar-thumb {
+    background: var(--accent);
+    border-radius: 10px;
+    box-shadow: 0 0 10px rgba(var(--accent-rgb), 0.3);
+}
+
+.info-steps::-webkit-scrollbar-thumb:hover {
+    background: #fff;
+    box-shadow: 0 0 15px rgba(var(--accent-rgb), 0.6);
+}
+
+.steps-list {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    counter-reset: step-counter;
+}
+
+.steps-list li {
+    font-size: 0.95rem;
+    color: rgba(255, 255, 255, 0.7);
+    line-height: 1.4;
+    display: flex;
+    align-items: center;
+    justify-content: flex-start; /* Ensure everything is pushed to the left */
+    gap: 10px;
+    transition: color 0.2s ease;
+    counter-increment: step-counter;
+}
+
+.step-text {
+    text-align: left;
+    word-spacing: normal;
+    letter-spacing: normal;
+}
+
+.steps-list li:hover {
+    color: rgba(255, 255, 255, 0.95);
+}
+
+.steps-list li::before {
+    content: counter(step-counter);
+    color: var(--accent);
+    font-weight: 400; /* Jersey 10 doesn't need heavy weight usually */
+    opacity: 1;
+    font-size: 1.1rem;
+    font-family: 'Jersey 10', system-ui, sans-serif;
+    min-width: 14px;
+    text-align: center;
+}
+
+.steps-list li b {
+    color: white;
+    font-weight: 500;
 }

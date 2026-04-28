@@ -21,6 +21,7 @@ type ImportExportProps = {
   setProgress: React.Dispatch<React.SetStateAction<number>>;
   setProgressMsg: React.Dispatch<React.SetStateAction<string>>;
   episodesPath: string | null;
+  exportFormat: "mp4" | "mkv" | "mov" | "avi";
 };
 
 export default function useImportExport(props: ImportExportProps) {
@@ -36,7 +37,7 @@ export default function useImportExport(props: ImportExportProps) {
       filters: [
         {
           name: "Video",
-          extensions: ["mp4", "mkv", "mov"]
+          extensions: ["mp4", "mkv", "mov", "avi"]
         }
       ]
     });
@@ -212,10 +213,11 @@ export default function useImportExport(props: ImportExportProps) {
         setLoading(true);
 
         const clipArray = selected.map((c: ClipItem) => c.src);
+        const format = props.exportFormat || "mp4";
 
         if (mergeEnabled) {
         const baseName = mergeFileName || ((selected[0]?.originalName || "episode") + "_merged");
-        const savePath = `${dir}\\${baseName}.mp4`;
+        const savePath = `${dir}\\${baseName}.${format}`;
 
         await invoke("export_clips", {
             clips: clipArray,
@@ -224,10 +226,10 @@ export default function useImportExport(props: ImportExportProps) {
         });
         } else {
         const firstClipPath = selected[0]?.src || "";
-        const firstFile = firstClipPath.split(/[/\\]/).pop() || "episode_0000.mp4";
+        const firstFile = firstClipPath.split(/[/\\]/).pop() || `episode_0000.${format}`;
         const firstStem = firstFile.replace(/\.[^/.]+$/, "");
         const defaultBase = firstStem.replace(/_\d{4}$/, "");
-        const savePath = `${dir}\\${defaultBase}_####.mp4`;
+        const savePath = `${dir}\\${defaultBase}_####.${format}`;
 
         await invoke("export_clips", {
             clips: clipArray,

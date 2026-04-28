@@ -1,7 +1,9 @@
-import { useId } from "react";
+import { useId, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke, convertFileSrc } from "@tauri-apps/api/core";
 import { getDarkerColor, type ThemeSettings } from "../../settings/themeSettings";
+import ColorPicker from "../common/ColorPicker";
+import CropModal from "./CropModal";
 
 type AppearanceSectionProps = {
   themeSettings: ThemeSettings;
@@ -19,6 +21,9 @@ export default function AppearanceSection({
   const bgOpacityId = useId();
   const bgBlurId = useId();
 
+  const [imageToCrop, setImageToCrop] = useState<string | null>(null);
+  const [originalPath, setOriginalPath] = useState<string | null>(null);
+
   const handlePickImage = async () => {
     const selected = await open({
       multiple: false,
@@ -31,18 +36,36 @@ export default function AppearanceSection({
     });
 
     if (!selected || typeof selected !== "string") return;
+    
+    setOriginalPath(selected);
+    setImageToCrop(convertFileSrc(selected));
+  };
+
+  const handleCropComplete = async (cropData: any) => {
+    if (!originalPath) return;
 
     try {
-      const storedPath = await invoke<string>("save_background_image", {
-        sourcePath: selected,
+      const storedPath = await invoke<string>("crop_and_save_image", {
+        sourcePath: originalPath,
+        crop: {
+          x: cropData.x,
+          y: cropData.y,
+          width: cropData.width,
+          height: cropData.height,
+          rotation: cropData.rotation,
+          flip_h: cropData.flip.horizontal,
+          flip_v: cropData.flip.vertical,
+        }
       });
 
       setThemeSettings((prev) => ({
         ...prev,
-        backgroundImagePath: storedPath,
+        backgroundImagePath: `${storedPath}?t=${Date.now()}`,
       }));
+      setImageToCrop(null);
+      setOriginalPath(null);
     } catch (error) {
-      console.error("Failed to save background image:", error);
+      console.error("Failed to crop and save image:", error);
     }
   };
 
@@ -54,15 +77,11 @@ export default function AppearanceSection({
           Accent color
         </label>
         <div className="settings-control">
-          <input
-            id={accentId}
-            type="color"
-            value={themeSettings.accentColor}
-            onChange={(e) => {
-              const newColor = e.target.value;
+          <ColorPicker
+            color={themeSettings.accentColor}
+            onChange={(newColor) => {
               setThemeSettings((prev) => {
                 const currentDark = getDarkerColor(prev.accentColor);
-                // Sync if gradient is the default dark green or matches the current darkened accent
                 const isDefaultGradient =
                   prev.backgroundGradientColor === "#001a00" ||
                   prev.backgroundGradientColor === currentDark;
@@ -76,7 +95,6 @@ export default function AppearanceSection({
                 };
               });
             }}
-            aria-label="Accent color"
           />
           <span className="settings-value">{themeSettings.accentColor.toUpperCase()}</span>
         </div>
@@ -87,17 +105,14 @@ export default function AppearanceSection({
           Background gradient
         </label>
         <div className="settings-control">
-          <input
-            id={bgGradientId}
-            type="color"
-            value={themeSettings.backgroundGradientColor}
-            onChange={(e) =>
+          <ColorPicker
+            color={themeSettings.backgroundGradientColor}
+            onChange={(newColor) =>
               setThemeSettings((prev) => ({
                 ...prev,
-                backgroundGradientColor: e.target.value,
+                backgroundGradientColor: newColor,
               }))
             }
-            aria-label="Background gradient color"
           />
           <span className="settings-value">
             {themeSettings.backgroundGradientColor.toUpperCase()}
@@ -186,12 +201,19 @@ export default function AppearanceSection({
             className="buttons"
             onClick={onThemeReset}
             style={{ width: "auto", padding: "0 16px", marginBottom: 0 }}
-            // disabled={loading}
           >
             Reset to Defaults
           </button>
         </div>
       </div>
+
+      {imageToCrop && (
+        <CropModal
+          image={imageToCrop}
+          onClose={() => setImageToCrop(null)}
+          onCropComplete={handleCropComplete}
+        />
+      )}
     </section>
   );
 }

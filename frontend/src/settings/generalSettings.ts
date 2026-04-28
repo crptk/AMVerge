@@ -3,10 +3,12 @@ const STORAGE_KEY = "amverge.generalSettings.v2"
 
 export type GeneralSettings = {
     episodesPath: string | null;
+    exportFormat: "mp4" | "mkv" | "mov" | "avi" | "xml";
 };
 
-export const DEFAULT_GENERAL_SETTINGS = {
-    episodesPath: null
+export const DEFAULT_GENERAL_SETTINGS: GeneralSettings = {
+    episodesPath: null,
+    exportFormat: "mp4"
 }
 
 export function loadGeneralSettings(): GeneralSettings {
@@ -16,6 +18,9 @@ export function loadGeneralSettings(): GeneralSettings {
         const parsed = JSON.parse(raw) as Partial<GeneralSettings>;
         return {
             episodesPath: typeof parsed.episodesPath === "string" ? parsed.episodesPath : DEFAULT_GENERAL_SETTINGS.episodesPath,
+            exportFormat: (["mp4", "mkv", "mov", "avi", "xml"].includes(parsed.exportFormat as any)) 
+                ? (parsed.exportFormat as any) 
+                : DEFAULT_GENERAL_SETTINGS.exportFormat,
         };
     } catch {
         return DEFAULT_GENERAL_SETTINGS;

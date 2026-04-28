@@ -100,9 +100,12 @@ export function applyThemeSettings(settings: ThemeSettings) {
     body.style.setProperty("--accent-rgb", rgb);
   }
 
-  const bgValue = settings.backgroundImagePath
-    ? `url("${convertFileSrc(settings.backgroundImagePath)}")`
-    : "none";
+  let bgValue = "none";
+  if (settings.backgroundImagePath) {
+    const [cleanPath, query] = settings.backgroundImagePath.split("?");
+    const src = convertFileSrc(cleanPath);
+    bgValue = query ? `url("${src}?${query}")` : `url("${src}")`;
+  }
   
   root.style.setProperty("--app-bg-image", bgValue);
   body.style.setProperty("--app-bg-image", bgValue);

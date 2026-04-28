@@ -24,6 +24,7 @@ fn main() {
             commands::cache::delete_episode_cache,
             commands::cache::clear_episode_panel_cache,
             commands::settings::save_background_image,
+            commands::settings::crop_and_save_image,
             commands::settings::move_episodes_to_new_dir,
             commands::settings::get_default_episodes_dir,
         ])
