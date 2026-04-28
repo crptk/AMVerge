@@ -43,11 +43,24 @@
 }
 
 .export-format-select {
-    width: 70px;
+    width: 80px;
     padding: 0 4px;
     font-size: 0.75rem;
     height: 32px;
     flex-shrink: 0;
+}
+
+.export-action-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    max-width: 400px;
+}
+
+.export-action-row #file-button {
+    flex: 1;
+    margin: 0;
 }
 
 .export-dir-input {

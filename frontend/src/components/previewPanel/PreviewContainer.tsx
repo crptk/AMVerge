@@ -89,17 +89,6 @@ export default function PreviewContainer (props: PreviewContainerProps) {
           <p>Merge clips</p>
         </div>
         <div className="export-dir-row">
-          <Dropdown
-            className="export-format-select"
-            options={EXPORT_OPTIONS}
-            value={props.generalSettings.exportFormat}
-            onChange={(val) =>
-              props.setGeneralSettings((prev) => ({
-                ...prev,
-                exportFormat: val as any,
-              }))
-            }
-          />
           <input
             type="text"
             className="export-dir-input"
@@ -115,13 +104,26 @@ export default function PreviewContainer (props: PreviewContainerProps) {
             <FaFolderOpen />
           </button>
         </div>
-        <button 
-          className="buttons" 
-          id="file-button"
-          onClick={onExportClick}
-        >
-          Export
-        </button>
+        <div className="export-action-row">
+          <Dropdown
+            className="export-format-select"
+            options={EXPORT_OPTIONS}
+            value={props.generalSettings.exportFormat}
+            onChange={(val) =>
+              props.setGeneralSettings((prev) => ({
+                ...prev,
+                exportFormat: val as any,
+              }))
+            }
+          />
+          <button 
+            className="buttons" 
+            id="file-button"
+            onClick={onExportClick}
+          >
+            Export
+          </button>
+        </div>
       </div>
       
       <InfoBox/>
