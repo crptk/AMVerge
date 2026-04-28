@@ -40,6 +40,7 @@
 }
 
 .clip-wrapper {
+    --clip-overlay-inset: 10px;
     width: 100%;
     max-width: var(--clip-max-width, 260px);
     aspect-ratio: 1 / 1;
@@ -83,13 +84,14 @@
 
 .clip-export-dot {
     position: absolute;
-    top: 8px;
-    left: 8px;
+    top: calc(var(--clip-overlay-inset) + 1px);
+    left: var(--clip-overlay-inset);
     z-index: 12;
-    width: 10px;
-    height: 10px;
+    width: 9px;
+    height: 9px;
     border-radius: 999px;
     background: #666;
+    box-shadow: 0 0 0 1px rgb(255 255 255 / 0.18);
 }
 
 .clip-export-dot.ok {
@@ -120,40 +122,86 @@
 
 .clip-download-btn {
     position: absolute;
-    top: 8px;
-    right: 8px;
+    top: calc(var(--clip-overlay-inset) - 4px);
+    right: calc(var(--clip-overlay-inset) - 2px);
     z-index: 15;
-    background: rgba(0, 0, 0, 0.6);
-    border: 1px solid rgba(255, 255, 255, 0.2);
-    color: white;
-    width: 32px;
-    height: 32px;
+    width: 23px;
+    height: 23px;
     border-radius: 8px;
+    border: 1px solid rgb(255 255 255 / 0.14);
+    background: rgb(8 12 22 / 0.2);
+    color: rgb(255 255 255 / 0.98);
     display: flex;
     align-items: center;
     justify-content: center;
     cursor: pointer;
-    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    transition:
+        opacity 0.18s ease,
+        transform 0.18s ease,
+        background-color 0.18s ease,
+        border-color 0.18s ease,
+        box-shadow 0.18s ease;
     opacity: 0;
-    transform: translateY(-10px);
+    transform: translateY(-4px) scale(0.96);
+    backdrop-filter: blur(3px);
+    -webkit-backdrop-filter: blur(3px);
+}
+
+.clip-download-icon {
+    font-size: 14px;
+    line-height: 1;
+    transform: translateY(0);
+    transition:
+        color 0.16s ease,
+        filter 0.16s ease,
+        transform 0.16s ease;
+    pointer-events: none;
+}
+
+.clip-download-icon.download-tone-light {
+    color: rgb(248 251 255 / 0.98);
+    filter:
+        drop-shadow(0 0 1px rgb(0 0 0 / 0.88))
+        drop-shadow(0 1px 2px rgb(0 0 0 / 0.72));
+}
+
+.clip-download-icon.download-tone-dark {
+    color: rgb(9 13 24 / 0.95);
+    filter:
+        drop-shadow(0 0 1px rgb(255 255 255 / 0.92))
+        drop-shadow(0 1px 2px rgb(255 255 255 / 0.65));
 }
 
 .clip-wrapper:hover .clip-download-btn {
-    opacity: 1;
-    transform: translateY(0);
+    opacity: 0.95;
+    transform: translateY(0) scale(1);
 }
 
-.clip-download-btn:hover {
-    background: var(--accent);
-    border-color: var(--accent);
-    transform: scale(1.1) !important;
+.clip-download-btn:hover,
+.clip-download-btn:focus-visible {
+    background-color: rgb(8 12 22 / 0.42);
+    border-color: rgb(255 255 255 / 0.34);
+    box-shadow:
+        0 6px 14px rgb(0 0 0 / 0.32),
+        inset 0 1px 0 rgb(255 255 255 / 0.08);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    transform: translateY(0) scale(1.03) !important;
 }
 
 .clip-download-btn.loading {
     cursor: wait;
-    opacity: 0.7;
+    opacity: 0.8;
+    transform: translateY(0) scale(1);
+}
+
+.clip-download-btn:focus-visible {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    outline: 2px solid rgb(var(--accent-rgb) / 0.48);
+    outline-offset: 1px;
 }
 
 .clip-download-btn:active {
-    transform: scale(0.9) !important;
+    transform: translateY(0) scale(0.95) !important;
 }
