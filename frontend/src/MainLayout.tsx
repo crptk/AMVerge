@@ -103,6 +103,7 @@ export default function MainLayout(props: LayoutProps) {
                     userHasHEVC={props.userHasHEVC}
                     setFocusedClip={props.setFocusedClip}
                     focusedClip={props.focusedClip}
+                    generalSettings={props.generalSettings}
                  />
             </div>
             

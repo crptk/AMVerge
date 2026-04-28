@@ -142,6 +142,7 @@ export default function ClipsContainer(props: ClipContainerProps) {
                   onClipDoubleClick={handleClipDoubleClick}
                   videoIsHEVC={props.videoIsHEVC}
                   userHasHEVC={props.userHasHEVC}
+                  generalSettings={props.generalSettings}
                 />
               ))}
         </div>
