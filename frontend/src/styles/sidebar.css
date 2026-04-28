@@ -22,20 +22,19 @@ body.is-resizing-sidebar {
 /* top buttons inside sidebar */
 
 .sidebar-container > .menu-buttons {
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    align-items: center;
-    min-height: 5vh;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+    padding: 6px 8px 4px;
 }
 
-.sidebar-container > .sidebar-button {
+.sidebar-container > .menu-buttons > .sidebar-button {
     display: flex;
     justify-content: center;
     align-items: center;
     height: 30px;
-    margin: 3px;
-    width: calc(100% - 6px);
+    margin: 0;
+    width: 100%;
 }
 
 .sidebar-button > button {
@@ -54,6 +53,30 @@ body.is-resizing-sidebar {
     background: var(--accent);
     color: black;
     cursor: pointer;
+}
+
+.sidebar-button > .sidebar-nav-button {
+    font-size: 14px;
+    padding: 0;
+    line-height: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.sidebar-button > .sidebar-nav-button svg {
+    width: 14px;
+    height: 14px;
+    display: block;
+}
+
+.sidebar-button > .sidebar-nav-button.is-active,
+.sidebar-button > .sidebar-nav-button:disabled {
+    background: rgb(var(--accent-rgb) / 0.18);
+    color: var(--accent);
+    cursor: default;
+    border-color: rgb(var(--accent-rgb) / 0.9);
+    opacity: 1;
 }
 
 /* episode panel */
@@ -96,6 +119,7 @@ body.is-resizing-sidebar {
 
 .episode-panel-actions {
     display: flex;
+    align-items: center;
     gap: 6px;
     flex-wrap: wrap;
     justify-content: flex-end;
@@ -112,6 +136,23 @@ body.is-resizing-sidebar {
     cursor: pointer;
     white-space: nowrap;
     transition: background 0.2s ease, border 0.2s ease, box-shadow 0.2s ease;
+}
+
+.episode-panel-action.icon-only {
+    width: 30px;
+    min-width: 30px;
+    height: 28px;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+}
+
+.episode-panel-action.icon-only svg {
+    width: 12px;
+    height: 12px;
+    display: block;
 }
 
 .episode-panel-action:hover {
