@@ -6,6 +6,7 @@ import {
   type ConsoleEntry,
 } from "../../utils/appConsole";
 
+
 export default function Console() {
   const [logs, setLogs] = useState<ConsoleEntry[]>([]);
   const bottomRef = useRef<HTMLDivElement | null>(null);
