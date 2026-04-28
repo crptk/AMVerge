@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Event, listen } from "@tauri-apps/api/event";
 
@@ -15,19 +15,10 @@ import useImportExport from "./hooks/useImportExport";
 import useHEVCSupport from "./hooks/useHEVCSupport";
 import useDragDropImport from "./hooks/useDragDropImport";
 import usePersistence from "./hooks/usePersistence";
-import type { DerushCategory, DerushSnapshot, EpisodeEntry } from "./types/domain";
 
 const EPISODE_PANEL_STORAGE_KEY = "amverge_episode_panel_v1";
 const SIDEBAR_WIDTH_STORAGE_KEY = "amverge_sidebar_width_px_v1";
 const EXPORT_DIR_STORAGE_KEY = "amverge_export_dir_v1";
-const DERUSH_CATEGORY_COLORS = [
-  "#8DF7B1",
-  "#86E3FF",
-  "#FFD38A",
-  "#F8A8A8",
-  "#A6B7FF",
-  "#C6FF9C",
-];
 
 function App() {
   // Core app state
@@ -84,80 +75,10 @@ function App() {
     }
   });
 
-  // Derush workflow state (SQLite-backed)
-  const [derushScope, setDerushScope] = useState<"episode" | "folder">("episode");
-  const [derushProject, setDerushProject] = useState<{
-    id: string;
-    sourceName: string;
-    sourceKey: string;
-  } | null>(null);
-  const [derushCategories, setDerushCategories] = useState<DerushCategory[]>([]);
-  const [derushActiveCategoryId, setDerushActiveCategoryId] = useState<string>("all");
-  const [clipCategoryMap, setClipCategoryMap] = useState<Record<string, string[]>>({});
-  const [derushSyncing, setDerushSyncing] = useState(false);
-
   // Derived values
-  const currentEpisode = useMemo(() => {
-    const currentEpisodeId = state.openedEpisodeId ?? state.selectedEpisodeId;
-    if (!currentEpisodeId) return null;
-    return state.episodes.find((episode) => episode.id === currentEpisodeId) ?? null;
-  }, [state.openedEpisodeId, state.selectedEpisodeId, state.episodes]);
-
-  const currentEpisodeClipSignature = useMemo(() => {
-    if (!currentEpisode) return "";
-    return currentEpisode.clips.map((clip) => clip.id).join("|");
-  }, [currentEpisode]);
-
-  const episodeFolderMap = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const folder of state.episodeFolders) {
-      map.set(folder.id, folder.name);
-    }
-    return map;
-  }, [state.episodeFolders]);
-
-  const currentEpisodeFolderName =
-    currentEpisode?.folderId ? episodeFolderMap.get(currentEpisode.folderId) ?? null : null;
-  const canUseFolderScope = Boolean(currentEpisode?.folderId);
-
-  useEffect(() => {
-    if (!canUseFolderScope && derushScope === "folder") {
-      setDerushScope("episode");
-    }
-  }, [canUseFolderScope, derushScope]);
-
-  const previousEpisodeIdRef = useRef<string | null>(null);
-  useEffect(() => {
-    const nextEpisodeId = currentEpisode?.id ?? null;
-    if (!nextEpisodeId) {
-      previousEpisodeIdRef.current = null;
-      return;
-    }
-
-    if (previousEpisodeIdRef.current !== nextEpisodeId) {
-      setDerushScope(currentEpisode?.folderId ? "folder" : "episode");
-      previousEpisodeIdRef.current = nextEpisodeId;
-    }
-  }, [currentEpisode?.id, currentEpisode?.folderId]);
-
-  const filteredClips = useMemo(() => {
-    if (derushActiveCategoryId === "all") return state.clips;
-
-    return state.clips.filter((clip) =>
-      (clipCategoryMap[clip.id] ?? []).includes(derushActiveCategoryId)
-    );
-  }, [state.clips, clipCategoryMap, derushActiveCategoryId]);
-
-  const categoryColorMap = useMemo(() => {
-    return derushCategories.reduce<Record<string, string>>((acc, category) => {
-      acc[category.id] = category.color;
-      return acc;
-    }, {});
-  }, [derushCategories]);
-
   const width = gridRef.current?.offsetWidth || 0;
   const gridSize = Math.floor(width / cols);
-  const isEmpty = filteredClips.length === 0;
+  const isEmpty = state.clips.length === 0;
 
   // Import/export
   const {
@@ -246,147 +167,6 @@ function App() {
     handleImport,
     handleBatchImport,
   });
-
-  const refreshDerushSnapshot = useCallback(
-    async (episode: EpisodeEntry | null) => {
-      if (!episode) {
-        setDerushProject(null);
-        setDerushCategories([]);
-        setClipCategoryMap({});
-        setDerushActiveCategoryId("all");
-        return;
-      }
-
-      const scopeIsFolder = derushScope === "folder" && Boolean(episode.folderId);
-      const scopeKey = scopeIsFolder ? `folder_${episode.folderId}` : `episode_${episode.id}`;
-      const scopeName = scopeIsFolder
-        ? (episodeFolderMap.get(episode.folderId as string) ?? episode.displayName)
-        : episode.displayName;
-
-      setDerushSyncing(true);
-      try {
-        const snapshot = await invoke<DerushSnapshot>("sync_derush_episode", {
-          episodeId: episode.id,
-          episodeDisplayName: episode.displayName,
-          videoPath: episode.videoPath,
-          scopeKey,
-          scopeName,
-          clips: episode.clips.map((clip) => ({
-            id: clip.id,
-            src: clip.src,
-            thumbnail: clip.thumbnail,
-            originalName: clip.originalName,
-          })),
-        });
-
-        setDerushProject(snapshot.project);
-        setDerushCategories(snapshot.categories ?? []);
-        setClipCategoryMap(snapshot.clipCategoryMap ?? {});
-        setDerushActiveCategoryId((prev) => {
-          if (prev === "all") return "all";
-          const exists = (snapshot.categories ?? []).some((category) => category.id === prev);
-          return exists ? prev : "all";
-        });
-      } catch (err) {
-        console.error("sync_derush_episode failed:", err);
-      } finally {
-        setDerushSyncing(false);
-      }
-    },
-    [derushScope, episodeFolderMap]
-  );
-
-  const handleCreateDerushCategory = useCallback(
-    async (name: string, color: string) => {
-      const trimmed = name.trim();
-      if (!trimmed || !derushProject || !currentEpisode) return;
-
-      const pickedColor =
-        color && color.trim()
-          ? color
-          : DERUSH_CATEGORY_COLORS[derushCategories.length % DERUSH_CATEGORY_COLORS.length];
-
-      try {
-        await invoke<DerushCategory>("create_derush_category", {
-          projectId: derushProject.id,
-          name: trimmed,
-          color: pickedColor,
-          icon: trimmed.charAt(0).toUpperCase(),
-        });
-        await refreshDerushSnapshot(currentEpisode);
-      } catch (err) {
-        console.error("create_derush_category failed:", err);
-      }
-    },
-    [derushProject, currentEpisode, derushCategories.length, refreshDerushSnapshot]
-  );
-
-  const handleUpdateDerushCategory = useCallback(
-    async (categoryId: string, name: string, color: string) => {
-      const trimmed = name.trim();
-      if (!categoryId || !trimmed || !currentEpisode) return;
-
-      try {
-        await invoke("update_derush_category", {
-          categoryId,
-          name: trimmed,
-          color,
-        });
-        await refreshDerushSnapshot(currentEpisode);
-      } catch (err) {
-        console.error("update_derush_category failed:", err);
-      }
-    },
-    [currentEpisode, refreshDerushSnapshot]
-  );
-
-  const handleDeleteDerushCategory = useCallback(
-    async (categoryId: string) => {
-      if (!categoryId || !currentEpisode) return;
-
-      if (derushActiveCategoryId === categoryId) {
-        setDerushActiveCategoryId("all");
-      }
-
-      try {
-        await invoke("delete_derush_category", { categoryId });
-        await refreshDerushSnapshot(currentEpisode);
-      } catch (err) {
-        console.error("delete_derush_category failed:", err);
-      }
-    },
-    [currentEpisode, derushActiveCategoryId, refreshDerushSnapshot]
-  );
-
-  const handleToggleClipCategory = useCallback(
-    async (clipId: string, categoryId: string) => {
-      if (!currentEpisode || categoryId === "all") return;
-
-      const wasAssigned = (clipCategoryMap[clipId] ?? []).includes(categoryId);
-      const nextEnabled = !wasAssigned;
-
-      setClipCategoryMap((prev) => {
-        const current = prev[clipId] ?? [];
-        const has = current.includes(categoryId);
-        const next = has
-          ? current.filter((id) => id !== categoryId)
-          : [...current, categoryId];
-        return { ...prev, [clipId]: next };
-      });
-
-      try {
-        await invoke("set_derush_clip_category", {
-          clipId,
-          categoryId,
-          enabled: nextEnabled,
-        });
-      } catch (err) {
-        console.error("set_derush_clip_category failed:", err);
-        await refreshDerushSnapshot(currentEpisode);
-      }
-    },
-    [clipCategoryMap, currentEpisode, refreshDerushSnapshot, setClipCategoryMap]
-  );
 
   // Episode selection
   function handleSelectEpisode(episodeId: string) {
@@ -478,11 +258,6 @@ function App() {
     dispatch({ type: "setClips", value: [] });
     dispatch({ type: "setImportedVideoPath", value: null });
     dispatch({ type: "setVideoIsHEVC", value: null });
-    setDerushProject(null);
-    setDerushCategories([]);
-    setClipCategoryMap({});
-    setDerushActiveCategoryId("all");
-    setDerushScope("episode");
 
     try {
       await invoke("clear_episode_panel_cache");
@@ -500,43 +275,6 @@ function App() {
       console.error("abort_detect_scenes failed:", err);
     }
   }
-
-  useEffect(() => {
-    void refreshDerushSnapshot(currentEpisode);
-  }, [
-    currentEpisode?.id,
-    currentEpisode?.folderId,
-    currentEpisodeClipSignature,
-    currentEpisodeFolderName,
-    derushScope,
-    refreshDerushSnapshot,
-  ]);
-
-  useEffect(() => {
-    const visibleIds = new Set(filteredClips.map((clip) => clip.id));
-    let changed = false;
-    const next = new Set<string>();
-
-    for (const clipId of state.selectedClips) {
-      if (visibleIds.has(clipId)) {
-        next.add(clipId);
-      } else {
-        changed = true;
-      }
-    }
-
-    if (changed) {
-      setSelectedClips(next);
-    }
-  }, [filteredClips, state.selectedClips, setSelectedClips]);
-
-  useEffect(() => {
-    if (!state.focusedClip) return;
-    const stillVisible = filteredClips.some((clip) => clip.src === state.focusedClip);
-    if (!stillVisible) {
-      setFocusedClip(null);
-    }
-  }, [filteredClips, state.focusedClip, setFocusedClip]);
 
   // Effects
   useEffect(() => {
@@ -694,8 +432,7 @@ function App() {
             loading={loading}
             mainLayoutWrapperRef={mainLayoutWrapperRef}
             gridRef={gridRef}
-            clips={filteredClips}
-            allClips={state.clips}
+            clips={state.clips}
             importToken={importToken}
             isEmpty={isEmpty}
             handleExport={handleExport}
@@ -710,19 +447,6 @@ function App() {
             defaultMergedName={(state.clips[0]?.originalName || "episode") + "_merged"}
             openedEpisodeId={state.openedEpisodeId}
             importedVideoPath={state.importedVideoPath}
-            derushScope={derushScope}
-            canUseFolderScope={canUseFolderScope}
-            onDerushScopeChange={setDerushScope}
-            derushCategories={derushCategories}
-            derushActiveCategoryId={derushActiveCategoryId}
-            setDerushActiveCategoryId={setDerushActiveCategoryId}
-            clipCategoryMap={clipCategoryMap}
-            onCreateDerushCategory={handleCreateDerushCategory}
-            onUpdateDerushCategory={handleUpdateDerushCategory}
-            onDeleteDerushCategory={handleDeleteDerushCategory}
-            onToggleClipCategory={handleToggleClipCategory}
-            derushSyncing={derushSyncing}
-            categoryColorMap={categoryColorMap}
           />
         ) : activePage === "menu" ? (
           <Menu />

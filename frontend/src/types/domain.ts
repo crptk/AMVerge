@@ -5,29 +5,6 @@ export type ClipItem = {
   originalName?: string;
 };
 
-export type DerushProject = {
-  id: string;
-  sourceKey: string;
-  sourceName: string;
-};
-
-export type DerushCategory = {
-  id: string;
-  name: string;
-  color: string;
-  icon?: string | null;
-  isSystem: boolean;
-  clipCount: number;
-  episodeClipCount?: number;
-  projectClipCount?: number;
-};
-
-export type DerushSnapshot = {
-  project: DerushProject;
-  categories: DerushCategory[];
-  clipCategoryMap: Record<string, string[]>;
-};
-
 export type EpisodeFolder = {
   id: string;
   name: string;

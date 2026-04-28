@@ -142,11 +142,6 @@ export default function ClipsContainer(props: ClipContainerProps) {
                   onClipDoubleClick={handleClipDoubleClick}
                   videoIsHEVC={props.videoIsHEVC}
                   userHasHEVC={props.userHasHEVC}
-                  activeCategoryId={props.activeCategoryId}
-                  assignedCategoryIds={props.clipCategoryMap[clip.id] ?? []}
-                  categoryOptions={props.categoryOptions}
-                  categoryColorMap={props.categoryColorMap}
-                  onToggleClipCategory={props.onToggleClipCategory}
                 />
               ))}
         </div>

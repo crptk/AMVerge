@@ -25,11 +25,6 @@ export const LazyClip = memo(function LazyClip({
   reportStaggerDemand,
   videoIsHEVC,
   userHasHEVC,
-  activeCategoryId,
-  assignedCategoryIds,
-  categoryOptions,
-  categoryColorMap,
-  onToggleClipCategory,
 }: LazyClipProps) {
   // state and refs for tile visibility, hover, video element, and proxy state
   const [isVisible, setIsVisible] = useState(false);
@@ -51,7 +46,6 @@ export const LazyClip = memo(function LazyClip({
   const [isVideoReady, setIsVideoReady] = useState(false);
   // the actual video source (original or proxy)
   const [effectiveSrc, setEffectiveSrc] = useState(clip.src);
-  const [showCategoryMenu, setShowCategoryMenu] = useState(false);
 
   // determine if we need a proxy (HEVC not supported)
   const needsHevcProxy = videoIsHEVC === true && userHasHEVC.current === false;
@@ -66,20 +60,6 @@ export const LazyClip = memo(function LazyClip({
   const shouldMountVideo =
     showVideo && !forceThumbnail && !waitingForRequiredProxy && !waitingForCodecInfo && staggerGate;
   const shouldShowThumbnail = !showVideo || !shouldMountVideo || !isVideoReady;
-  const displayCategoryId =
-    (activeCategoryId !== "all" && assignedCategoryIds.includes(activeCategoryId))
-      ? activeCategoryId
-      : assignedCategoryIds[0] ?? null;
-  const hasCategoryAssignment = assignedCategoryIds.length > 0;
-  const displayCategoryColor = displayCategoryId
-    ? categoryColorMap[displayCategoryId] ?? "rgba(255,255,255,0.8)"
-    : "rgba(255,255,255,0.35)";
-  const assignedCategoryNames = assignedCategoryIds
-    .map((id) => categoryOptions.find((category) => category.id === id)?.name)
-    .filter((name): name is string => Boolean(name));
-  const categoryChipTitle = assignedCategoryNames.length
-    ? `Catégories: ${assignedCategoryNames.join(", ")}`
-    : "Ajouter une catégorie";
 
   // when Preview-all is enabled and we need an HEVC proxy, register demand only while visible.
   // this allows the parent to re-prioritize work when the user scrolls.
@@ -122,7 +102,6 @@ export const LazyClip = memo(function LazyClip({
     setForceThumbnail(false);
     setIsVideoReady(false);
     setEffectiveSrc(clip.src);
-    setShowCategoryMenu(false);
   }, [clip.src, importToken]);
 
   // Proactive HEVC gating:
@@ -268,22 +247,6 @@ export const LazyClip = memo(function LazyClip({
     return () => observer.disconnect();
   }, []);
 
-  useEffect(() => {
-    if (!showCategoryMenu) return;
-
-    const onPointerDown = (event: PointerEvent) => {
-      const target = event.target as Node | null;
-      if (!target) return;
-      if (wrapperRef.current?.contains(target)) return;
-      setShowCategoryMenu(false);
-    };
-
-    window.addEventListener("pointerdown", onPointerDown);
-    return () => {
-      window.removeEventListener("pointerdown", onPointerDown);
-    };
-  }, [showCategoryMenu]);
-
   // Playback control:
   // - When hovered (or grid preview mode) AND the video is mounted, ensure it loads and plays.
   // - When not hovered, pause and rewind to 0 so hover-preview always starts at the beginning.
@@ -339,23 +302,6 @@ export const LazyClip = memo(function LazyClip({
     [clip.id, registerVideoRef]
   );
 
-  const handleCategoryChipClick = useCallback(
-    (e: React.MouseEvent<HTMLButtonElement>) => {
-      e.preventDefault();
-      e.stopPropagation();
-      if (categoryOptions.length === 0) return;
-      setShowCategoryMenu((prev) => !prev);
-    },
-    [categoryOptions.length]
-  );
-
-  const handleMenuToggleCategory = useCallback(
-    (categoryId: string) => {
-      void onToggleClipCategory(clip.id, categoryId);
-    },
-    [clip.id, onToggleClipCategory]
-  );
-
   return (
     <div
       ref={wrapperRef}
@@ -377,56 +323,6 @@ export const LazyClip = memo(function LazyClip({
       }}
     >
       <span className={`clip-export-dot ${isExportSelected ? "ok" : ""}`} />
-      <button
-        type="button"
-        className={`clip-category-chip ${hasCategoryAssignment ? "assigned" : "empty"} ${assignedCategoryIds.length > 1 ? "multiple" : ""} ${showCategoryMenu ? "open" : ""}`}
-        onMouseDown={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
-        }}
-        onClick={handleCategoryChipClick}
-        title={categoryChipTitle}
-      >
-        <span
-          className="clip-category-chip-dot"
-          style={{ background: displayCategoryColor }}
-          aria-hidden="true"
-        />
-      </button>
-
-      {showCategoryMenu && categoryOptions.length > 0 && (
-        <div
-          className="clip-category-menu"
-          onMouseDown={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-          }}
-        >
-          {categoryOptions.map((category) => {
-            const isAssigned = assignedCategoryIds.includes(category.id);
-            return (
-              <button
-                key={category.id}
-                type="button"
-                className={`clip-category-menu-item ${isAssigned ? "selected" : ""}`}
-                onClick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  handleMenuToggleCategory(category.id);
-                }}
-                title={category.name}
-              >
-                <span
-                  className="clip-category-menu-dot"
-                  style={{ background: category.color }}
-                />
-                <span className="clip-category-menu-name">{category.name}</span>
-                {isAssigned && <span className="clip-category-menu-check">•</span>}
-              </button>
-            );
-          })}
-        </div>
-      )}
       {isVisible ? (
         <>
           {/* Thumbnail — always rendered when visible, hidden on hover */}

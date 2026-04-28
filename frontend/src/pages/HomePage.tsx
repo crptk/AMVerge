@@ -1,8 +1,6 @@
 import ImportButtons from "../components/ImportButtons";
 import MainLayout from "../MainLayout";
-import DerushTabs from "../components/derush/DerushTabs";
 import { fileNameFromPath } from "../utils/episodeUtils";
-import type { DerushCategory } from "../types/domain";
 
 interface HomePageProps {
   cols: number;
@@ -18,7 +16,6 @@ interface HomePageProps {
   loading: boolean;
   mainLayoutWrapperRef: React.RefObject<HTMLDivElement | null>;
   clips: { id: string; src: string; thumbnail: string; originalName?: string }[];
-  allClips: { id: string; src: string; thumbnail: string; originalName?: string }[];
   importToken: string;
   isEmpty: boolean;
   handleExport: (
@@ -37,23 +34,6 @@ interface HomePageProps {
   defaultMergedName: string;
   openedEpisodeId: string | null;
   importedVideoPath: string | null;
-  derushScope: "episode" | "folder";
-  canUseFolderScope: boolean;
-  onDerushScopeChange: (scope: "episode" | "folder") => void;
-  derushCategories: DerushCategory[];
-  derushActiveCategoryId: string;
-  setDerushActiveCategoryId: (id: string) => void;
-  clipCategoryMap: Record<string, string[]>;
-  onCreateDerushCategory: (name: string, color: string) => Promise<void> | void;
-  onUpdateDerushCategory: (
-    categoryId: string,
-    name: string,
-    color: string
-  ) => Promise<void> | void;
-  onDeleteDerushCategory: (categoryId: string) => Promise<void> | void;
-  onToggleClipCategory: (clipId: string, categoryId: string) => Promise<void> | void;
-  derushSyncing: boolean;
-  categoryColorMap: Record<string, string>;
 }
 
 export default function HomePage({
@@ -70,7 +50,6 @@ export default function HomePage({
   loading,
   mainLayoutWrapperRef,
   clips,
-  allClips,
   importToken,
   isEmpty,
   handleExport,
@@ -85,19 +64,6 @@ export default function HomePage({
   defaultMergedName,
   openedEpisodeId,
   importedVideoPath,
-  derushScope,
-  canUseFolderScope,
-  onDerushScopeChange,
-  derushCategories,
-  derushActiveCategoryId,
-  setDerushActiveCategoryId,
-  clipCategoryMap,
-  onCreateDerushCategory,
-  onUpdateDerushCategory,
-  onDeleteDerushCategory,
-  onToggleClipCategory,
-  derushSyncing,
-  categoryColorMap,
 }: HomePageProps) {
   return (
     <>
@@ -115,22 +81,6 @@ export default function HomePage({
       />
 
       <div className="main-layout-wrapper" ref={mainLayoutWrapperRef}>
-        <DerushTabs
-          scope={derushScope}
-          canUseFolderScope={canUseFolderScope}
-          totalClipCount={allClips.length}
-          categories={derushCategories}
-          activeCategoryId={derushActiveCategoryId}
-          clipCategoryMap={clipCategoryMap}
-          clips={allClips}
-          syncing={derushSyncing}
-          onScopeChange={onDerushScopeChange}
-          onSelectCategory={setDerushActiveCategoryId}
-          onCreateCategory={onCreateDerushCategory}
-          onUpdateCategory={onUpdateDerushCategory}
-          onDeleteCategory={onDeleteDerushCategory}
-        />
-
         <MainLayout
           cols={cols}
           gridSize={gridSize}
@@ -153,15 +103,6 @@ export default function HomePage({
           selectedClips={selectedClips}
           setSelectedClips={setSelectedClips}
           loading={loading}
-          activeCategoryId={derushActiveCategoryId}
-          clipCategoryMap={clipCategoryMap}
-          categoryOptions={derushCategories.map((category) => ({
-            id: category.id,
-            name: category.name,
-            color: category.color,
-          }))}
-          onToggleClipCategory={onToggleClipCategory}
-          categoryColorMap={categoryColorMap}
         />
 
         <div className="info-bar">

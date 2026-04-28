@@ -1,5 +1,3 @@
-import type { ClipItem } from "../../types/domain";
-
 export type ClipContainerProps = {
   gridSize: number;
   gridRef: React.RefObject<HTMLDivElement | null>;
@@ -7,7 +5,7 @@ export type ClipContainerProps = {
   gridPreview: boolean;
   setSelectedClips: React.Dispatch<React.SetStateAction<Set<string>>>;
   selectedClips: Set<string>;
-  clips: ClipItem[];
+  clips: { id: string; src: string; thumbnail: string }[];
   importToken: string;
   loading: boolean;
   isEmpty: boolean;
@@ -15,11 +13,6 @@ export type ClipContainerProps = {
   userHasHEVC: React.RefObject<boolean>;
   setFocusedClip: React.Dispatch<React.SetStateAction<string | null>>;
   focusedClip: string | null;
-  activeCategoryId: string;
-  clipCategoryMap: Record<string, string[]>;
-  categoryOptions: { id: string; name: string; color: string }[];
-  onToggleClipCategory: (clipId: string, categoryId: string) => Promise<void> | void;
-  categoryColorMap: Record<string, string>;
 };
 
 export type DeferredProxy = {
@@ -35,7 +28,7 @@ export type ProxyDemand = {
 };
 
 export type LazyClipProps = {
-  clip: ClipItem;
+  clip: { id: string; src: string, thumbnail: string };
   index: number;
   importToken: string;
   isExportSelected: boolean;
@@ -59,9 +52,4 @@ export type LazyClipProps = {
   reportStaggerDemand: (key: string, demand: { order: number; onReady: () => void } | null) => void;
   videoIsHEVC: boolean | null;
   userHasHEVC: React.RefObject<boolean>;
-  activeCategoryId: string;
-  assignedCategoryIds: string[];
-  categoryOptions: { id: string; name: string; color: string }[];
-  categoryColorMap: Record<string, string>;
-  onToggleClipCategory: (clipId: string, categoryId: string) => Promise<void> | void;
 };
