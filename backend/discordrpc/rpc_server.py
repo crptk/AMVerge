@@ -1,27 +1,22 @@
 import sys
 import json
 import time
+import os
+import threading
 from discord_rpc import DiscordRPC
 
-def main():
-    from discord_rpc import RPC_AVAILABLE
-    if not RPC_AVAILABLE:
-        return
-
-    rpc = DiscordRPC()
-    if not rpc.connect():
-        pass
-    
+def monitor_stdin(rpc, shutdown_event):
+    """Monitor stdin for commands from the parent process."""
     last_update_time = 0
     last_details = ""
-    last_state = ""
     
-    while True:
+    while not shutdown_event.is_set():
         line = sys.stdin.readline()
         if not line:
+            print("[RPC Server] Stdin closed, shutting down...")
+            shutdown_event.set()
             break
-        
-        print(f"[RPC Server] Received: {line.strip()}")
+            
         try:
             data = json.loads(line)
             if data.get("type") == "update":
@@ -29,10 +24,9 @@ def main():
                 details = data.get("details")
                 state = data.get("state")
                 
+                # Simple throttling
                 time_passed = current_time - last_update_time
-                activity_changed = details != last_details
-                
-                if time_passed >= 15 or activity_changed:
+                if time_passed >= 15 or details != last_details:
                     rpc._update(
                         details=details,
                         state=state,
@@ -44,18 +38,68 @@ def main():
                     )
                     last_update_time = current_time
                     last_details = details
-                    last_state = state
             elif data.get("type") == "clear":
                 rpc.clear_presence()
-
             elif data.get("type") in ("exit", "shutdown"):
-                rpc.clear_presence()
-                time.sleep(0.2)
+                print("[RPC Server] Received shutdown command...")
+                shutdown_event.set()
                 break
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"[RPC Server] Error processing command: {e}")
 
+def main():
+    from discord_rpc import RPC_AVAILABLE
+    if not RPC_AVAILABLE:
+        return
+
+    rpc = DiscordRPC()
+    if not rpc.connect():
+        print("[RPC Server] Could not connect to Discord")
+    
+    shutdown_event = threading.Event()
+    
+    # Start stdin monitor in a background thread
+    thread = threading.Thread(target=monitor_stdin, args=(rpc, shutdown_event), daemon=True)
+    thread.start()
+    
+    # Record parent PID to detect if it dies
+    parent_pid = os.getppid()
+    
+    print(f"[RPC Server] Started. Monitoring Parent PID: {parent_pid}")
+    
+    try:
+        while not shutdown_event.is_set():
+            # Check if parent is still alive
+            if os.name == 'nt':
+                # On Windows, we can check if the process still exists
+                # A simple way without psutil:
+                import subprocess
+                # tasklist is slow, but we only check every second
+                try:
+                    # If this returns non-zero, the process is likely gone
+                    if parent_pid > 0:
+                        # Find if parent_pid is in the tasklist
+                        res = subprocess.call(['tasklist', '/FI', f'PID eq {parent_pid}'], 
+                                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                        # Note: tasklist returns 0 even if not found, we check the output usually
+                        # Instead, we rely on the fact that stdin will close.
+                        pass
+                except:
+                    pass
+            else:
+                # Unix is easy
+                if os.getppid() != parent_pid:
+                    print("[RPC Server] Parent process changed or died. Exiting...")
+                    shutdown_event.set()
+            
+            time.sleep(1.0)
+    except KeyboardInterrupt:
+        pass
+    
+    print("[RPC Server] Cleaning up...")
+    rpc.clear_presence()
     rpc.disconnect()
+    print("[RPC Server] Shutdown complete.")
 
 if __name__ == "__main__":
     main()

@@ -90,19 +90,28 @@ pub async fn stop_discord_rpc(
     state: State<'_, DiscordRPCState>,
 ) -> Result<(), String> {
     let mut child_guard = state.child.lock().unwrap();
-
-    if let Some(child) = child_guard.as_mut() {
+    if let Some(mut child) = child_guard.take() {
+        // Try to send a graceful shutdown command first
         if let Some(stdin) = child.stdin.as_mut() {
-            let _ = writeln!(stdin, r#"{{"type":"shutdown"}}"#);
+            let _ = writeln!(stdin, "{{\"type\": \"shutdown\"}}");
             let _ = stdin.flush();
         }
 
-        std::thread::sleep(std::time::Duration::from_millis(300));
-    }
+        // Give it a tiny bit of time to clear the presence and exit
+        let mut count = 0;
+        while count < 5 {
+            match child.try_wait() {
+                Ok(Some(_)) => return Ok(()), // Exited gracefully
+                _ => {
+                    std::thread::sleep(std::time::Duration::from_millis(50));
+                    count += 1;
+                }
+            }
+        }
 
-    if let Some(mut child) = child_guard.take() {
+        // If it's still alive, kill it forcefully
         let _ = child.kill();
+        println!("[Discord RPC] Forcefully killed ghost process");
     }
-
     Ok(())
 }

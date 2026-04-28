@@ -38,6 +38,13 @@ fn main() {
                 let state = window.state::<DiscordRPCState>();
                 let mut child_guard = state.child.lock().unwrap();
                 if let Some(mut child) = child_guard.take() {
+                    // Try graceful logout
+                    use std::io::Write;
+                    if let Some(stdin) = child.stdin.as_mut() {
+                        let _ = writeln!(stdin, "{{\"type\": \"shutdown\"}}");
+                        let _ = stdin.flush();
+                        std::thread::sleep(std::time::Duration::from_millis(100));
+                    }
                     let _ = child.kill();
                 }
             }

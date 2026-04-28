@@ -84,12 +84,6 @@ export default function useDiscordRPC(generalSettings: GeneralSettings, activePa
       small_text = "Settings";
     }
 
-    const buttons = [];
-    if (generalSettings.rpcShowButtons) {
-      buttons.push({ label: "Discord Server", url: "https://discord.gg/asJkqwqb" });
-      buttons.push({ label: "Website", url: "https://amverge.app/" });
-    }
-
     updateRPC({
       type: "update",
       details,
