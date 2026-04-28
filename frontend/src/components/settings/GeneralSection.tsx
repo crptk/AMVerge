@@ -176,7 +176,7 @@ export default function GeneralSection({
                 className="episode-modal-btn"
                 onClick={() => setShowFactoryResetConfirm(false)}
               >
-                No
+                Cancel
               </button>
               <button
                 type="button"
@@ -186,7 +186,7 @@ export default function GeneralSection({
                   void onGeneralSettingsReset();
                 }}
               >
-                Yes
+                Reset
               </button>
             </div>
           </div>
