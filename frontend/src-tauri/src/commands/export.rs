@@ -842,7 +842,7 @@ fn import_into_premiere(media_paths: &[String]) -> Result<String, String> {
 
         let mut cmd = Command::new(&premiere);
         apply_no_window(&mut cmd);
-        cmd.arg("/C").arg("es.processFile").arg(&script_path);
+        cmd.arg("--console").arg("es.ProcessFile").arg(&script_path);
         cmd.spawn().map_err(|e| {
             format!(
                 "Failed to launch Premiere importer ({}): {e}",
