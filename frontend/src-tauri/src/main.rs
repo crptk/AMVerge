@@ -17,15 +17,19 @@
 //!
 //! It may be refactored into modules later as the project grows.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::io::{BufRead, BufReader, Read};
-use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
-use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
 #[cfg(windows)]
 use std::os::windows::process::CommandExt;
+use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
+use std::time::{SystemTime, UNIX_EPOCH};
 
+use rusqlite::{params, Connection, OptionalExtension};
+use serde::Deserialize;
 use tokio::sync::Mutex as AsyncMutex;
 
 use serde::Serialize;
@@ -150,8 +154,724 @@ struct PreviewProxyLocks {
 }
 
 // ============================================================================
-// Preview proxy locking
+// Derush SQLite state
 // ============================================================================
+
+static DERUSH_ID_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+#[derive(Deserialize, Clone)]
+struct DerushClipInput {
+    id: String,
+    src: String,
+    thumbnail: String,
+    #[serde(default, rename = "originalName")]
+    original_name: Option<String>,
+}
+
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct DerushProjectSummary {
+    id: String,
+    source_key: String,
+    source_name: String,
+}
+
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct DerushCategoryRow {
+    id: String,
+    name: String,
+    color: String,
+    icon: Option<String>,
+    is_system: bool,
+    clip_count: usize,
+    episode_clip_count: usize,
+    project_clip_count: usize,
+}
+
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct DerushSnapshot {
+    project: DerushProjectSummary,
+    categories: Vec<DerushCategoryRow>,
+    clip_category_map: HashMap<String, Vec<String>>,
+}
+
+fn unix_ms_now() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0)
+}
+
+fn make_scoped_id(prefix: &str) -> String {
+    let n = DERUSH_ID_COUNTER.fetch_add(1, Ordering::Relaxed);
+    format!("{}_{}_{}", prefix, unix_ms_now(), n)
+}
+
+fn default_source_name(episode_display_name: &str, video_path: &str) -> String {
+    let from_parent = Path::new(video_path)
+        .parent()
+        .and_then(|p| p.file_name())
+        .and_then(|s| s.to_str())
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string());
+
+    if let Some(parent_name) = from_parent {
+        return parent_name;
+    }
+
+    let fallback = episode_display_name.trim();
+    if !fallback.is_empty() {
+        return fallback.to_string();
+    }
+
+    "Unknown Source".to_string()
+}
+
+fn normalize_source_key(source_name: &str) -> String {
+    let mut out = String::with_capacity(source_name.len());
+    let mut prev_sep = false;
+
+    for ch in source_name.chars() {
+        if ch.is_ascii_alphanumeric() {
+            out.push(ch.to_ascii_lowercase());
+            prev_sep = false;
+        } else if !prev_sep {
+            out.push('_');
+            prev_sep = true;
+        }
+    }
+
+    let trimmed = out.trim_matches('_').to_string();
+    if trimmed.is_empty() {
+        "source".to_string()
+    } else {
+        trimmed
+    }
+}
+
+fn derush_db_path(app: &AppHandle) -> Result<PathBuf, String> {
+    let app_data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(&app_data_dir).map_err(|e| e.to_string())?;
+    Ok(app_data_dir.join("derush.sqlite3"))
+}
+
+fn open_derush_db(app: &AppHandle) -> Result<Connection, String> {
+    let db_path = derush_db_path(app)?;
+    let conn = Connection::open(&db_path)
+        .map_err(|e| format!("Failed to open SQLite db ({}): {e}", db_path.display()))?;
+
+    conn.execute_batch(
+        r#"
+        PRAGMA foreign_keys = ON;
+        PRAGMA journal_mode = WAL;
+        PRAGMA synchronous = NORMAL;
+
+        CREATE TABLE IF NOT EXISTS derush_projects (
+            id TEXT PRIMARY KEY,
+            source_key TEXT NOT NULL UNIQUE,
+            source_name TEXT NOT NULL,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS derush_episodes (
+            episode_id TEXT PRIMARY KEY,
+            project_id TEXT NOT NULL,
+            display_name TEXT NOT NULL,
+            video_path TEXT NOT NULL,
+            imported_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL,
+            FOREIGN KEY (project_id) REFERENCES derush_projects(id) ON DELETE CASCADE
+        );
+
+        CREATE TABLE IF NOT EXISTS derush_clips (
+            clip_id TEXT PRIMARY KEY,
+            episode_id TEXT NOT NULL,
+            clip_path TEXT NOT NULL,
+            thumbnail_path TEXT NOT NULL,
+            sort_index INTEGER NOT NULL,
+            original_name TEXT,
+            FOREIGN KEY (episode_id) REFERENCES derush_episodes(episode_id) ON DELETE CASCADE
+        );
+
+        CREATE TABLE IF NOT EXISTS derush_categories (
+            id TEXT PRIMARY KEY,
+            project_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            color TEXT NOT NULL,
+            icon TEXT,
+            is_system INTEGER NOT NULL DEFAULT 0,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL,
+            FOREIGN KEY (project_id) REFERENCES derush_projects(id) ON DELETE CASCADE,
+            UNIQUE(project_id, name)
+        );
+
+        CREATE TABLE IF NOT EXISTS derush_clip_categories (
+            clip_id TEXT NOT NULL,
+            category_id TEXT NOT NULL,
+            created_at INTEGER NOT NULL,
+            PRIMARY KEY (clip_id, category_id),
+            FOREIGN KEY (clip_id) REFERENCES derush_clips(clip_id) ON DELETE CASCADE,
+            FOREIGN KEY (category_id) REFERENCES derush_categories(id) ON DELETE CASCADE
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_derush_episode_project ON derush_episodes(project_id);
+        CREATE INDEX IF NOT EXISTS idx_derush_clips_episode ON derush_clips(episode_id);
+        CREATE INDEX IF NOT EXISTS idx_derush_categories_project ON derush_categories(project_id);
+        CREATE INDEX IF NOT EXISTS idx_derush_clip_categories_category ON derush_clip_categories(category_id);
+        "#,
+    )
+    .map_err(|e| format!("Failed to initialize SQLite schema: {e}"))?;
+
+    Ok(conn)
+}
+
+fn sync_derush_episode_inner(
+    conn: &mut Connection,
+    episode_id: String,
+    episode_display_name: String,
+    video_path: String,
+    scope_key: String,
+    scope_name: Option<String>,
+    clips: Vec<DerushClipInput>,
+) -> Result<DerushSnapshot, String> {
+    let now = unix_ms_now();
+    let scope_key = scope_key.trim();
+    if scope_key.is_empty() {
+        return Err("scope_key is empty".to_string());
+    }
+
+    let source_key = normalize_source_key(scope_key);
+    let source_name_guess = scope_name
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| default_source_name(&episode_display_name, &video_path));
+
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+
+    let existing_project: Option<(String, String)> = tx
+        .query_row(
+            "SELECT id, source_name FROM derush_projects WHERE source_key = ?1",
+            params![&source_key],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .optional()
+        .map_err(|e| e.to_string())?;
+
+    let (project_id, source_name) = if let Some((id, stored_name)) = existing_project {
+        tx.execute(
+            "UPDATE derush_projects SET updated_at = ?1 WHERE id = ?2",
+            params![now, &id],
+        )
+        .map_err(|e| e.to_string())?;
+        (id, stored_name)
+    } else {
+        let id = make_scoped_id("proj");
+        tx.execute(
+            "INSERT INTO derush_projects (id, source_key, source_name, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![&id, &source_key, &source_name_guess, now, now],
+        )
+        .map_err(|e| e.to_string())?;
+        (id, source_name_guess)
+    };
+
+    tx.execute(
+        "INSERT INTO derush_episodes (
+            episode_id, project_id, display_name, video_path, imported_at, updated_at
+         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+         ON CONFLICT(episode_id) DO UPDATE SET
+            project_id = excluded.project_id,
+            display_name = excluded.display_name,
+            video_path = excluded.video_path,
+            updated_at = excluded.updated_at",
+        params![
+            &episode_id,
+            &project_id,
+            &episode_display_name,
+            &video_path,
+            now,
+            now
+        ],
+    )
+    .map_err(|e| e.to_string())?;
+
+    let existing_clip_ids: HashSet<String> = {
+        let mut stmt = tx
+            .prepare("SELECT clip_id FROM derush_clips WHERE episode_id = ?1")
+            .map_err(|e| e.to_string())?;
+        let iter = stmt
+            .query_map(params![&episode_id], |row| row.get::<_, String>(0))
+            .map_err(|e| e.to_string())?;
+        let mut set = HashSet::new();
+        for item in iter {
+            set.insert(item.map_err(|e| e.to_string())?);
+        }
+        set
+    };
+
+    let mut incoming_clip_ids = HashSet::new();
+    for (index, clip) in clips.iter().enumerate() {
+        let clip_id = clip.id.trim();
+        let clip_src = clip.src.trim();
+        let clip_thumb = clip.thumbnail.trim();
+        if clip_id.is_empty() || clip_src.is_empty() || clip_thumb.is_empty() {
+            continue;
+        }
+
+        incoming_clip_ids.insert(clip_id.to_string());
+
+        tx.execute(
+            "INSERT INTO derush_clips (
+                clip_id, episode_id, clip_path, thumbnail_path, sort_index, original_name
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+             ON CONFLICT(clip_id) DO UPDATE SET
+                episode_id = excluded.episode_id,
+                clip_path = excluded.clip_path,
+                thumbnail_path = excluded.thumbnail_path,
+                sort_index = excluded.sort_index,
+                original_name = excluded.original_name",
+            params![
+                clip_id,
+                &episode_id,
+                clip_src,
+                clip_thumb,
+                index as i64,
+                clip.original_name.as_deref().unwrap_or(""),
+            ],
+        )
+        .map_err(|e| e.to_string())?;
+    }
+
+    for stale_id in existing_clip_ids.difference(&incoming_clip_ids) {
+        tx.execute(
+            "DELETE FROM derush_clips WHERE clip_id = ?1",
+            params![stale_id.as_str()],
+        )
+        .map_err(|e| e.to_string())?;
+    }
+
+    let categories: Vec<DerushCategoryRow> = {
+        let mut stmt = tx
+            .prepare(
+                r#"
+                SELECT
+                    cat.id,
+                    cat.name,
+                    cat.color,
+                    cat.icon,
+                    cat.is_system,
+                    COUNT(
+                        CASE
+                            WHEN clip.episode_id = ?2 THEN cc.clip_id
+                            ELSE NULL
+                        END
+                    ) AS episode_clip_count,
+                    COUNT(cc.clip_id) AS project_clip_count
+                FROM derush_categories cat
+                LEFT JOIN derush_clip_categories cc
+                    ON cc.category_id = cat.id
+                LEFT JOIN derush_clips clip
+                    ON clip.clip_id = cc.clip_id
+                WHERE cat.project_id = ?1
+                GROUP BY
+                    cat.id, cat.name, cat.color, cat.icon, cat.is_system, cat.created_at
+                ORDER BY cat.is_system DESC, cat.created_at ASC
+                "#,
+            )
+            .map_err(|e| e.to_string())?;
+
+        let rows = stmt
+            .query_map(params![&project_id, &episode_id], |row| {
+                let is_system_raw: i64 = row.get(4)?;
+                let episode_clip_count_raw: i64 = row.get(5)?;
+                let project_clip_count_raw: i64 = row.get(6)?;
+                Ok(DerushCategoryRow {
+                    id: row.get(0)?,
+                    name: row.get(1)?,
+                    color: row.get(2)?,
+                    icon: row.get(3)?,
+                    is_system: is_system_raw != 0,
+                    clip_count: episode_clip_count_raw.max(0) as usize,
+                    episode_clip_count: episode_clip_count_raw.max(0) as usize,
+                    project_clip_count: project_clip_count_raw.max(0) as usize,
+                })
+            })
+            .map_err(|e| e.to_string())?;
+
+        let mut out = Vec::new();
+        for row in rows {
+            out.push(row.map_err(|e| e.to_string())?);
+        }
+        out
+    };
+
+    let clip_category_map: HashMap<String, Vec<String>> = {
+        let mut map: HashMap<String, Vec<String>> = HashMap::new();
+        let mut stmt = tx
+            .prepare(
+                r#"
+                SELECT cc.clip_id, cc.category_id
+                FROM derush_clip_categories cc
+                INNER JOIN derush_clips clip
+                    ON clip.clip_id = cc.clip_id
+                INNER JOIN derush_categories cat
+                    ON cat.id = cc.category_id
+                WHERE clip.episode_id = ?1
+                  AND cat.project_id = ?2
+                "#,
+            )
+            .map_err(|e| e.to_string())?;
+
+        let rows = stmt
+            .query_map(params![&episode_id, &project_id], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            })
+            .map_err(|e| e.to_string())?;
+
+        for row in rows {
+            let (clip_id, category_id) = row.map_err(|e| e.to_string())?;
+            map.entry(clip_id).or_default().push(category_id);
+        }
+        map
+    };
+
+    tx.commit().map_err(|e| e.to_string())?;
+
+    Ok(DerushSnapshot {
+        project: DerushProjectSummary {
+            id: project_id,
+            source_key,
+            source_name,
+        },
+        categories,
+        clip_category_map,
+    })
+}
+
+#[tauri::command]
+async fn sync_derush_episode(
+    app: AppHandle,
+    episode_id: String,
+    episode_display_name: String,
+    video_path: String,
+    scope_key: String,
+    scope_name: Option<String>,
+    clips: Vec<DerushClipInput>,
+) -> Result<DerushSnapshot, String> {
+    if episode_id.trim().is_empty() {
+        return Err("episode_id is empty".to_string());
+    }
+    if video_path.trim().is_empty() {
+        return Err("video_path is empty".to_string());
+    }
+    if scope_key.trim().is_empty() {
+        return Err("scope_key is empty".to_string());
+    }
+
+    tokio::task::spawn_blocking(move || {
+        let mut conn = open_derush_db(&app)?;
+        sync_derush_episode_inner(
+            &mut conn,
+            episode_id,
+            episode_display_name,
+            video_path,
+            scope_key,
+            scope_name,
+            clips,
+        )
+    })
+    .await
+    .map_err(|e| format!("sync_derush_episode task panicked: {e}"))?
+}
+
+#[tauri::command]
+async fn create_derush_category(
+    app: AppHandle,
+    project_id: String,
+    name: String,
+    color: String,
+    icon: Option<String>,
+) -> Result<DerushCategoryRow, String> {
+    let project_id = project_id.trim().to_string();
+    let name = name.trim().to_string();
+    if project_id.is_empty() {
+        return Err("project_id is empty".to_string());
+    }
+    if name.is_empty() {
+        return Err("Category name is empty".to_string());
+    }
+
+    tokio::task::spawn_blocking(move || {
+        let mut conn = open_derush_db(&app)?;
+        let tx = conn.transaction().map_err(|e| e.to_string())?;
+
+        let project_exists: Option<i64> = tx
+            .query_row(
+                "SELECT 1 FROM derush_projects WHERE id = ?1",
+                params![&project_id],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(|e| e.to_string())?;
+
+        if project_exists.is_none() {
+            return Err("Unknown project_id".to_string());
+        }
+
+        let normalized_color = {
+            let c = color.trim();
+            if c.starts_with('#') && (c.len() == 7 || c.len() == 4) {
+                c.to_string()
+            } else {
+                "#9BCBFF".to_string()
+            }
+        };
+
+        let now = unix_ms_now();
+        let existing: Option<DerushCategoryRow> = tx
+            .query_row(
+                r#"
+                SELECT id, name, color, icon, is_system
+                FROM derush_categories
+                WHERE project_id = ?1 AND LOWER(name) = LOWER(?2)
+                "#,
+                params![&project_id, &name],
+                |row| {
+                    let is_system_raw: i64 = row.get(4)?;
+                    Ok(DerushCategoryRow {
+                        id: row.get(0)?,
+                        name: row.get(1)?,
+                        color: row.get(2)?,
+                        icon: row.get(3)?,
+                        is_system: is_system_raw != 0,
+                        clip_count: 0,
+                        episode_clip_count: 0,
+                        project_clip_count: 0,
+                    })
+                },
+            )
+            .optional()
+            .map_err(|e| e.to_string())?;
+
+        if let Some(category) = existing {
+            tx.commit().map_err(|e| e.to_string())?;
+            return Ok(category);
+        }
+
+        let category_id = make_scoped_id("cat");
+        tx.execute(
+            "INSERT INTO derush_categories (
+                id, project_id, name, color, icon, is_system, created_at, updated_at
+             ) VALUES (?1, ?2, ?3, ?4, ?5, 0, ?6, ?7)",
+            params![
+                &category_id,
+                &project_id,
+                &name,
+                &normalized_color,
+                &icon,
+                now,
+                now
+            ],
+        )
+        .map_err(|e| e.to_string())?;
+
+        let category = tx
+            .query_row(
+                "SELECT id, name, color, icon, is_system FROM derush_categories WHERE id = ?1",
+                params![&category_id],
+                |row| {
+                    let is_system_raw: i64 = row.get(4)?;
+                    Ok(DerushCategoryRow {
+                        id: row.get(0)?,
+                        name: row.get(1)?,
+                        color: row.get(2)?,
+                        icon: row.get(3)?,
+                        is_system: is_system_raw != 0,
+                        clip_count: 0,
+                        episode_clip_count: 0,
+                        project_clip_count: 0,
+                    })
+                },
+            )
+            .map_err(|e| e.to_string())?;
+
+        tx.commit().map_err(|e| e.to_string())?;
+        Ok(category)
+    })
+    .await
+    .map_err(|e| format!("create_derush_category task panicked: {e}"))?
+}
+
+#[tauri::command]
+async fn set_derush_clip_category(
+    app: AppHandle,
+    clip_id: String,
+    category_id: String,
+    enabled: bool,
+) -> Result<(), String> {
+    let clip_id = clip_id.trim().to_string();
+    let category_id = category_id.trim().to_string();
+
+    if clip_id.is_empty() {
+        return Err("clip_id is empty".to_string());
+    }
+    if category_id.is_empty() {
+        return Err("category_id is empty".to_string());
+    }
+
+    tokio::task::spawn_blocking(move || {
+        let conn = open_derush_db(&app)?;
+
+        // Ensure clip and category belong to the same project.
+        let relation_ok: Option<i64> = conn
+            .query_row(
+                r#"
+                SELECT 1
+                FROM derush_clips clip
+                INNER JOIN derush_episodes ep ON ep.episode_id = clip.episode_id
+                INNER JOIN derush_categories cat ON cat.project_id = ep.project_id
+                WHERE clip.clip_id = ?1 AND cat.id = ?2
+                "#,
+                params![&clip_id, &category_id],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(|e| e.to_string())?;
+
+        if relation_ok.is_none() {
+            return Err("Clip/category relationship is invalid".to_string());
+        }
+
+        if enabled {
+            conn.execute(
+                "INSERT OR IGNORE INTO derush_clip_categories (clip_id, category_id, created_at)
+                 VALUES (?1, ?2, ?3)",
+                params![&clip_id, &category_id, unix_ms_now()],
+            )
+            .map_err(|e| e.to_string())?;
+        } else {
+            conn.execute(
+                "DELETE FROM derush_clip_categories WHERE clip_id = ?1 AND category_id = ?2",
+                params![&clip_id, &category_id],
+            )
+            .map_err(|e| e.to_string())?;
+        }
+
+        Ok(())
+    })
+    .await
+    .map_err(|e| format!("set_derush_clip_category task panicked: {e}"))?
+}
+
+#[tauri::command]
+async fn update_derush_category(
+    app: AppHandle,
+    category_id: String,
+    name: String,
+    color: String,
+) -> Result<(), String> {
+    let category_id = category_id.trim().to_string();
+    let name = name.trim().to_string();
+    let color = color.trim().to_string();
+
+    if category_id.is_empty() {
+        return Err("category_id is empty".to_string());
+    }
+    if name.is_empty() {
+        return Err("Category name is empty".to_string());
+    }
+
+    let normalized_color = if color.starts_with('#') && (color.len() == 7 || color.len() == 4) {
+        color
+    } else {
+        "#9BCBFF".to_string()
+    };
+
+    tokio::task::spawn_blocking(move || {
+        let conn = open_derush_db(&app)?;
+
+        let project_id: Option<String> = conn
+            .query_row(
+                "SELECT project_id FROM derush_categories WHERE id = ?1",
+                params![&category_id],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(|e| e.to_string())?;
+
+        let Some(project_id) = project_id else {
+            return Err("Unknown category_id".to_string());
+        };
+
+        let duplicate: Option<String> = conn
+            .query_row(
+                r#"
+                SELECT id
+                FROM derush_categories
+                WHERE project_id = ?1
+                  AND LOWER(name) = LOWER(?2)
+                  AND id != ?3
+                "#,
+                params![&project_id, &name, &category_id],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(|e| e.to_string())?;
+
+        if duplicate.is_some() {
+            return Err("A category with this name already exists".to_string());
+        }
+
+        conn.execute(
+            r#"
+            UPDATE derush_categories
+            SET name = ?1,
+                color = ?2,
+                updated_at = ?3
+            WHERE id = ?4
+            "#,
+            params![&name, &normalized_color, unix_ms_now(), &category_id],
+        )
+        .map_err(|e| e.to_string())?;
+
+        Ok(())
+    })
+    .await
+    .map_err(|e| format!("update_derush_category task panicked: {e}"))?
+}
+
+#[tauri::command]
+async fn delete_derush_category(app: AppHandle, category_id: String) -> Result<(), String> {
+    let category_id = category_id.trim().to_string();
+    if category_id.is_empty() {
+        return Err("category_id is empty".to_string());
+    }
+
+    tokio::task::spawn_blocking(move || {
+        let conn = open_derush_db(&app)?;
+        let deleted = conn
+            .execute(
+                "DELETE FROM derush_categories WHERE id = ?1",
+                params![&category_id],
+            )
+            .map_err(|e| e.to_string())?;
+
+        if deleted == 0 {
+            return Err("Unknown category_id".to_string());
+        }
+
+        Ok(())
+    })
+    .await
+    .map_err(|e| format!("delete_derush_category task panicked: {e}"))?
+}
 
 #[tauri::command]
 fn save_background_image(app: tauri::AppHandle, source_path: String) -> Result<String, String> {
@@ -182,8 +902,7 @@ fn save_background_image(app: tauri::AppHandle, source_path: String) -> Result<S
     let file_name = format!("background.{}", extension);
     let destination = backgrounds_dir.join(file_name);
 
-    fs::copy(source, &destination)
-        .map_err(|e| format!("Failed to copy background image: {e}"))?;
+    fs::copy(source, &destination).map_err(|e| format!("Failed to copy background image: {e}"))?;
 
     Ok(destination.to_string_lossy().to_string())
 }
@@ -539,6 +1258,20 @@ async fn clear_episode_panel_cache(app: AppHandle) -> Result<(), String> {
     if episodes_dir.exists() {
         std::fs::remove_dir_all(&episodes_dir).map_err(|e| e.to_string())?;
     }
+
+    // Keep derush metadata in sync with episode cache cleanup.
+    let conn = open_derush_db(&app)?;
+    conn.execute_batch(
+        r#"
+        DELETE FROM derush_clip_categories;
+        DELETE FROM derush_clips;
+        DELETE FROM derush_categories;
+        DELETE FROM derush_episodes;
+        DELETE FROM derush_projects;
+        "#,
+    )
+    .map_err(|e| format!("Failed clearing derush SQLite data: {e}"))?;
+
     Ok(())
 }
 
@@ -572,7 +1305,7 @@ async fn export_clips(
     // - else: per-clip export prefers stream copy when already AE-friendly, else re-encodes for compatibility
     let ffmpeg = resolve_bundled_tool(&app, "ffmpeg")?;
     let ffprobe = resolve_bundled_tool(&app, "ffprobe")?;
-    
+
     let mut save_path = PathBuf::from(&save_path);
     let export_start_time = Instant::now();
 
@@ -765,7 +1498,8 @@ async fn export_clips(
 
                     // percent is still calculated for the progress bar
                     let denom_ms = grand_total_ms.or(total_ms).unwrap_or(0);
-                    let overall_ms = completed_ms.saturating_add(_out_ms.min(total_ms.unwrap_or(_out_ms)));
+                    let overall_ms =
+                        completed_ms.saturating_add(_out_ms.min(total_ms.unwrap_or(_out_ms)));
                     let mut percent = if denom_ms > 0 {
                         ((overall_ms as f64 / denom_ms as f64) * 100.0).floor() as i32
                     } else {
@@ -899,7 +1633,6 @@ async fn export_clips(
     if merge_enabled {
         // ---------------- MERGE ----------------
 
-
         use std::io::Write;
         use tempfile::NamedTempFile;
 
@@ -926,12 +1659,14 @@ async fn export_clips(
 
         // Write file list for ffmpeg concat demuxer
         emit_export_progress(&app, 40, "Preparing file list...", export_start_time);
-        let mut filelist = NamedTempFile::new().map_err(|e| format!("Failed to create temp file: {e}"))?;
+        let mut filelist =
+            NamedTempFile::new().map_err(|e| format!("Failed to create temp file: {e}"))?;
         for c in &clips {
             // ffmpeg concat demuxer requires each line: file 'path'
             // Escape single quotes in paths
             let safe_path = c.replace("'", "'\\''");
-            writeln!(filelist, "file '{}'", safe_path).map_err(|e| format!("Failed to write to temp file: {e}"))?;
+            writeln!(filelist, "file '{}'", safe_path)
+                .map_err(|e| format!("Failed to write to temp file: {e}"))?;
         }
         let filelist_path = filelist.path().to_string_lossy().to_string();
 
@@ -1156,7 +1891,12 @@ async fn export_clips(
                             file_name_only(output_str)
                         ),
                     );
-                    emit_export_progress(&app, 15, "Stream copy failed; re-encoding...", export_start_time);
+                    emit_export_progress(
+                        &app,
+                        15,
+                        "Stream copy failed; re-encoding...",
+                        export_start_time,
+                    );
                     let app_for_ffmpeg = app.clone();
                     let ffmpeg_clone = ffmpeg.clone();
                     let grand_total = total_ms;
@@ -1465,6 +2205,11 @@ fn main() {
         .manage(PreviewProxyLocks::default())
         .manage(ActiveSidecar::default())
         .invoke_handler(tauri::generate_handler![
+            sync_derush_episode,
+            create_derush_category,
+            set_derush_clip_category,
+            update_derush_category,
+            delete_derush_category,
             detect_scenes,
             abort_detect_scenes,
             export_clips,

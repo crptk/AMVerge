@@ -30,6 +30,11 @@ type LayoutProps = {
     onPickExportDir: () => void;
     onExportDirChange: (dir: string) => void;
     defaultMergedName: string;
+    activeCategoryId: string;
+    clipCategoryMap: Record<string, string[]>;
+    categoryOptions: { id: string; name: string; color: string }[];
+    onToggleClipCategory: (clipId: string, categoryId: string) => Promise<void> | void;
+    categoryColorMap: Record<string, string>;
 };
 
 export default function MainLayout(props: LayoutProps) {
@@ -100,6 +105,11 @@ export default function MainLayout(props: LayoutProps) {
                     userHasHEVC={props.userHasHEVC}
                     setFocusedClip={props.setFocusedClip}
                     focusedClip={props.focusedClip}
+                    activeCategoryId={props.activeCategoryId}
+                    clipCategoryMap={props.clipCategoryMap}
+                    categoryOptions={props.categoryOptions}
+                    onToggleClipCategory={props.onToggleClipCategory}
+                    categoryColorMap={props.categoryColorMap}
                  />
             </div>
             

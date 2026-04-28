@@ -95,6 +95,117 @@
     background: var(--accent);
 }
 
+.clip-category-chip {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    z-index: 13;
+    width: 12px;
+    height: 12px;
+    padding: 0;
+    border-radius: 999px;
+    border: 1px solid rgb(255 255 255 / 0.38);
+    background: rgb(0 0 0 / 0.34);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: border 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease, transform 0.15s ease;
+}
+
+.clip-category-chip-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 999px;
+}
+
+.clip-category-chip.assigned {
+    opacity: 0.96;
+    box-shadow: 0 0 8px rgb(var(--accent-rgb) / 0.28);
+}
+
+.clip-category-chip.empty {
+    opacity: 0.4;
+}
+
+.clip-category-chip:hover,
+.clip-category-chip.open {
+    opacity: 1;
+    border-color: rgb(var(--accent-rgb) / 0.9);
+    transform: scale(1.08);
+}
+
+.clip-category-chip.multiple {
+    box-shadow:
+        0 0 0 1px rgb(255 255 255 / 0.2),
+        0 0 8px rgb(var(--accent-rgb) / 0.25);
+}
+
+.clip-category-menu {
+    position: absolute;
+    top: 24px;
+    right: 8px;
+    z-index: 20;
+    min-width: 150px;
+    max-width: 190px;
+    max-height: calc(100% - 34px);
+    background: rgb(3 6 14 / 0.95);
+    border: 1px solid rgb(var(--accent-rgb) / 0.5);
+    border-radius: 10px;
+    padding: 5px;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    box-shadow: 0 10px 24px rgb(0 0 0 / 0.45);
+    overflow-y: auto;
+}
+
+.clip-category-menu-item {
+    width: 100%;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    background: transparent;
+    color: white;
+    font-family: inherit;
+    font-size: 0.9rem;
+    padding: 4px 6px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.clip-category-menu-item:hover {
+    border-color: rgb(var(--accent-rgb) / 0.6);
+    background: rgb(var(--accent-rgb) / 0.14);
+}
+
+.clip-category-menu-item.selected {
+    border-color: rgb(var(--accent-rgb) / 0.85);
+    background: rgb(var(--accent-rgb) / 0.22);
+}
+
+.clip-category-menu-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 999px;
+    flex: 0 0 8px;
+}
+
+.clip-category-menu-name {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.clip-category-menu-check {
+    color: rgb(255 255 255 / 0.85);
+    font-size: 0.95rem;
+    line-height: 1;
+}
+
 .clip-skeleton {
     aspect-ratio: 1;
     border-radius: 12px;
