@@ -1,6 +1,5 @@
-import React, { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect } from "react";
 import { FaChevronDown } from "react-icons/fa";
-import "../../styles/dropdown.css";
 
 interface DropdownOption<T> {
   value: T;
