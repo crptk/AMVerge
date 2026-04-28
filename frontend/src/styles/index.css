@@ -12,6 +12,6 @@
 @import "./menu/about.css";
 @import "./menu/console.css";
 @import "./menu/menu.css";
-@import "./menu/patchnotes.css";
+/* @import "./menu/patchnotes.css"; */
 @import "./settings/settings.css";
 @import "./settings/cropModal.css";

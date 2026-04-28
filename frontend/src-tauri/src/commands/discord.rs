@@ -2,13 +2,13 @@ use std::io::Write;
 use std::path::Path;
 use std::process::{Command, Stdio};
 
-use tauri::{AppHandle, Manager, State};
+use tauri::{AppHandle, State};
 use crate::state::DiscordRPCState;
 use crate::utils::process::apply_no_window;
 
 #[tauri::command]
 pub async fn start_discord_rpc(
-    app: AppHandle,
+    _app: AppHandle,
     state: State<'_, DiscordRPCState>,
 ) -> Result<(), String> {
     let mut child_guard = state.child.lock().unwrap();
