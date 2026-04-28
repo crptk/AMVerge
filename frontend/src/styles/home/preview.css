@@ -185,8 +185,35 @@
     box-shadow: 0 0 14px rgba(var(--accent-rgb), 0.22);
 }
 
+.editor-brand-icon {
+    width: 22px;
+    height: 22px;
+    border-radius: 5px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid currentColor;
+}
+
 .editor-target-icon {
-    font-size: 1rem;
+    width: 14px;
+    height: 14px;
+    object-fit: contain;
+}
+
+.editor-brand-icon.premiere {
+    color: #9999ff;
+    background: rgba(153, 153, 255, 0.14);
+}
+
+.editor-brand-icon.after-effects {
+    color: #cf96ff;
+    background: rgba(207, 150, 255, 0.14);
+}
+
+.editor-brand-icon.davinci {
+    color: #65d6ff;
+    background: rgba(101, 214, 255, 0.14);
 }
 
 .export-dir-row {

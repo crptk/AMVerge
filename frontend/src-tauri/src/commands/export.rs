@@ -828,15 +828,7 @@ fn import_into_premiere(media_paths: &[String]) -> Result<String, String> {
 
         // Required by Premiere for CLI ExtendScript execution.
         if let Some(exe_dir) = premiere.parent() {
-            let marker = exe_dir.join("extendscriptprqe.txt");
-            if !marker.exists() {
-                fs::write(&marker, b"").map_err(|e| {
-                    format!(
-                        "Premiere needs '{}' next to the executable for CLI scripting, but it could not be created automatically: {e}",
-                        marker.display()
-                    )
-                })?;
-            }
+            ensure_premiere_cli_marker(exe_dir)?;
         }
 
         console_log(
@@ -860,6 +852,84 @@ fn import_into_premiere(media_paths: &[String]) -> Result<String, String> {
 
         Ok("Premiere import command sent.".to_string())
     }
+}
+
+#[cfg(target_os = "windows")]
+fn ensure_premiere_cli_marker(exe_dir: &Path) -> Result<(), String> {
+    let marker = exe_dir.join("extendscriptprqe.txt");
+    if marker.exists() {
+        return Ok(());
+    }
+
+    match fs::write(&marker, b"") {
+        Ok(_) => return Ok(()),
+        Err(err) => {
+            if err.kind() != std::io::ErrorKind::PermissionDenied {
+                return Err(format!(
+                    "Failed to enable Premiere CLI scripting at '{}': {err}",
+                    marker.display()
+                ));
+            }
+        }
+    }
+
+    create_marker_with_uac(&marker)?;
+
+    for _ in 0..20 {
+        if marker.exists() {
+            return Ok(());
+        }
+        std::thread::sleep(Duration::from_millis(250));
+    }
+
+    Err(format!(
+        "Could not enable Premiere CLI scripting automatically.\nPlease create this file once and try again:\n{}",
+        marker.display()
+    ))
+}
+
+#[cfg(target_os = "windows")]
+fn create_marker_with_uac(marker: &Path) -> Result<(), String> {
+    let marker_str = marker.to_string_lossy().to_string();
+    let marker_script = format!(
+        "$ErrorActionPreference = 'Stop'\n$marker = '{}'\nNew-Item -ItemType File -Path $marker -Force | Out-Null\n",
+        escape_ps_single_quoted(&marker_str)
+    );
+    let marker_script_path = write_temp_script("amverge_premiere_marker", "ps1", &marker_script)?;
+    let marker_script_path_str = marker_script_path.to_string_lossy().to_string();
+
+    // Triggers a UAC prompt when elevation is required.
+    let inner_args = format!(
+        "-NoProfile -ExecutionPolicy Bypass -File \"{}\"",
+        marker_script_path_str
+    );
+    let runas_command = format!(
+        "Start-Process -FilePath 'powershell.exe' -Verb RunAs -WindowStyle Hidden -Wait -ArgumentList '{}'",
+        escape_ps_single_quoted(&inner_args)
+    );
+
+    let mut cmd = Command::new("powershell");
+    apply_no_window(&mut cmd);
+    let out = cmd
+        .arg("-NoProfile")
+        .arg("-ExecutionPolicy")
+        .arg("Bypass")
+        .arg("-Command")
+        .arg(runas_command)
+        .output()
+        .map_err(|e| format!("Failed to request elevated marker creation: {e}"))?;
+
+    if out.status.success() {
+        return Ok(());
+    }
+
+    let stderr = String::from_utf8_lossy(&out.stderr).trim().to_string();
+    let stdout = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    Err(format!(
+        "Failed to enable Premiere CLI scripting automatically.{}{}",
+        if stderr.is_empty() { "" } else { "\nstderr: " },
+        if stderr.is_empty() { stdout } else { stderr }
+    ))
 }
 
 fn import_into_davinci_resolve(media_paths: &[String]) -> Result<String, String> {
@@ -1081,6 +1151,11 @@ fn escape_py_single_quoted(raw: &str) -> String {
 }
 
 #[cfg(target_os = "windows")]
+fn escape_ps_single_quoted(raw: &str) -> String {
+    raw.replace('\'', "''")
+}
+
+#[cfg(target_os = "windows")]
 fn resolve_afterfx_executable() -> Option<PathBuf> {
     if let Ok(custom) = std::env::var("AMVERGE_AFTERFX_PATH") {
         let path = PathBuf::from(custom);
@@ -1104,7 +1179,7 @@ fn resolve_premiere_executable() -> Option<PathBuf> {
         }
     }
 
-    find_latest_adobe_executable("Adobe Premiere Pro", Path::new("Adobe Premiere Pro.exe"))
+    find_latest_adobe_executable("Adobe Premiere Pro", PathBuf::from("Adobe Premiere Pro.exe"))
 }
 
 #[cfg(target_os = "windows")]

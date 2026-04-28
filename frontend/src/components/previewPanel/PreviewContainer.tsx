@@ -1,12 +1,13 @@
 import VideoPlayer from "./videoPlayer/VideoPlayer.tsx"
 import HowToUse from "./HowToUse.tsx"
 import React from "react";
-import { FaFolderOpen, FaFileExport, FaVideo, FaLayerGroup, FaFolder, FaRocket, FaPlayCircle, FaMagic } from "react-icons/fa";
-import { SiDavinciresolve } from "react-icons/si";
-import { type IconType } from "react-icons";
+import { FaFolderOpen, FaFileExport, FaVideo, FaLayerGroup, FaFolder, FaRocket } from "react-icons/fa";
 import { GeneralSettings } from "../../settings/generalSettings";
 import { type EditorTarget } from "../../hooks/useImportExport";
 import Dropdown from "../common/Dropdown";
+import premiereIcon from "../../assets/editor-icons/adobepremierepro.svg";
+import afterEffectsIcon from "../../assets/editor-icons/adobeaftereffects.svg";
+import davinciIcon from "../../assets/editor-icons/davinciresolve.svg";
 
 const EXPORT_OPTIONS = [
   { value: "mp4", label: "MP4" },
@@ -16,10 +17,15 @@ const EXPORT_OPTIONS = [
   { value: "xml", label: "XML" },
 ];
 
-const EDITOR_TARGETS: { value: EditorTarget; label: string; Icon: IconType }[] = [
-  { value: "premiere", label: "Premiere Pro", Icon: FaPlayCircle },
-  { value: "after_effects", label: "After Effects", Icon: FaMagic },
-  { value: "davinci_resolve", label: "DaVinci Resolve", Icon: SiDavinciresolve },
+const EDITOR_TARGETS: {
+  value: EditorTarget;
+  label: string;
+  className: string;
+  icon: string;
+}[] = [
+  { value: "premiere", label: "Premiere Pro", className: "premiere", icon: premiereIcon },
+  { value: "after_effects", label: "After Effects", className: "after-effects", icon: afterEffectsIcon },
+  { value: "davinci_resolve", label: "DaVinci Resolve", className: "davinci", icon: davinciIcon },
 ];
 
 type PreviewContainerProps = {
@@ -137,15 +143,17 @@ export default function PreviewContainer (props: PreviewContainerProps) {
             <FaLayerGroup className="label-icon" /> Send To
           </label>
           <div className="editor-target-grid">
-            {EDITOR_TARGETS.map(({ value, label, Icon }) => (
+            {EDITOR_TARGETS.map(({ value, label, className, icon }) => (
               <button
                 key={value}
                 type="button"
-                className={`editor-target-chip ${editorTarget === value ? "active" : ""}`}
+                className={`editor-target-chip ${className} ${editorTarget === value ? "active" : ""}`}
                 onClick={() => setEditorTarget(value)}
-                title={`Exporter vers ${label}`}
+                title={`Send to ${label}`}
               >
-                <Icon className="editor-target-icon" />
+                <span className={`editor-brand-icon ${className}`}>
+                  <img src={icon} alt="" className="editor-target-icon" />
+                </span>
                 <span>{label}</span>
               </button>
             ))}
@@ -160,7 +168,7 @@ export default function PreviewContainer (props: PreviewContainerProps) {
               />
               <span className="checkmark"></span>
             </label>
-            <p>Import automatique dans le projet ouvert</p>
+            <p>Auto-import into the open project</p>
           </div>
         </div>
 
