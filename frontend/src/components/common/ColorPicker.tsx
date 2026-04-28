@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect } from "react";
 import { HexColorPicker } from "react-colorful";
 import "../../styles/colorPicker.css";
 
