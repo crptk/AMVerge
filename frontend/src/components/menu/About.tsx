@@ -2,7 +2,7 @@ import { open } from '@tauri-apps/plugin-shell';
 
 export default function About() {
   return (
-    <section className="settings-section about-section">
+    <section className="panel menu-panel">
       <h3>About AMVerge</h3>
       <div className="about-content" style={{ fontFamily: "Arial, sans-serif" }}>
         <p>

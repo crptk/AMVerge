@@ -2,16 +2,6 @@
    ABOUT
 -------------------- */
 
-.about-section {
-    display: flex;
-    flex-direction: column;
-    min-height: 0;
-    height: 100%;
-    margin-bottom: 6px;
-    margin-right: 6px;
-    margin-left: 6px;
-}
-
 .about-content {
     flex: 1 1 auto;
     overflow-y: auto;
@@ -42,6 +32,7 @@
 .about-content ol {
     margin-left: 1.5em;
     margin-bottom: 1em;
+    
 }
 
 .about-section p {

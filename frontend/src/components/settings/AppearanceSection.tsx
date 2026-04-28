@@ -70,7 +70,7 @@ export default function AppearanceSection({
   };
 
   return (
-    <section className="settings-section">
+    <section className="panel">
       <h3>Appearance</h3>
       <div className="settings-row">
         <label className="settings-label" htmlFor={accentId}>

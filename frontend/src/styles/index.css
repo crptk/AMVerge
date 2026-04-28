@@ -1,5 +1,6 @@
 @import "./variables.css";
 @import "./base.css";
+@import "./navbar.css";
 @import "./common/animations.css";
 @import "./common/colorPicker.css";
 @import "./common/dropdown.css";
@@ -15,3 +16,4 @@
 @import "./menu/patchnotes.css";
 @import "./settings/settings.css";
 @import "./settings/cropModal.css";
+@import "./menu/credits.css"

@@ -63,7 +63,7 @@ export default function GeneralSection({
   };
 
   return (
-    <section className="settings-section">
+    <section className="panel">
       <h3>General</h3>
 
       {loading && (

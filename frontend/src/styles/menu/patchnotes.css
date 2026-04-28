@@ -14,14 +14,13 @@
     margin: 0;
 }
 
-
-.patchnotes-wrapper {
+.patchnotes-content {
     flex: 1;
     min-height: 0;
     overflow-y: auto;
     /* border: 1px solid rgba(255, 255, 255, 0.18); */
     border-radius: 10px;
-    padding: 12px;
+    padding: 0 20px 0px 20px;
     font-family: Consolas, "Courier New", monospace;
     font-size: 13px;
     line-height: 1.35;
@@ -29,37 +28,34 @@
     scrollbar-color: var(--accent) transparent;    
 }
 
-.patchnotes-wrapper h1,
-.patchnotes-wrapper h2,
-.patchnotes-wrapper h3 {
+.patchnotes-content h1,
+.patchnotes-content h2,
+.patchnotes-content h3 {
     margin-top: 0.2rem;
-    margin-bottom: 0.2rem;
+    margin-bottom: 0.1rem;
 }
 
-.patchnotes-wrapper ul {
+.patchnotes-content ul {
     margin: 0rem 0 0rem 1.2rem;
     padding: 0;
 }
 
-.patchnotes-wrapper ul ul {
+.patchnotes-content ul ul {
     margin-bottom: 0rem;
     margin-left: 1rem;
     /* background: red; */
 }
-
-.patchnotes-wrapper li {
+.patchnotes-content li {
     margin-bottom: 0.8rem;
     /* background: green; */
 }
 
-
-.patchnotes-wrapper li li {
+.patchnotes-content li li {
     margin-bottom: 0.2rem;
     margin-top: 0.1rem;
     /* background: blue; */
 }
 
-
-.patchnotes-wrapper p {
+.patchnotes-content p {
     margin: 0rem 0;
 }

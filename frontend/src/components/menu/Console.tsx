@@ -35,7 +35,7 @@ export default function Console() {
   };
 
   return (
-    <section className="console-section">
+    <section className="panel menu-panel">
       <div className="console-header">
         <div>
           <h3>Console</h3>
