@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { ClipItem, EpisodeEntry } from "../types/domain"
 import { fileNameFromPath, truncateFileName, detectScenes } from "../utils/episodeUtils";
+export type EditorTarget = "premiere" | "after_effects" | "davinci_resolve";
 import { GeneralSettings } from "../settings/generalSettings";
 
 type ImportExportProps = {
@@ -23,7 +24,7 @@ type ImportExportProps = {
   setProgress: React.Dispatch<React.SetStateAction<number>>;
   setProgressMsg: React.Dispatch<React.SetStateAction<string>>;
   episodesPath: string | null;
-  exportFormat: "mp4" | "mkv" | "mov" | "avi";
+  exportFormat: "mp4" | "mkv" | "mov" | "avi" | "xml";
   onRPCUpdate?: (data: any) => void;
   generalSettings: GeneralSettings;
 };
@@ -76,7 +77,7 @@ export default function useImportExport(props: ImportExportProps) {
       props.setVideoIsHEVC(null);
       setImportToken(Date.now().toString());
 
-      const rpcButtons = [];
+      const rpcButtons: { label: string; url: string }[] = [];
       if (props.generalSettings.rpcShowButtons) {
         rpcButtons.push({ label: "Discord Server", url: "https://discord.gg/asJkqwqb" });
         rpcButtons.push({ label: "Website", url: "https://amverge.app/" });
@@ -89,7 +90,7 @@ export default function useImportExport(props: ImportExportProps) {
         large_image: "amverge_logo",
         small_image: props.generalSettings.rpcShowMiniIcons ? "loading_icon_new" : undefined,
         small_text: props.generalSettings.rpcShowMiniIcons ? "Detecting..." : undefined,
-        buttons: props.generalSettings.rpcShowButtons,
+        buttons: props.generalSettings.rpcShowButtons ? rpcButtons : undefined,
       });
 
       const formatted = await detectScenes(file, episodeId, props.episodesPath);
@@ -214,7 +215,13 @@ export default function useImportExport(props: ImportExportProps) {
     }
   };
 
-  const handleExport = async (selectedClips: Set<string>, mergeEnabled: boolean, mergeFileName?: string) => {
+  const handleExport = async (
+    selectedClips: Set<string>,
+    mergeEnabled: boolean,
+    mergeFileName?: string,
+    editorTarget: EditorTarget = "premiere",
+    autoImport = true
+  ) => {
     if (selectedClips.size === 0) return;
 
     const selected = props.clips.filter((c: ClipItem) => selectedClips.has(c.id));
@@ -234,8 +241,17 @@ export default function useImportExport(props: ImportExportProps) {
 
       const clipArray = selected.map((c: ClipItem) => c.src);
       const format = props.exportFormat || "mp4";
+      if (format === "xml") {
+        window.alert("XML export is not supported by this flow yet. Please use MP4, MKV, MOV, or AVI.");
+        return;
+      }
+      let exportedPaths: string[] = [];
 
-      const rpcButtons = [];
+      const rpcButtons: { label: string; url: string }[] = [];
+      if (props.generalSettings.rpcShowButtons) {
+        rpcButtons.push({ label: "Discord Server", url: "https://discord.gg/asJkqwqb" });
+        rpcButtons.push({ label: "Website", url: "https://amverge.app/" });
+      }
       props.onRPCUpdate?.({
         type: "update",
         details: `Exporting ${selected.length} clips`,
@@ -243,14 +259,14 @@ export default function useImportExport(props: ImportExportProps) {
         large_image: "amverge_logo",
         small_image: props.generalSettings.rpcShowMiniIcons ? "save_icon_new" : undefined,
         small_text: props.generalSettings.rpcShowMiniIcons ? "Exporting..." : undefined,
-        buttons: props.generalSettings.rpcShowButtons,
+        buttons: props.generalSettings.rpcShowButtons ? rpcButtons : undefined,
       });
 
       if (mergeEnabled) {
         const baseName = mergeFileName || ((selected[0]?.originalName || "episode") + "_merged");
         const savePath = `${dir}\\${baseName}.${format}`;
 
-        await invoke("export_clips", {
+        exportedPaths = await invoke<string[]>("export_clips", {
           clips: clipArray,
           savePath: savePath,
           mergeEnabled: mergeEnabled,
@@ -262,11 +278,32 @@ export default function useImportExport(props: ImportExportProps) {
         const defaultBase = firstStem.replace(/_\d{4}$/, "");
         const savePath = `${dir}\\${defaultBase}_####.${format}`;
 
-        await invoke("export_clips", {
+        exportedPaths = await invoke<string[]>("export_clips", {
           clips: clipArray,
           savePath: savePath,
           mergeEnabled: false,
         });
+      }
+
+      if (autoImport && exportedPaths.length > 0) {
+        try {
+          const result = await invoke<string>("import_media_to_editor", {
+            editorTarget,
+            mediaPaths: exportedPaths,
+          });
+          console.log(result);
+        } catch (err) {
+          console.warn("Auto-import failed:", err);
+          const details = String(err ?? "Unknown error")
+            .replace(/^Error:\s*/i, "")
+            .split("\n")[0]
+            .trim();
+          props.setProgressMsg(
+            details
+              ? `Export completed. Auto-import failed: ${details}`
+              : "Export completed. Auto-import failed (see Console)."
+          );
+        }
       }
 
       props.onRPCUpdate?.({
@@ -276,7 +313,7 @@ export default function useImportExport(props: ImportExportProps) {
         large_image: "amverge_logo",
         small_image: props.generalSettings.rpcShowMiniIcons ? "check_icon_new" : undefined,
         small_text: props.generalSettings.rpcShowMiniIcons ? "Done" : undefined,
-        buttons: props.generalSettings.rpcShowButtons,
+        buttons: props.generalSettings.rpcShowButtons ? rpcButtons : undefined,
       });
 
       // Revert back to normal state after 10 seconds
@@ -288,7 +325,7 @@ export default function useImportExport(props: ImportExportProps) {
           large_image: "amverge_logo",
           small_image: props.generalSettings.rpcShowMiniIcons ? "edit_icon_new" : undefined,
           small_text: props.generalSettings.rpcShowMiniIcons ? "Editing" : undefined,
-          buttons: props.generalSettings.rpcShowButtons,
+          buttons: props.generalSettings.rpcShowButtons ? rpcButtons : undefined,
         });
       }, 10000);
     } catch (err) {
@@ -305,7 +342,7 @@ export default function useImportExport(props: ImportExportProps) {
 
   const handleDownloadSingleClip = async (clip: ClipItem) => {
     try {
-      const format = props.exportFormat || "mp4";
+      const format = props.exportFormat === "xml" ? "mp4" : (props.exportFormat || "mp4");
       const fileName = clip.originalName || fileNameFromPath(clip.src);
       const defaultPath = `${fileName}.${format}`;
 

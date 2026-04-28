@@ -1,8 +1,8 @@
 import { useState } from "react";
-import About from "../components/menu/About";
-import Console from "../components/menu/Console";
-import PatchNotes from "../components/menu/PatchNotes";
-import Credits from "../components/menu/Credits";
+import AboutSection from "../components/menu/AboutSection";
+import ConsoleSection from "../components/menu/ConsoleSection";
+import LogsSection from "../components/menu/LogsSection";
+import CreditSection from "../components/menu/CreditSection";
 
 const PAGES = [
   { key: "about", label: "About" },
@@ -32,10 +32,10 @@ export default function Menu() {
       </div>
       <div className="menu-content">
         <div className="menu-section">
-          {activePage === "about" && <About />}
-          {activePage === "console" && <Console />}
-          {activePage === "logs" && <PatchNotes />}
-          {activePage === "credits" && <Credits />}
+          {activePage === "about" && <AboutSection />}
+          {activePage === "console" && <ConsoleSection />}
+          {activePage === "logs" && <LogsSection />}
+          {activePage === "credits" && <CreditSection />}
         </div>
       </div>
     </div>

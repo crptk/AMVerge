@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { FaChevronDown } from "react-icons/fa";
+import "../../styles/common/dropdown.css";
 
 interface DropdownOption<T> {
   value: T;

@@ -1,8 +1,11 @@
 import VideoPlayer from "./videoPlayer/VideoPlayer.tsx"
 import HowToUse from "./HowToUse.tsx"
 import React from "react";
-import { FaFolderOpen, FaFileExport, FaVideo, FaLayerGroup, FaFolder, FaRocket } from "react-icons/fa";
+import { FaFolderOpen, FaFileExport, FaVideo, FaLayerGroup, FaFolder, FaRocket, FaPlayCircle, FaMagic } from "react-icons/fa";
+import { SiDavinciresolve } from "react-icons/si";
+import { type IconType } from "react-icons";
 import { GeneralSettings } from "../../settings/generalSettings";
+import { type EditorTarget } from "../../hooks/useImportExport";
 import Dropdown from "../common/Dropdown";
 
 const EXPORT_OPTIONS = [
@@ -12,6 +15,13 @@ const EXPORT_OPTIONS = [
   { value: "avi", label: "AVI" },
   { value: "xml", label: "XML" },
 ];
+
+const EDITOR_TARGETS: { value: EditorTarget; label: string; Icon: IconType }[] = [
+  { value: "premiere", label: "Premiere Pro", Icon: FaPlayCircle },
+  { value: "after_effects", label: "After Effects", Icon: FaMagic },
+  { value: "davinci_resolve", label: "DaVinci Resolve", Icon: SiDavinciresolve },
+];
+
 type PreviewContainerProps = {
   focusedClip: string | null;
   focusedClipThumbnail: string | null;
@@ -22,7 +32,9 @@ type PreviewContainerProps = {
   handleExport: (
     selectedClips: Set<string>,
     enableMerged: boolean,
-    mergeFileName?: string
+    mergeFileName?: string,
+    editorTarget?: EditorTarget,
+    autoImport?: boolean
   ) => Promise<void>;
   exportDir: string | null;
   onPickExportDir: () => void;
@@ -34,6 +46,8 @@ type PreviewContainerProps = {
 
 export default function PreviewContainer (props: PreviewContainerProps) {
   const [mergeEnabled, setMergeEnabled] = React.useState(true);
+  const [editorTarget, setEditorTarget] = React.useState<EditorTarget>("premiere");
+  const [autoImport, setAutoImport] = React.useState(true);
   const [showMergeNameModal, setShowMergeNameModal] = React.useState(false);
   const mergeNameInputRef = React.useRef<HTMLInputElement | null>(null);
 
@@ -50,7 +64,7 @@ export default function PreviewContainer (props: PreviewContainerProps) {
     if (mergeEnabled) {
       setShowMergeNameModal(true);
     } else {
-      props.handleExport(props.selectedClips, false);
+      props.handleExport(props.selectedClips, false, undefined, editorTarget, autoImport);
     }
   };
 
@@ -58,7 +72,7 @@ export default function PreviewContainer (props: PreviewContainerProps) {
     const value = (mergeNameInputRef.current?.value ?? "").trim();
     if (!value) return;
     setShowMergeNameModal(false);
-    props.handleExport(props.selectedClips, true, value);
+    props.handleExport(props.selectedClips, true, value, editorTarget, autoImport);
   };
   return (
     <main  className="preview-container" >
@@ -115,6 +129,38 @@ export default function PreviewContainer (props: PreviewContainerProps) {
               </label>
               <p>Merge clips</p>
             </div>
+          </div>
+        </div>
+
+        <div className="export-target-section">
+          <label className="export-label">
+            <FaLayerGroup className="label-icon" /> Send To
+          </label>
+          <div className="editor-target-grid">
+            {EDITOR_TARGETS.map(({ value, label, Icon }) => (
+              <button
+                key={value}
+                type="button"
+                className={`editor-target-chip ${editorTarget === value ? "active" : ""}`}
+                onClick={() => setEditorTarget(value)}
+                title={`Exporter vers ${label}`}
+              >
+                <Icon className="editor-target-icon" />
+                <span>{label}</span>
+              </button>
+            ))}
+          </div>
+          <div className="checkbox-row auto-import-row">
+            <label className="custom-checkbox">
+              <input
+                type="checkbox"
+                className="checkbox"
+                checked={autoImport}
+                onChange={(e) => setAutoImport(e.target.checked)}
+              />
+              <span className="checkmark"></span>
+            </label>
+            <p>Import automatique dans le projet ouvert</p>
           </div>
         </div>
 

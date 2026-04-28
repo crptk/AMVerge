@@ -1,4 +1,5 @@
-use std::io::{BufRead, BufReader};
+use std::fs;
+use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
@@ -11,15 +12,23 @@ use crate::utils::logging::{console_log, sanitize_for_console};
 use crate::utils::paths::file_name_only;
 use crate::utils::process::apply_no_window;
 
+#[derive(Debug, Clone, Copy, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EditorTarget {
+    Premiere,
+    AfterEffects,
+    DavinciResolve,
+}
+
 #[tauri::command]
 pub async fn export_clips(
     app: AppHandle,
     clips: Vec<String>,
     save_path: String,
     merge_enabled: bool,
-) -> Result<(), String> {
+) -> Result<Vec<String>, String> {
     if clips.is_empty() {
-        return Ok(());
+        return Ok(Vec::new());
     }
 
     console_log(
@@ -37,9 +46,10 @@ pub async fn export_clips(
     // - else: per-clip export prefers stream copy when already AE-friendly, else re-encodes for compatibility
     let ffmpeg = resolve_bundled_tool(&app, "ffmpeg")?;
     let ffprobe = resolve_bundled_tool(&app, "ffprobe")?;
-    
+
     let mut save_path = PathBuf::from(&save_path);
     let export_start_time = Instant::now();
+    let mut exported_files: Vec<String> = Vec::new();
 
     // If the user gave a path without an extension (or a template-ish name), default to mp4.
     if save_path.extension().is_none() {
@@ -230,7 +240,8 @@ pub async fn export_clips(
 
                     // percent is still calculated for the progress bar
                     let denom_ms = grand_total_ms.or(total_ms).unwrap_or(0);
-                    let overall_ms = completed_ms.saturating_add(_out_ms.min(total_ms.unwrap_or(_out_ms)));
+                    let overall_ms =
+                        completed_ms.saturating_add(_out_ms.min(total_ms.unwrap_or(_out_ms)));
                     let mut percent = if denom_ms > 0 {
                         ((overall_ms as f64 / denom_ms as f64) * 100.0).floor() as i32
                     } else {
@@ -372,8 +383,6 @@ pub async fn export_clips(
     if merge_enabled {
         // ---------------- MERGE ----------------
 
-
-        use std::io::Write;
         use tempfile::NamedTempFile;
 
         emit_export_progress(&app, 0, "Merging clips...", export_start_time);
@@ -399,12 +408,14 @@ pub async fn export_clips(
 
         // Write file list for ffmpeg concat demuxer
         emit_export_progress(&app, 40, "Preparing file list...", export_start_time);
-        let mut filelist = NamedTempFile::new().map_err(|e| format!("Failed to create temp file: {e}"))?;
+        let mut filelist =
+            NamedTempFile::new().map_err(|e| format!("Failed to create temp file: {e}"))?;
         for c in &clips {
             // ffmpeg concat demuxer requires each line: file 'path'
             // Escape single quotes in paths
             let safe_path = c.replace("'", "'\\''");
-            writeln!(filelist, "file '{}'", safe_path).map_err(|e| format!("Failed to write to temp file: {e}"))?;
+            writeln!(filelist, "file '{}'", safe_path)
+                .map_err(|e| format!("Failed to write to temp file: {e}"))?;
         }
         let filelist_path = filelist.path().to_string_lossy().to_string();
 
@@ -489,6 +500,7 @@ pub async fn export_clips(
         }
 
         emit_export_progress(&app, 100, "Export complete", export_start_time);
+        exported_files.push(out_str);
     } else {
         // ---------------- MULTIPLE EXPORT ----------------
 
@@ -640,7 +652,12 @@ pub async fn export_clips(
                             file_name_only(output_str)
                         ),
                     );
-                    emit_export_progress(&app, 15, "Stream copy failed; re-encoding...", export_start_time);
+                    emit_export_progress(
+                        &app,
+                        15,
+                        "Stream copy failed; re-encoding...",
+                        export_start_time,
+                    );
                     let app_for_ffmpeg = app.clone();
                     let ffmpeg_clone = ffmpeg.clone();
                     let grand_total = total_ms;
@@ -695,6 +712,8 @@ pub async fn export_clips(
             if let Some(ms) = clip_total {
                 done_ms = done_ms.saturating_add(ms);
             }
+
+            exported_files.push(output_str.to_string());
         }
 
         emit_export_progress(&app, 100, "Export complete", export_start_time);
@@ -702,5 +721,448 @@ pub async fn export_clips(
 
     console_log("EXPORT|end", "ok");
 
-    Ok(())
+    Ok(exported_files)
+}
+
+#[tauri::command]
+pub fn import_media_to_editor(
+    editor_target: EditorTarget,
+    media_paths: Vec<String>,
+) -> Result<String, String> {
+    if media_paths.is_empty() {
+        return Err("No exported media was provided for editor import.".to_string());
+    }
+
+    let normalized: Vec<String> = media_paths
+        .into_iter()
+        .map(|p| p.trim().to_string())
+        .filter(|p| !p.is_empty())
+        .collect();
+
+    if normalized.is_empty() {
+        return Err("No valid exported media paths were provided.".to_string());
+    }
+
+    let missing: Vec<String> = normalized
+        .iter()
+        .filter(|p| !Path::new(p).exists())
+        .take(5)
+        .cloned()
+        .collect();
+    if !missing.is_empty() {
+        return Err(format!(
+            "Some exported files are missing on disk: {}",
+            missing.join(", ")
+        ));
+    }
+
+    match editor_target {
+        EditorTarget::AfterEffects => import_into_after_effects(&normalized),
+        EditorTarget::Premiere => import_into_premiere(&normalized),
+        EditorTarget::DavinciResolve => import_into_davinci_resolve(&normalized),
+    }
+}
+
+fn import_into_after_effects(media_paths: &[String]) -> Result<String, String> {
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = media_paths;
+        return Err(
+            "Auto-import for After Effects is currently implemented for Windows builds only."
+                .to_string(),
+        );
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        let afterfx = resolve_afterfx_executable()
+            .ok_or("After Effects executable was not found.".to_string())?;
+        let script_path = write_temp_script(
+            "amverge_afterfx_import",
+            "jsx",
+            &build_after_effects_import_script(media_paths),
+        )?;
+
+        console_log(
+            "NLE|after_effects",
+            &format!(
+                "launching importer exe={} script={}",
+                afterfx.display(),
+                file_name_only(script_path.to_string_lossy().as_ref())
+            ),
+        );
+
+        let mut cmd = Command::new(&afterfx);
+        apply_no_window(&mut cmd);
+        cmd.arg("-r").arg(&script_path);
+        cmd.spawn().map_err(|e| {
+            format!(
+                "Failed to launch After Effects importer ({}): {e}",
+                afterfx.display()
+            )
+        })?;
+
+        Ok("After Effects import command sent.".to_string())
+    }
+}
+
+fn import_into_premiere(media_paths: &[String]) -> Result<String, String> {
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = media_paths;
+        return Err(
+            "Auto-import for Premiere Pro is currently implemented for Windows builds only."
+                .to_string(),
+        );
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        let premiere = resolve_premiere_executable()
+            .ok_or("Premiere Pro executable was not found.".to_string())?;
+        let script_path = write_temp_script(
+            "amverge_premiere_import",
+            "jsx",
+            &build_premiere_import_script(media_paths),
+        )?;
+
+        // Required by Premiere for CLI ExtendScript execution.
+        if let Some(exe_dir) = premiere.parent() {
+            let marker = exe_dir.join("extendscriptprqe.txt");
+            if !marker.exists() {
+                fs::write(&marker, b"").map_err(|e| {
+                    format!(
+                        "Premiere needs '{}' next to the executable for CLI scripting, but it could not be created automatically: {e}",
+                        marker.display()
+                    )
+                })?;
+            }
+        }
+
+        console_log(
+            "NLE|premiere",
+            &format!(
+                "launching importer exe={} script={}",
+                premiere.display(),
+                file_name_only(script_path.to_string_lossy().as_ref())
+            ),
+        );
+
+        let mut cmd = Command::new(&premiere);
+        apply_no_window(&mut cmd);
+        cmd.arg("/C").arg("es.processFile").arg(&script_path);
+        cmd.spawn().map_err(|e| {
+            format!(
+                "Failed to launch Premiere importer ({}): {e}",
+                premiere.display()
+            )
+        })?;
+
+        Ok("Premiere import command sent.".to_string())
+    }
+}
+
+fn import_into_davinci_resolve(media_paths: &[String]) -> Result<String, String> {
+    let script_path = write_temp_script(
+        "amverge_resolve_import",
+        "py",
+        &build_davinci_import_script(media_paths),
+    )?;
+
+    // First attempt: Resolve already running with external scripting enabled.
+    match run_python_script(&script_path) {
+        Ok(msg) => return Ok(msg),
+        Err(first_err) => {
+            #[cfg(target_os = "windows")]
+            {
+                // Best effort: launch Resolve and retry for a short window.
+                if let Some(resolve_exe) = resolve_davinci_executable() {
+                    console_log(
+                        "NLE|davinci",
+                        &format!("launching Resolve: {}", resolve_exe.display()),
+                    );
+                    let mut launch = Command::new(&resolve_exe);
+                    apply_no_window(&mut launch);
+                    if let Err(e) = launch.spawn() {
+                        return Err(format!(
+                            "{first_err}\n\nAlso failed to launch DaVinci Resolve ({}): {e}",
+                            resolve_exe.display()
+                        ));
+                    }
+
+                    for _ in 0..10 {
+                        std::thread::sleep(Duration::from_secs(2));
+                        if let Ok(msg) = run_python_script(&script_path) {
+                            return Ok(msg);
+                        }
+                    }
+                }
+            }
+
+            Err(first_err)
+        }
+    }
+}
+
+fn run_python_script(script_path: &Path) -> Result<String, String> {
+    let mut launch_errors: Vec<String> = Vec::new();
+
+    let candidates: Vec<(&str, Vec<&str>)> = if cfg!(target_os = "windows") {
+        vec![("python", vec![]), ("py", vec!["-3"])]
+    } else {
+        vec![("python3", vec![]), ("python", vec![])]
+    };
+
+    for (exe, extra_args) in candidates {
+        let mut cmd = Command::new(exe);
+        apply_no_window(&mut cmd);
+        cmd.args(extra_args)
+            .arg(script_path)
+            .env("PYTHONIOENCODING", "utf-8");
+
+        match cmd.output() {
+            Ok(out) => {
+                let stdout = String::from_utf8_lossy(&out.stdout).trim().to_string();
+                let stderr = String::from_utf8_lossy(&out.stderr).trim().to_string();
+
+                if out.status.success() {
+                    let msg = if stdout.is_empty() {
+                        "DaVinci Resolve import command sent.".to_string()
+                    } else {
+                        stdout
+                    };
+                    return Ok(msg);
+                }
+
+                launch_errors.push(format!(
+                    "{} exited with status {}{}{}",
+                    exe,
+                    out.status,
+                    if stdout.is_empty() { "" } else { "\nstdout: " },
+                    stdout
+                ));
+                if !stderr.is_empty() {
+                    launch_errors.push(format!("stderr: {stderr}"));
+                }
+            }
+            Err(e) => {
+                launch_errors.push(format!("{exe} failed to start: {e}"));
+            }
+        }
+    }
+
+    Err(format!(
+        "Failed to run DaVinci scripting bridge.\n{}",
+        launch_errors.join("\n")
+    ))
+}
+
+fn write_temp_script(prefix: &str, extension: &str, content: &str) -> Result<PathBuf, String> {
+    let ts = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|e| e.to_string())?
+        .as_millis();
+    let mut path = std::env::temp_dir();
+    path.push(format!(
+        "{prefix}_{}_{}.{}",
+        std::process::id(),
+        ts,
+        extension
+    ));
+    fs::write(&path, content)
+        .map_err(|e| format!("Failed to write temp script {}: {e}", path.display()))?;
+    Ok(path)
+}
+
+fn build_after_effects_import_script(media_paths: &[String]) -> String {
+    let files = media_paths
+        .iter()
+        .map(|p| format!("new File('{}')", escape_js_single_quoted(p)))
+        .collect::<Vec<_>>()
+        .join(",\n    ");
+
+    format!(
+        "app.beginUndoGroup('AMVerge Import');\n\
+if (!app.project) {{ app.newProject(); }}\n\
+var mediaFiles = [\n    {files}\n];\n\
+for (var i = 0; i < mediaFiles.length; i++) {{\n\
+    try {{\n\
+        if (mediaFiles[i] && mediaFiles[i].exists) {{\n\
+            var opts = new ImportOptions(mediaFiles[i]);\n\
+            app.project.importFile(opts);\n\
+        }}\n\
+    }} catch (e) {{}}\n\
+}}\n\
+app.endUndoGroup();\n"
+    )
+}
+
+fn build_premiere_import_script(media_paths: &[String]) -> String {
+    let files = media_paths
+        .iter()
+        .map(|p| format!("'{}'", escape_js_single_quoted(p)))
+        .collect::<Vec<_>>()
+        .join(",\n    ");
+
+    format!(
+        "var mediaFiles = [\n    {files}\n];\n\
+if (!app.project) {{ throw new Error('No open Premiere project'); }}\n\
+var targetBin = app.project.getInsertionBin();\n\
+if (!targetBin) {{ targetBin = app.project.rootItem; }}\n\
+app.project.importFiles(mediaFiles, true, targetBin, false);\n"
+    )
+}
+
+fn build_davinci_import_script(media_paths: &[String]) -> String {
+    let files = media_paths
+        .iter()
+        .map(|p| format!("r'{}'", escape_py_single_quoted(p)))
+        .collect::<Vec<_>>()
+        .join(",\n    ");
+
+    format!(
+        "import os\n\
+import sys\n\
+\n\
+MEDIA_FILES = [\n    {files}\n\
+]\n\
+\n\
+def ensure_resolve_module():\n\
+    try:\n\
+        import DaVinciResolveScript as dvr_script\n\
+        return dvr_script\n\
+    except Exception:\n\
+        pass\n\
+\n\
+    candidates = []\n\
+    if os.name == 'nt':\n\
+        program_data = os.environ.get('PROGRAMDATA', r'C:\\\\ProgramData')\n\
+        candidates.append(os.path.join(program_data, 'Blackmagic Design', 'DaVinci Resolve', 'Support', 'Developer', 'Scripting', 'Modules'))\n\
+    elif sys.platform == 'darwin':\n\
+        candidates.append('/Library/Application Support/Blackmagic Design/DaVinci Resolve/Developer/Scripting/Modules')\n\
+    else:\n\
+        candidates.append('/opt/resolve/Developer/Scripting/Modules')\n\
+\n\
+    for path in candidates:\n\
+        if os.path.isdir(path) and path not in sys.path:\n\
+            sys.path.append(path)\n\
+\n\
+    import DaVinciResolveScript as dvr_script\n\
+    return dvr_script\n\
+\n\
+dvr_script = ensure_resolve_module()\n\
+resolve = dvr_script.scriptapp('Resolve')\n\
+if not resolve:\n\
+    raise RuntimeError('Could not connect to DaVinci Resolve. Open Resolve and enable external scripting.')\n\
+\n\
+pm = resolve.GetProjectManager()\n\
+project = pm.GetCurrentProject() if pm else None\n\
+if not project:\n\
+    raise RuntimeError('No Resolve project is currently open.')\n\
+\n\
+media_pool = project.GetMediaPool()\n\
+if not media_pool:\n\
+    raise RuntimeError('Could not access Resolve media pool.')\n\
+\n\
+result = media_pool.ImportMedia(MEDIA_FILES)\n\
+if not result:\n\
+    raise RuntimeError('Resolve failed to import media into the current project.')\n\
+\n\
+print('DaVinci Resolve import complete.')\n"
+    )
+}
+
+fn escape_js_single_quoted(raw: &str) -> String {
+    raw.replace('\\', "\\\\").replace('\'', "\\'")
+}
+
+fn escape_py_single_quoted(raw: &str) -> String {
+    raw.replace('\\', "\\\\").replace('\'', "\\'")
+}
+
+#[cfg(target_os = "windows")]
+fn resolve_afterfx_executable() -> Option<PathBuf> {
+    if let Ok(custom) = std::env::var("AMVERGE_AFTERFX_PATH") {
+        let path = PathBuf::from(custom);
+        if path.exists() {
+            return Some(path);
+        }
+    }
+
+    find_latest_adobe_executable(
+        "Adobe After Effects",
+        Path::new("Support Files").join("AfterFX.exe"),
+    )
+}
+
+#[cfg(target_os = "windows")]
+fn resolve_premiere_executable() -> Option<PathBuf> {
+    if let Ok(custom) = std::env::var("AMVERGE_PREMIERE_PATH") {
+        let path = PathBuf::from(custom);
+        if path.exists() {
+            return Some(path);
+        }
+    }
+
+    find_latest_adobe_executable("Adobe Premiere Pro", Path::new("Adobe Premiere Pro.exe"))
+}
+
+#[cfg(target_os = "windows")]
+fn resolve_davinci_executable() -> Option<PathBuf> {
+    if let Ok(custom) = std::env::var("AMVERGE_RESOLVE_PATH") {
+        let path = PathBuf::from(custom);
+        if path.exists() {
+            return Some(path);
+        }
+    }
+
+    let candidates = [
+        r"C:\Program Files\Blackmagic Design\DaVinci Resolve\Resolve.exe",
+        r"C:\Program Files\blackmagic design\DaVinci Resolve\Resolve.exe",
+    ];
+    candidates.iter().map(PathBuf::from).find(|p| p.exists())
+}
+
+#[cfg(target_os = "windows")]
+fn find_latest_adobe_executable(
+    prefix: &str,
+    executable_relative_path: PathBuf,
+) -> Option<PathBuf> {
+    let bases = [
+        PathBuf::from(r"C:\Program Files\Adobe"),
+        PathBuf::from(r"C:\Program Files (x86)\Adobe"),
+    ];
+
+    for base in bases {
+        let Ok(entries) = fs::read_dir(&base) else {
+            continue;
+        };
+
+        let mut candidates: Vec<PathBuf> = entries
+            .filter_map(|entry| entry.ok())
+            .map(|entry| entry.path())
+            .filter(|path| path.is_dir())
+            .filter(|path| {
+                path.file_name()
+                    .and_then(|n| n.to_str())
+                    .map(|name| name.starts_with(prefix))
+                    .unwrap_or(false)
+            })
+            .collect();
+
+        candidates.sort_by(|a, b| {
+            let an = a.file_name().and_then(|n| n.to_str()).unwrap_or_default();
+            let bn = b.file_name().and_then(|n| n.to_str()).unwrap_or_default();
+            an.cmp(bn)
+        });
+
+        for dir in candidates.into_iter().rev() {
+            let exe = dir.join(&executable_relative_path);
+            if exe.exists() {
+                return Some(exe);
+            }
+        }
+    }
+
+    None
 }

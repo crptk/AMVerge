@@ -4,6 +4,7 @@ import { fileNameFromPath } from "../utils/episodeUtils";
 import { GeneralSettings } from "../settings/generalSettings";
 import { ThemeSettings } from "../settings/themeSettings";
 import { ClipItem } from "../types/domain";
+import { type EditorTarget } from "../hooks/useImportExport";
 
 interface HomePageProps {
   cols: number;
@@ -24,7 +25,9 @@ interface HomePageProps {
   handleExport: (
     selectedClips: Set<string>,
     mergeEnabled: boolean,
-    mergeFileName?: string
+    mergeFileName?: string,
+    editorTarget?: EditorTarget,
+    autoImport?: boolean
   ) => Promise<void>;
   sideBarEnabled: boolean;
   videoIsHEVC: boolean | null;

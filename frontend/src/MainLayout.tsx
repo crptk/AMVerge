@@ -4,6 +4,7 @@ import { ThemeSettings } from "./settings/themeSettings";
 import ClipsContainer from "./components/clipsGrid/ClipsContainer.tsx";
 import PreviewContainer from "./components/previewPanel/PreviewContainer.tsx";
 import { ClipItem } from "./types/domain";
+import { type EditorTarget } from "./hooks/useImportExport";
 
 type LayoutProps = {
     cols: number;
@@ -22,7 +23,9 @@ type LayoutProps = {
     handleExport: (
         selectedClips: Set<string>,
         mergeEnabled: boolean,
-        mergeFileName?: string
+        mergeFileName?: string,
+        editorTarget?: EditorTarget,
+        autoImport?: boolean
     ) => Promise<void>;
     sideBarEnabled: boolean;
     videoIsHEVC: boolean | null;

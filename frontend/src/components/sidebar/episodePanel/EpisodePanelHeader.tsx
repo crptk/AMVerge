@@ -1,6 +1,4 @@
 // Episode Panel toolbar. Renders Sort, New Folder, and Clear Cache actions.
-import { FaFolderPlus, FaSortAlphaDown, FaSortAlphaUp, FaTrashAlt } from "react-icons/fa";
-
 type EpisodePanelHeaderProps = {
   nextSortDirection: "asc" | "desc";
   setNextSortDirection: React.Dispatch<
@@ -19,9 +17,6 @@ export default function EpisodePanelHeader({
   openNewFolderModal,
   openClearConfirmModal,
 }: EpisodePanelHeaderProps) {
-  const sortLabel = nextSortDirection === "asc" ? "Sort A-Z" : "Sort Z-A";
-  const SortIcon = nextSortDirection === "asc" ? FaSortAlphaDown : FaSortAlphaUp;
-
   return (
     <div className="episode-panel-header">
       <div className="episode-panel-title">Episode Panel</div>
@@ -29,7 +24,7 @@ export default function EpisodePanelHeader({
       <div className="episode-panel-actions">
         <button
           type="button"
-          className="episode-panel-action icon-only"
+          className="episode-panel-action"
           onClick={() => {
             onSortEpisodePanel(nextSortDirection);
 
@@ -37,30 +32,27 @@ export default function EpisodePanelHeader({
               prev === "asc" ? "desc" : "asc"
             );
           }}
-          title={sortLabel}
-          aria-label={sortLabel}
+          title={nextSortDirection === "asc" ? "Sort A–Z" : "Sort Z–A"}
         >
-          <SortIcon aria-hidden="true" />
+          Sort A–Z {nextSortDirection === "asc" ? "↑" : "↓"}
         </button>
 
         <button
           type="button"
-          className="episode-panel-action icon-only"
+          className="episode-panel-action"
           onClick={() => openNewFolderModal(null)}
           title="New folder"
-          aria-label="New folder"
         >
-          <FaFolderPlus aria-hidden="true" />
+          New Folder
         </button>
 
         <button
           type="button"
-          className="episode-panel-action icon-only"
+          className="episode-panel-action"
           onClick={openClearConfirmModal}
           title="Clear episode panel cache"
-          aria-label="Clear episode panel cache"
         >
-          <FaTrashAlt aria-hidden="true" />
+          Clear
         </button>
       </div>
     </div>

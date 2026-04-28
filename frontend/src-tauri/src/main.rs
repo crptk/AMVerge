@@ -20,6 +20,7 @@ fn main() {
             commands::scenes::detect_scenes,
             commands::scenes::abort_detect_scenes,
             commands::export::export_clips,
+            commands::export::import_media_to_editor,
             commands::preview::check_hevc,
             commands::preview::hover_preview_error,
             commands::preview::ensure_preview_proxy,
