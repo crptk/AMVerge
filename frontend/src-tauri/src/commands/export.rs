@@ -818,6 +818,12 @@ fn import_into_premiere(media_paths: &[String]) -> Result<String, String> {
 
     #[cfg(target_os = "windows")]
     {
+        if is_windows_process_running("Adobe Premiere Pro.exe") {
+            return Err(
+                "Premiere command-line scripting cannot reliably target an already running Premiere session. Close Premiere and retry export, or use an in-app scripting panel bridge for true live import.".to_string()
+            );
+        }
+
         let premiere = resolve_premiere_executable()
             .ok_or("Premiere Pro executable was not found.".to_string())?;
         let script_path = write_temp_script(
@@ -840,17 +846,49 @@ fn import_into_premiere(media_paths: &[String]) -> Result<String, String> {
             ),
         );
 
-        let mut cmd = Command::new(&premiere);
-        apply_no_window(&mut cmd);
-        cmd.arg("--console").arg("es.ProcessFile").arg(&script_path);
-        cmd.spawn().map_err(|e| {
-            format!(
-                "Failed to launch Premiere importer ({}): {e}",
-                premiere.display()
-            )
-        })?;
+        let script_arg = script_path.to_string_lossy().to_string();
 
-        Ok("Premiere import command sent.".to_string())
+        let launch_variants: [(&str, Vec<&str>); 3] = [
+            (
+                "--console",
+                vec!["--console", "es.ProcessFile", script_arg.as_str()],
+            ),
+            (
+                "/C lower",
+                vec!["/C", "es.processFile", script_arg.as_str()],
+            ),
+            (
+                "/C upper",
+                vec!["/C", "es.ProcessFile", script_arg.as_str()],
+            ),
+        ];
+
+        let mut launch_errors: Vec<String> = Vec::new();
+
+        for (variant, args) in launch_variants {
+            let mut cmd = Command::new(&premiere);
+            apply_no_window(&mut cmd);
+            cmd.args(args);
+
+            match cmd.spawn() {
+                Ok(_) => {
+                    console_log(
+                        "NLE|premiere",
+                        &format!("CLI launch variant accepted: {}", variant),
+                    );
+                    return Ok("Premiere import command sent.".to_string());
+                }
+                Err(e) => {
+                    launch_errors.push(format!("{variant}: {e}"));
+                }
+            }
+        }
+
+        Err(format!(
+            "Failed to launch Premiere importer ({}).\n{}",
+            premiere.display(),
+            launch_errors.join("\n")
+        ))
     }
 }
 
@@ -1032,7 +1070,13 @@ fn write_temp_script(prefix: &str, extension: &str, content: &str) -> Result<Pat
         .duration_since(std::time::UNIX_EPOCH)
         .map_err(|e| e.to_string())?
         .as_millis();
-    let mut path = std::env::temp_dir();
+    let mut path = script_runtime_dir();
+    fs::create_dir_all(&path).map_err(|e| {
+        format!(
+            "Failed to create script runtime directory ({}): {e}",
+            path.display()
+        )
+    })?;
     path.push(format!(
         "{prefix}_{}_{}.{}",
         std::process::id(),
@@ -1042,6 +1086,19 @@ fn write_temp_script(prefix: &str, extension: &str, content: &str) -> Result<Pat
     fs::write(&path, content)
         .map_err(|e| format!("Failed to write temp script {}: {e}", path.display()))?;
     Ok(path)
+}
+
+fn script_runtime_dir() -> PathBuf {
+    #[cfg(target_os = "windows")]
+    {
+        if let Ok(local_app_data) = std::env::var("LOCALAPPDATA") {
+            return PathBuf::from(local_app_data)
+                .join("AMVerge")
+                .join("runtime_scripts");
+        }
+    }
+
+    std::env::temp_dir().join("amverge").join("runtime_scripts")
 }
 
 fn build_after_effects_import_script(media_paths: &[String]) -> String {
@@ -1128,7 +1185,9 @@ if not resolve:\n\
 pm = resolve.GetProjectManager()\n\
 project = pm.GetCurrentProject() if pm else None\n\
 if not project:\n\
-    raise RuntimeError('No Resolve project is currently open.')\n\
+    project = pm.CreateProject('AMVerge Auto Import') if pm else None\n\
+if not project:\n\
+    raise RuntimeError('No Resolve project is currently open, and AMVerge could not create one automatically.')\n\
 \n\
 media_pool = project.GetMediaPool()\n\
 if not media_pool:\n\
@@ -1148,6 +1207,37 @@ fn escape_js_single_quoted(raw: &str) -> String {
 
 fn escape_py_single_quoted(raw: &str) -> String {
     raw.replace('\\', "\\\\").replace('\'', "\\'")
+}
+
+#[cfg(target_os = "windows")]
+fn is_windows_process_running(image_name: &str) -> bool {
+    let mut cmd = Command::new("tasklist");
+    apply_no_window(&mut cmd);
+
+    let output = cmd
+        .arg("/FI")
+        .arg(format!("IMAGENAME eq {image_name}"))
+        .arg("/FO")
+        .arg("CSV")
+        .arg("/NH")
+        .output();
+
+    let Ok(out) = output else {
+        return false;
+    };
+
+    if !out.status.success() {
+        return false;
+    }
+
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let image_name_lower = image_name.to_ascii_lowercase();
+
+    stdout.lines().any(|line| {
+        line.trim()
+            .to_ascii_lowercase()
+            .starts_with(&format!("\"{image_name_lower}\""))
+    })
 }
 
 #[cfg(target_os = "windows")]
@@ -1179,7 +1269,10 @@ fn resolve_premiere_executable() -> Option<PathBuf> {
         }
     }
 
-    find_latest_adobe_executable("Adobe Premiere Pro", PathBuf::from("Adobe Premiere Pro.exe"))
+    find_latest_adobe_executable(
+        "Adobe Premiere Pro",
+        PathBuf::from("Adobe Premiere Pro.exe"),
+    )
 }
 
 #[cfg(target_os = "windows")]
