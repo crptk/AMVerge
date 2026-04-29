@@ -202,10 +202,11 @@ export default function useImportExport(props: ImportExportProps) {
         setLoading(true);
 
         const clipArray = selected.map((c: ClipItem) => c.src);
+        const sep = dir.includes('\\') ? '\\' : '/';
 
         if (mergeEnabled) {
         const baseName = mergeFileName || ((selected[0]?.originalName || "episode") + "_merged");
-        const savePath = `${dir}\\${baseName}.mp4`;
+        const savePath = `${dir}${sep}${baseName}.mp4`;
 
         await invoke("export_clips", {
             clips: clipArray,
@@ -217,7 +218,7 @@ export default function useImportExport(props: ImportExportProps) {
         const firstFile = firstClipPath.split(/[/\\]/).pop() || "episode_0000.mp4";
         const firstStem = firstFile.replace(/\.[^/.]+$/, "");
         const defaultBase = firstStem.replace(/_\d{4}$/, "");
-        const savePath = `${dir}\\${defaultBase}_####.mp4`;
+        const savePath = `${dir}${sep}${defaultBase}_####.mp4`;
 
         await invoke("export_clips", {
             clips: clipArray,
