@@ -25,7 +25,11 @@ export const detectScenes = async (
       id: crypto.randomUUID(),
       src: s.path,
       thumbnail: s.thumbnail,
-      originalName: s.original_file
+      originalName: s.original_file,
+      originalPath: s.original_path ?? videoPath,
+      sceneIndex: typeof s.scene_index === "number" ? s.scene_index : undefined,
+      startSec: typeof s.start === "number" ? s.start : undefined,
+      endSec: typeof s.end === "number" ? s.end : null,
     }));
 };
 

@@ -5,7 +5,9 @@ mod payloads;
 mod state;
 mod utils;
 
-use state::{ActiveSidecar, DiscordRPCState, EditorImportAbortState, PreviewProxyLocks};
+use state::{
+    ActiveSidecar, DiscordRPCState, EditorImportAbortState, ExportAbortState, PreviewProxyLocks,
+};
 use tauri::Manager;
 
 fn main() {
@@ -17,11 +19,15 @@ fn main() {
         .manage(ActiveSidecar::default())
         .manage(DiscordRPCState::default())
         .manage(EditorImportAbortState::default())
+        .manage(ExportAbortState::default())
         .invoke_handler(tauri::generate_handler![
             commands::scenes::detect_scenes,
             commands::scenes::abort_detect_scenes,
             commands::export::export_clips,
+            commands::export::abort_export,
+            commands::export_xml::export_timeline_xml,
             commands::editor_import::import_media_to_editor,
+            commands::editor_import::import_original_cut_to_editor,
             commands::editor_import::abort_editor_import,
             commands::preview::check_hevc,
             commands::preview::hover_preview_error,

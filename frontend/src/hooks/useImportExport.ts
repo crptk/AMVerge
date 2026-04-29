@@ -12,6 +12,7 @@ type ImportExportProps = {
   setFocusedClip: React.Dispatch<React.SetStateAction<string | null>>;
   setSelectedClips: React.Dispatch<React.SetStateAction<Set<string>>>;
   setVideoIsHEVC: React.Dispatch<React.SetStateAction<boolean | null>>;
+  importedVideoPath: string | null;
   setImportedVideoPath: React.Dispatch<React.SetStateAction<string | null>>;
   setClips: React.Dispatch<React.SetStateAction<ClipItem[]>>;
   setEpisodes: React.Dispatch<React.SetStateAction<EpisodeEntry[]>>;
@@ -27,6 +28,16 @@ type ImportExportProps = {
   exportFormat: "mp4" | "mkv" | "mov" | "avi" | "xml";
   onRPCUpdate?: (data: any) => void;
   generalSettings: GeneralSettings;
+};
+
+type TimelineXmlClip = {
+  id: string;
+  src: string;
+  originalName?: string;
+  originalPath?: string;
+  sceneIndex?: number;
+  startSec?: number;
+  endSec?: number | null;
 };
 
 export default function useImportExport(props: ImportExportProps) {
@@ -69,15 +80,45 @@ export default function useImportExport(props: ImportExportProps) {
     return "Export completed. Auto-import failed (see Console).";
   };
 
+  const ensureExportDir = async (): Promise<string | null> => {
+    if (props.exportDir) return props.exportDir;
+    const picked = await open({ directory: true, multiple: false });
+    if (!picked) return null;
+    const resolved = picked as string;
+    props.setExportDir(resolved);
+    return resolved;
+  };
+
+  const sanitizeFileName = (value: string): string =>
+    value
+      .trim()
+      .replace(/[<>:"/\\|?*\u0000-\u001F]/g, "_")
+      .replace(/\s+/g, " ")
+      .slice(0, 120) || "timeline";
+
+  const cleanErrorMessage = (rawError: unknown): string =>
+    String(rawError ?? "Unknown error")
+      .replace(/^Error:\s*/i, "")
+      .split("\n")[0]
+      .trim();
+
+  const isCanceledMessage = (rawError: unknown): boolean => {
+    const details = cleanErrorMessage(rawError);
+    return /AMVERGE_CANCELED/i.test(details) || /canceled by user/i.test(details);
+  };
+
   const handleCancelLoaderTask = async () => {
     if (!showLoaderCancel) return;
 
     try {
       setLoaderCancelLabel("Canceling...");
-      props.setProgressMsg("Canceling auto-import...");
-      await invoke("abort_editor_import");
+      props.setProgressMsg("Canceling...");
+      await Promise.allSettled([
+        invoke("abort_export"),
+        invoke("abort_editor_import"),
+      ]);
     } catch (err) {
-      console.warn("abort_editor_import failed:", err);
+      console.warn("cancel request failed:", err);
     }
   };
   const onImportClick = async () => {
@@ -269,20 +310,14 @@ export default function useImportExport(props: ImportExportProps) {
 
     const selected = props.clips.filter((c: ClipItem) => selectedClips.has(c.id));
     if (selected.length === 0) return;
-
-    // If no export directory is set, prompt the user to pick one first
-    let dir = props.exportDir;
-    if (!dir) {
-      const picked = await open({ directory: true, multiple: false });
-      if (!picked) return;
-      dir = picked as string;
-      props.setExportDir(dir);
-    }
-
+    const dir = await ensureExportDir();
+    if (!dir) return;
     let overlayHoldMs = 0;
 
     try {
       setLoading(true);
+      setShowLoaderCancel(true);
+      setLoaderCancelLabel("Cancel");
 
       const clipArray = selected.map((c: ClipItem) => c.src);
       const format = props.exportFormat || "mp4";
@@ -391,7 +426,147 @@ export default function useImportExport(props: ImportExportProps) {
         });
       }, 10000);
     } catch (err) {
-      console.log("Export failed:", err)
+      console.log("Export failed:", err);
+      props.setProgress(100);
+      const details = cleanErrorMessage(err);
+      if (isCanceledMessage(details)) {
+        props.setProgressMsg("Export canceled.");
+      } else if (details) {
+        props.setProgressMsg(`Export failed: ${details}`);
+      } else {
+        props.setProgressMsg("Export failed.");
+      }
+      overlayHoldMs = 1200;
+    } finally {
+      setShowLoaderCancel(false);
+      setLoaderCancelLabel("Cancel");
+      if (overlayHoldMs > 0) {
+        await new Promise((resolve) => setTimeout(resolve, overlayHoldMs));
+      }
+      setLoading(false);
+    }
+  };
+
+  const handleExportOriginal = async (
+    selectedClips: Set<string>,
+    editorTarget: EditorTarget = "premiere"
+  ) => {
+    if (selectedClips.size === 0) return;
+
+    const selected = props.clips.filter((c: ClipItem) => selectedClips.has(c.id));
+    if (selected.length === 0) return;
+
+    let overlayHoldMs = 0;
+
+    try {
+      setLoading(true);
+      props.setProgress(5);
+      props.setProgressMsg("Building original cut...");
+
+      const rpcButtons: { label: string; url: string }[] = [];
+      if (props.generalSettings.rpcShowButtons) {
+        rpcButtons.push({ label: "Discord Server", url: "https://discord.gg/asJkqwqb" });
+        rpcButtons.push({ label: "Website", url: "https://amverge.app/" });
+      }
+
+      props.onRPCUpdate?.({
+        type: "update",
+        details: `Preparing original cut (${selected.length} clips)`,
+        state: "Saving Progress",
+        large_image: "amverge_logo",
+        small_image: props.generalSettings.rpcShowMiniIcons ? "save_icon_new" : undefined,
+        small_text: props.generalSettings.rpcShowMiniIcons ? "Timeline..." : undefined,
+        buttons: props.generalSettings.rpcShowButtons ? rpcButtons : undefined,
+      });
+
+      const originalName = selected[0]?.originalName || "episode";
+      const cutBaseName = sanitizeFileName(originalName);
+      const fallbackOriginalPath =
+        selected.find((clip) => !!clip.originalPath)?.originalPath ??
+        props.importedVideoPath ??
+        undefined;
+
+      const timelineClips: TimelineXmlClip[] = selected.map((clip) => ({
+        id: clip.id,
+        src: clip.src,
+        originalName: clip.originalName,
+        originalPath: clip.originalPath ?? fallbackOriginalPath,
+        sceneIndex: clip.sceneIndex,
+        startSec: clip.startSec,
+        endSec: clip.endSec,
+      }));
+
+      try {
+        setShowLoaderCancel(true);
+        setLoaderCancelLabel("Cancel");
+        let result = "";
+        props.setProgress(99);
+        props.setProgressMsg(
+          `Preparing ${editorLabel(editorTarget)} original-cut timeline...`
+        );
+        result = await invoke<string>("import_original_cut_to_editor", {
+          editorTarget,
+          clips: timelineClips,
+          sequenceName: cutBaseName,
+        });
+
+        props.setProgress(100);
+        props.setProgressMsg(
+          result?.trim() || `${editorLabel(editorTarget)} import complete.`
+        );
+
+        props.onRPCUpdate?.({
+          type: "update",
+          details: "Original cut sent!",
+          state: "Success",
+          large_image: "amverge_logo",
+          small_image: props.generalSettings.rpcShowMiniIcons ? "check_icon_new" : undefined,
+          small_text: props.generalSettings.rpcShowMiniIcons ? "Done" : undefined,
+          buttons: props.generalSettings.rpcShowButtons ? rpcButtons : undefined,
+        });
+
+        setTimeout(() => {
+          props.onRPCUpdate?.({
+            type: "update",
+            details: "Editing Episode",
+            state: "Ready",
+            large_image: "amverge_logo",
+            small_image: props.generalSettings.rpcShowMiniIcons ? "edit_icon_new" : undefined,
+            small_text: props.generalSettings.rpcShowMiniIcons ? "Editing" : undefined,
+            buttons: props.generalSettings.rpcShowButtons ? rpcButtons : undefined,
+          });
+        }, 10000);
+      } catch (err) {
+        console.warn("Auto-import failed:", err);
+        props.setProgress(100);
+        const failureMsg = formatAutoImportFailureMessage(editorTarget, err);
+        props.setProgressMsg(failureMsg);
+        props.onRPCUpdate?.({
+          type: "update",
+          details: "Original cut import failed",
+          state: "Error",
+          large_image: "amverge_logo",
+          small_image: props.generalSettings.rpcShowMiniIcons ? "save_icon_new" : undefined,
+          small_text: props.generalSettings.rpcShowMiniIcons ? "Retry" : undefined,
+          buttons: props.generalSettings.rpcShowButtons ? rpcButtons : undefined,
+        });
+        if (/not detected/i.test(failureMsg)) {
+          overlayHoldMs = 1800;
+        }
+      } finally {
+        setShowLoaderCancel(false);
+        setLoaderCancelLabel("Cancel");
+      }
+    } catch (err) {
+      console.error("Original cut export/import failed:", err);
+      props.setProgress(100);
+      const details = cleanErrorMessage(err);
+      if (details) {
+        props.setProgressMsg(`Original cut export failed: ${details}`);
+      } else {
+        props.setProgressMsg("Original cut export failed.");
+      }
+      overlayHoldMs = 2200;
     } finally {
       setShowLoaderCancel(false);
       setLoaderCancelLabel("Cancel");
@@ -447,6 +622,7 @@ export default function useImportExport(props: ImportExportProps) {
     onImportClick,
     handleImport,
     handleExport,
+    handleExportOriginal,
     handlePickExportDir,
     handleBatchImport,
     handleDownloadSingleClip

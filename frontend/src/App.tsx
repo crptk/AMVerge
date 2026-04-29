@@ -142,6 +142,7 @@ function App() {
     onImportClick,
     handleImport,
     handleExport,
+    handleExportOriginal,
     handlePickExportDir,
     handleBatchImport,
     handleDownloadSingleClip,
@@ -152,6 +153,7 @@ function App() {
     setFocusedClip,
     setSelectedClips,
     setVideoIsHEVC,
+    importedVideoPath: state.importedVideoPath,
     setImportedVideoPath,
     setClips,
     setEpisodes,
@@ -254,6 +256,7 @@ function App() {
     dispatch({ type: "setSelectedFolderId", value: null });
 
     const episode = state.episodes.find((e) => e.id === episodeId);
+    dispatch({ type: "setImportedVideoPath", value: episode ? episode.videoPath : null });
     dispatch({ type: "setClips", value: episode ? episode.clips : [] });
   }
 
@@ -264,6 +267,7 @@ function App() {
     dispatch({ type: "setSelectedEpisodeId", value: episodeId });
     dispatch({ type: "setOpenedEpisodeId", value: episodeId });
     dispatch({ type: "setSelectedFolderId", value: null });
+    dispatch({ type: "setImportedVideoPath", value: episode.videoPath });
     dispatch({ type: "setClips", value: episode.clips });
   }
 
@@ -276,8 +280,10 @@ function App() {
 
     if (episodeId && Array.isArray(episodesList)) {
       const episode = episodesList.find((e) => e.id === episodeId);
+      dispatch({ type: "setImportedVideoPath", value: episode ? episode.videoPath : null });
       dispatch({ type: "setClips", value: episode ? episode.clips : [] });
     } else {
+      dispatch({ type: "setImportedVideoPath", value: null });
       dispatch({ type: "setClips", value: [] });
     }
   }
@@ -521,6 +527,7 @@ function App() {
             importToken={importToken}
             isEmpty={isEmpty}
             handleExport={handleExport}
+            handleExportOriginal={handleExportOriginal}
             sideBarEnabled={sideBarEnabled}
             videoIsHEVC={state.videoIsHEVC}
             userHasHEVC={userHasHEVC}

@@ -1,7 +1,7 @@
 import VideoPlayer from "./videoPlayer/VideoPlayer.tsx"
 import HowToUse from "./HowToUse.tsx"
 import React from "react";
-import { FaFolderOpen, FaFileExport, FaVideo, FaLayerGroup, FaFolder, FaRocket } from "react-icons/fa";
+import { FaFolderOpen, FaFileExport, FaVideo, FaLayerGroup, FaFolder, FaRocket, FaCodeBranch } from "react-icons/fa";
 import { GeneralSettings } from "../../settings/generalSettings";
 import { type EditorTarget } from "../../hooks/useImportExport";
 import Dropdown from "../common/Dropdown";
@@ -39,6 +39,10 @@ type PreviewContainerProps = {
     selectedClips: Set<string>,
     enableMerged: boolean,
     mergeFileName?: string,
+    editorTarget?: EditorTarget
+  ) => Promise<void>;
+  handleExportOriginal: (
+    selectedClips: Set<string>,
     editorTarget?: EditorTarget
   ) => Promise<void>;
   exportDir: string | null;
@@ -186,6 +190,13 @@ export default function PreviewContainer (props: PreviewContainerProps) {
           onClick={onExportClick}
         >
           <FaRocket className="btn-icon" /> Export Now
+        </button>
+        <button
+          className="buttons export-original-button"
+          onClick={() => props.handleExportOriginal(props.selectedClips, editorTarget)}
+          title={`Send original timeline cut to ${EDITOR_TARGETS.find((t) => t.value === editorTarget)?.label ?? "editor"}`}
+        >
+          <FaCodeBranch className="btn-icon" /> Export Original Cut
         </button>
       </div>
       

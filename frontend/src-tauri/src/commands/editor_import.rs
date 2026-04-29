@@ -6,8 +6,10 @@ use std::time::Duration;
 
 use tauri::{AppHandle, Emitter, State};
 
+use crate::commands::export_xml::{export_timeline_xml, TimelineXmlClip};
 use crate::payloads::ProgressPayload;
 use crate::state::EditorImportAbortState;
+use crate::utils::ffmpeg::resolve_bundled_tool;
 use crate::utils::logging::console_log;
 use crate::utils::process::apply_no_window;
 
@@ -17,6 +19,34 @@ pub enum EditorTarget {
     Premiere,
     AfterEffects,
     DavinciResolve,
+}
+
+#[derive(Debug, Clone, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OriginalCutClip {
+    id: String,
+    src: String,
+    original_name: Option<String>,
+    original_path: Option<String>,
+    scene_index: Option<u32>,
+    start_sec: Option<f64>,
+    end_sec: Option<f64>,
+}
+
+#[derive(Debug, Clone)]
+struct OriginalCutSegment {
+    name: String,
+    source_in_sec: f64,
+    source_out_sec: f64,
+    timeline_start_sec: f64,
+    timeline_end_sec: f64,
+}
+
+#[derive(Debug, Clone)]
+struct SceneClipDescriptor {
+    parent_dir: PathBuf,
+    prefix: String,
+    extension: String,
 }
 
 fn normalize_editor_media_paths(media_paths: Vec<String>) -> Result<Vec<String>, String> {
@@ -68,6 +98,47 @@ pub async fn import_media_to_editor(
         }
         EditorTarget::DavinciResolve => {
             import_into_davinci_resolve(&app, &normalized, &abort_state.abort_requested).await
+        }
+    }
+}
+
+#[tauri::command]
+pub async fn import_original_cut_to_editor(
+    app: AppHandle,
+    abort_state: State<'_, EditorImportAbortState>,
+    editor_target: EditorTarget,
+    clips: Vec<OriginalCutClip>,
+    sequence_name: Option<String>,
+) -> Result<String, String> {
+    abort_state.abort_requested.store(false, Ordering::SeqCst);
+
+    match editor_target {
+        EditorTarget::AfterEffects => {
+            import_original_cut_into_after_effects(
+                &app,
+                &abort_state.abort_requested,
+                clips,
+                sequence_name,
+            )
+            .await
+        }
+        EditorTarget::Premiere => {
+            import_original_cut_into_premiere(
+                &app,
+                &abort_state.abort_requested,
+                clips,
+                sequence_name,
+            )
+            .await
+        }
+        EditorTarget::DavinciResolve => {
+            import_original_cut_into_davinci_resolve(
+                &app,
+                &abort_state.abort_requested,
+                clips,
+                sequence_name,
+            )
+            .await
         }
     }
 }
@@ -176,6 +247,9 @@ async fn run_windows_import_with_retries(
                         &format!("attempt {}/{}: {}", attempt + 1, max_attempts, summarized),
                     );
                 }
+                if !should_retry_windows_import_error(&err, attempt, launched_this_call) {
+                    return Err(summarized);
+                }
                 emit_import_progress(
                     app,
                     99,
@@ -227,12 +301,41 @@ fn summarize_windows_import_error(raw: &str) -> String {
     if raw.contains("AMVERGE_WAITING") {
         return "AMVERGE_WAITING: Editor is still loading.".to_string();
     }
+    if raw.contains("Could not connect to DaVinci Resolve") {
+        return "DaVinci Resolve scripting bridge did not connect. In Resolve, enable External scripting using Local (Preferences > System > General), then retry.".to_string();
+    }
+    if raw.contains("No Resolve project is open") {
+        return "No DaVinci Resolve project is open. Open/create a project in Resolve, then retry."
+            .to_string();
+    }
 
     raw.lines()
         .map(str::trim)
         .find(|line| !line.is_empty())
         .map(str::to_string)
         .unwrap_or_else(|| "Unknown import error.".to_string())
+}
+
+#[cfg(target_os = "windows")]
+fn should_retry_windows_import_error(
+    raw: &str,
+    attempt_index: u32,
+    launched_this_call: bool,
+) -> bool {
+    if raw.contains("AMVERGE_NO_WINDOW")
+        || raw.contains("AMVERGE_NO_PROJECT")
+        || raw.contains("AMVERGE_FOCUS_FAILED")
+        || raw.contains("AMVERGE_WAITING")
+    {
+        return true;
+    }
+
+    // Resolve can take a bit of time to expose scripting after launch.
+    if raw.contains("Could not connect to DaVinci Resolve") {
+        return launched_this_call && attempt_index < 8;
+    }
+
+    false
 }
 
 #[cfg(target_os = "windows")]
@@ -256,8 +359,869 @@ fn import_hint_for_error(editor_name: &str, raw: &str) -> String {
     if raw.contains("AMVERGE_WAITING") {
         return format!("Waiting for {editor_name}");
     }
+    if raw.contains("Could not connect to DaVinci Resolve") {
+        return "Waiting for DaVinci Resolve scripting bridge".to_string();
+    }
 
     format!("Waiting for {editor_name}")
+}
+
+fn parse_scene_index_from_clip_path(path: &str) -> Option<u32> {
+    let stem = Path::new(path).file_stem()?.to_str()?;
+    let (_, suffix) = stem.rsplit_once('_')?;
+    if suffix.is_empty() || !suffix.chars().all(|c| c.is_ascii_digit()) {
+        return None;
+    }
+    suffix.parse::<u32>().ok()
+}
+
+fn parse_scene_descriptor_from_clip_path(path: &str) -> Option<SceneClipDescriptor> {
+    let clip_path = Path::new(path);
+    let parent_dir = clip_path.parent()?.to_path_buf();
+    let stem = clip_path.file_stem()?.to_str()?;
+    let extension = clip_path
+        .extension()
+        .and_then(|v| v.to_str())
+        .map(|v| v.to_ascii_lowercase())?;
+    let (base, suffix) = stem.rsplit_once('_')?;
+    if suffix.is_empty() || !suffix.chars().all(|c| c.is_ascii_digit()) {
+        return None;
+    }
+
+    Some(SceneClipDescriptor {
+        parent_dir,
+        prefix: format!("{base}_"),
+        extension,
+    })
+}
+
+fn probe_clip_duration_sec(ffprobe: &Path, clip_path: &Path) -> Result<f64, String> {
+    let mut cmd = Command::new(ffprobe);
+    apply_no_window(&mut cmd);
+    let output = cmd
+        .args([
+            "-v",
+            "error",
+            "-show_entries",
+            "format=duration",
+            "-of",
+            "default=nk=1:nw=1",
+            clip_path.to_string_lossy().as_ref(),
+        ])
+        .output()
+        .map_err(|e| {
+            format!(
+                "Failed to run ffprobe for {} ({}): {e}",
+                clip_path.display(),
+                ffprobe.display()
+            )
+        })?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        return Err(if stderr.is_empty() {
+            format!("ffprobe failed for {}", clip_path.display())
+        } else {
+            format!("ffprobe failed for {}: {}", clip_path.display(), stderr)
+        });
+    }
+
+    let raw = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let parsed = raw
+        .lines()
+        .next()
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+        .and_then(|v| v.parse::<f64>().ok())
+        .filter(|v| v.is_finite() && *v > 0.0)
+        .ok_or_else(|| {
+            format!(
+                "Could not parse clip duration for {} from ffprobe output: {}",
+                clip_path.display(),
+                raw
+            )
+        })?;
+
+    Ok(parsed)
+}
+
+fn build_scene_time_bounds_from_directory(
+    app: &AppHandle,
+    descriptor: &SceneClipDescriptor,
+    min_segment_len: f64,
+) -> Result<std::collections::BTreeMap<u32, (f64, f64)>, String> {
+    let ffprobe = resolve_bundled_tool(app, "ffprobe")?;
+    let mut indexed_durations: std::collections::BTreeMap<u32, f64> =
+        std::collections::BTreeMap::new();
+
+    let entries = fs::read_dir(&descriptor.parent_dir).map_err(|e| {
+        format!(
+            "Failed to read scene directory {}: {e}",
+            descriptor.parent_dir.display()
+        )
+    })?;
+
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if !path.is_file() {
+            continue;
+        }
+
+        let extension_matches = path
+            .extension()
+            .and_then(|v| v.to_str())
+            .map(|v| v.eq_ignore_ascii_case(&descriptor.extension))
+            .unwrap_or(false);
+        if !extension_matches {
+            continue;
+        }
+
+        let Some(stem) = path.file_stem().and_then(|v| v.to_str()) else {
+            continue;
+        };
+        if !stem.starts_with(&descriptor.prefix) {
+            continue;
+        }
+
+        let suffix = &stem[descriptor.prefix.len()..];
+        if suffix.is_empty() || !suffix.chars().all(|c| c.is_ascii_digit()) {
+            continue;
+        }
+
+        let Some(index) = suffix.parse::<u32>().ok() else {
+            continue;
+        };
+
+        match probe_clip_duration_sec(&ffprobe, &path) {
+            Ok(duration) => {
+                indexed_durations.insert(index, duration.max(min_segment_len));
+            }
+            Err(err) => {
+                console_log(
+                    "NLE|original_cut",
+                    &format!("duration probe skipped {} ({err})", path.display()),
+                );
+            }
+        }
+    }
+
+    if indexed_durations.is_empty() {
+        return Err(format!(
+            "No scene clip durations could be probed in {}.",
+            descriptor.parent_dir.display()
+        ));
+    }
+
+    let mut running = 0.0_f64;
+    let mut bounds = std::collections::BTreeMap::new();
+    for (index, duration) in indexed_durations {
+        let start = running;
+        let end = start + duration.max(min_segment_len);
+        bounds.insert(index, (start, end));
+        running = end;
+    }
+
+    Ok(bounds)
+}
+
+fn build_time_bounds_from_selected_order(
+    app: &AppHandle,
+    clips: &[OriginalCutClip],
+    min_segment_len: f64,
+) -> Result<Vec<(f64, f64)>, String> {
+    let ffprobe = resolve_bundled_tool(app, "ffprobe")?;
+    let mut running = 0.0_f64;
+    let mut bounds: Vec<(f64, f64)> = Vec::with_capacity(clips.len());
+
+    for clip in clips {
+        let clip_path = Path::new(&clip.src);
+        if !clip_path.exists() {
+            return Err(format!(
+                "Scene clip file is missing: {}",
+                clip_path.display()
+            ));
+        }
+
+        let duration = probe_clip_duration_sec(&ffprobe, clip_path)?.max(min_segment_len);
+        let start = running;
+        let end = start + duration;
+        bounds.push((start, end));
+        running = end;
+    }
+
+    Ok(bounds)
+}
+
+fn normalize_original_cut_input(
+    app: &AppHandle,
+    clips: Vec<OriginalCutClip>,
+    sequence_name: Option<String>,
+) -> Result<(String, String, Vec<OriginalCutSegment>), String> {
+    if clips.is_empty() {
+        return Err("No clips selected for original-cut import.".to_string());
+    }
+
+    let original_path = clips
+        .iter()
+        .find_map(|clip| {
+            clip.original_path
+                .as_deref()
+                .map(str::trim)
+                .filter(|v| !v.is_empty())
+                .map(str::to_string)
+        })
+        .ok_or(
+            "Missing original media path in clip metadata. Re-import the episode and retry."
+                .to_string(),
+        )?;
+
+    for clip in &clips {
+        if let Some(candidate) = clip
+            .original_path
+            .as_deref()
+            .map(str::trim)
+            .filter(|v| !v.is_empty())
+        {
+            if candidate != original_path {
+                return Err(
+                    "Selected clips do not reference the same original media file.".to_string(),
+                );
+            }
+        }
+    }
+
+    if !Path::new(&original_path).exists() {
+        return Err(format!(
+            "Original media file no longer exists: {}",
+            original_path
+        ));
+    }
+
+    let min_segment_len = 1.0 / 30.0;
+    let mut ordered = clips;
+    for clip in &mut ordered {
+        if clip.scene_index.is_none() {
+            clip.scene_index = parse_scene_index_from_clip_path(&clip.src);
+        }
+    }
+
+    let inferred_bounds = ordered
+        .iter()
+        .find_map(|clip| parse_scene_descriptor_from_clip_path(&clip.src))
+        .and_then(|descriptor| {
+            build_scene_time_bounds_from_directory(app, &descriptor, min_segment_len).ok()
+        });
+
+    ordered.sort_by(|a, b| {
+        a.scene_index
+            .unwrap_or(u32::MAX)
+            .cmp(&b.scene_index.unwrap_or(u32::MAX))
+            .then_with(|| {
+                let left = a.start_sec.unwrap_or(f64::INFINITY);
+                let right = b.start_sec.unwrap_or(f64::INFINITY);
+                left.partial_cmp(&right)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            })
+            .then_with(|| a.src.cmp(&b.src))
+            .then_with(|| a.id.cmp(&b.id))
+    });
+
+    let ordered_fallback_bounds =
+        build_time_bounds_from_selected_order(app, &ordered, min_segment_len).ok();
+
+    let mut timeline_cursor = 0.0_f64;
+    let mut segments: Vec<OriginalCutSegment> = Vec::with_capacity(ordered.len());
+
+    for (idx, clip) in ordered.iter().enumerate() {
+        let inferred_for_clip = clip
+            .scene_index
+            .and_then(|scene_idx| inferred_bounds.as_ref().and_then(|m| m.get(&scene_idx)))
+            .copied();
+        let ordered_fallback_for_clip = ordered_fallback_bounds
+            .as_ref()
+            .and_then(|v| v.get(idx))
+            .copied();
+
+        let start_sec = clip
+            .start_sec
+            .or_else(|| inferred_for_clip.map(|(start, _)| start))
+            .or_else(|| ordered_fallback_for_clip.map(|(start, _)| start))
+            .ok_or(
+                "Clip cut metadata is incomplete. AMVerge could not infer scene timing from cached clips. Re-import this episode and retry exporting original cut.",
+            )?;
+
+        let next_start = ordered.get(idx + 1).and_then(|c| c.start_sec);
+        let mut end_sec = clip
+            .end_sec
+            .or(next_start)
+            .or_else(|| inferred_for_clip.map(|(_, end)| end))
+            .or_else(|| ordered_fallback_for_clip.map(|(_, end)| end))
+            .unwrap_or(start_sec + min_segment_len);
+        if !end_sec.is_finite() || end_sec <= start_sec {
+            end_sec = start_sec + min_segment_len;
+        }
+
+        let duration = (end_sec - start_sec).max(min_segment_len);
+        let timeline_start = timeline_cursor;
+        let timeline_end = timeline_start + duration;
+        timeline_cursor = timeline_end;
+
+        let fallback_name = Path::new(&clip.src)
+            .file_stem()
+            .and_then(|v| v.to_str())
+            .unwrap_or("clip")
+            .to_string();
+        let name = clip
+            .original_name
+            .as_deref()
+            .map(str::trim)
+            .filter(|v| !v.is_empty())
+            .map(str::to_string)
+            .unwrap_or(fallback_name);
+
+        segments.push(OriginalCutSegment {
+            name,
+            source_in_sec: start_sec,
+            source_out_sec: end_sec,
+            timeline_start_sec: timeline_start,
+            timeline_end_sec: timeline_end,
+        });
+    }
+
+    if segments.is_empty() {
+        return Err("No valid cut segments were generated.".to_string());
+    }
+
+    let normalized_sequence_name = sequence_name
+        .as_deref()
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+        .map(str::to_string)
+        .unwrap_or_else(|| "AMVerge Original Cut".to_string());
+
+    Ok((original_path, normalized_sequence_name, segments))
+}
+
+async fn write_original_cut_timeline_xml(
+    app: &AppHandle,
+    original_path: &str,
+    sequence_name: &str,
+    segments: &[OriginalCutSegment],
+    xml_prefix: &str,
+) -> Result<PathBuf, String> {
+    let mut clips: Vec<TimelineXmlClip> = Vec::with_capacity(segments.len());
+    for (idx, segment) in segments.iter().enumerate() {
+        let scene_index =
+            u32::try_from(idx).map_err(|_| "Too many cut segments for XML export.".to_string())?;
+        clips.push(TimelineXmlClip {
+            id: format!("original_cut_segment_{}", idx + 1),
+            src: original_path.to_string(),
+            original_name: Some(segment.name.clone()),
+            original_path: Some(original_path.to_string()),
+            scene_index: Some(scene_index),
+            start_sec: Some(segment.source_in_sec),
+            end_sec: Some(segment.source_out_sec),
+        });
+    }
+
+    let xml_path = runtime_temp_path(xml_prefix, "xml")?;
+    export_timeline_xml(
+        app.clone(),
+        clips,
+        xml_path.to_string_lossy().to_string(),
+        Some(sequence_name.to_string()),
+    )
+    .await?;
+
+    if !xml_path.exists() {
+        return Err(format!(
+            "Timeline XML was not created: {}",
+            xml_path.display()
+        ));
+    }
+
+    Ok(xml_path)
+}
+
+#[cfg(target_os = "windows")]
+fn escape_jsx_double_quoted(raw: &str) -> String {
+    raw.replace('\\', "\\\\")
+        .replace('"', "\\\"")
+        .replace('\r', "\\r")
+        .replace('\n', "\\n")
+}
+
+#[cfg(target_os = "windows")]
+fn build_after_effects_original_cut_jsx(
+    original_path: &str,
+    sequence_name: &str,
+    segments: &[OriginalCutSegment],
+) -> String {
+    let escaped_source = escape_jsx_double_quoted(original_path);
+    let escaped_name = escape_jsx_double_quoted(sequence_name);
+
+    let segment_rows = segments
+        .iter()
+        .map(|seg| {
+            format!(
+                "{{name:\"{}\",srcIn:{:.6},srcOut:{:.6},tlStart:{:.6},tlEnd:{:.6}}}",
+                escape_jsx_double_quoted(&seg.name),
+                seg.source_in_sec,
+                seg.source_out_sec,
+                seg.timeline_start_sec,
+                seg.timeline_end_sec
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(",\n    ");
+
+    format!(
+        r#"(function () {{
+  app.beginUndoGroup("AMVerge Original Cut");
+
+  if (!app.project) {{
+    app.newProject();
+  }}
+
+  var sourceFile = new File("{escaped_source}");
+  if (!sourceFile.exists) {{
+    throw new Error("Original media file not found: " + sourceFile.fsName);
+  }}
+
+  function normalizePath(p) {{
+    return String(p || "").replace(/\\/g, "/").toLowerCase();
+  }}
+
+  function findExistingFootage(targetPath) {{
+    if (!app.project || !app.project.items) {{
+      return null;
+    }}
+    var wanted = normalizePath(targetPath);
+    for (var i = 1; i <= app.project.numItems; i++) {{
+      var it = app.project.item(i);
+      if (!it) {{
+        continue;
+      }}
+      try {{
+        if (it.file && normalizePath(it.file.fsName) === wanted) {{
+          return it;
+        }}
+      }} catch (e) {{
+      }}
+    }}
+    return null;
+  }}
+
+  var footage = findExistingFootage(sourceFile.fsName);
+  if (!footage) {{
+    var importOpts = new ImportOptions(sourceFile);
+    footage = app.project.importFile(importOpts);
+  }}
+  if (!footage) {{
+    throw new Error("After Effects failed to import/find the original media.");
+  }}
+
+  var fps = footage.frameRate;
+  if (!fps || fps <= 0) {{
+    fps = 30.0;
+  }}
+
+  var width = footage.width;
+  if (!width || width <= 0) {{
+    width = 1920;
+  }}
+
+  var height = footage.height;
+  if (!height || height <= 0) {{
+    height = 1080;
+  }}
+
+  var pixelAspect = footage.pixelAspect;
+  if (!pixelAspect || pixelAspect <= 0) {{
+    pixelAspect = 1.0;
+  }}
+
+  var cuts = [
+    {segment_rows}
+  ];
+
+  var duration = 0.0;
+  for (var i = 0; i < cuts.length; i++) {{
+    if (cuts[i].tlEnd > duration) {{
+      duration = cuts[i].tlEnd;
+    }}
+  }}
+  if (duration < (1.0 / fps)) {{
+    duration = 1.0 / fps;
+  }}
+
+  var comp = app.project.items.addComp("{escaped_name}", width, height, pixelAspect, duration, fps);
+  for (var j = 0; j < cuts.length; j++) {{
+    var c = cuts[j];
+    var layer = comp.layers.add(footage);
+    layer.name = c.name;
+    layer.startTime = c.tlStart - c.srcIn;
+    layer.inPoint = c.tlStart;
+    layer.outPoint = c.tlEnd;
+  }}
+
+  app.endUndoGroup();
+}})();
+"#
+    )
+}
+
+async fn import_original_cut_into_after_effects(
+    app: &AppHandle,
+    abort_requested: &AtomicBool,
+    clips: Vec<OriginalCutClip>,
+    sequence_name: Option<String>,
+) -> Result<String, String> {
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = app;
+        let _ = abort_requested;
+        let _ = clips;
+        let _ = sequence_name;
+        return Err(
+            "Original-cut script import for After Effects is currently implemented for Windows builds only."
+                .to_string(),
+        );
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        let (original_path, normalized_sequence_name, segments) =
+            normalize_original_cut_input(app, clips, sequence_name)?;
+
+        emit_import_progress(
+            Some(app),
+            96,
+            "Preparing After Effects original-cut script...",
+        );
+
+        if is_import_cancel_requested(abort_requested) {
+            return Err(import_canceled_error());
+        }
+
+        let script_content = build_after_effects_original_cut_jsx(
+            &original_path,
+            &normalized_sequence_name,
+            &segments,
+        );
+        let script_path =
+            write_temp_script("amverge_afterfx_original_cut", "jsx", &script_content)?;
+
+        let afterfx = resolve_afterfx_executable()
+            .ok_or("After Effects executable was not found.".to_string())?;
+        let runner = afterfx
+            .parent()
+            .map(|dir| dir.join("AfterFX.com"))
+            .filter(|p| p.exists())
+            .unwrap_or_else(|| afterfx.clone());
+
+        emit_import_progress(Some(app), 98, "Running After Effects script...");
+        let mut cmd = Command::new(&runner);
+        apply_no_window(&mut cmd);
+        let out = cmd.arg("-r").arg(&script_path).output().map_err(|e| {
+            format!(
+                "Failed to run After Effects script runner ({}): {e}",
+                runner.display()
+            )
+        })?;
+
+        let stdout = String::from_utf8_lossy(&out.stdout).trim().to_string();
+        let stderr = String::from_utf8_lossy(&out.stderr).trim().to_string();
+
+        if !out.status.success() {
+            let details = if !stderr.is_empty() {
+                stderr
+            } else if !stdout.is_empty() {
+                stdout
+            } else {
+                "Unknown After Effects script failure.".to_string()
+            };
+
+            return Err(format!(
+                "After Effects script failed. If your AE build blocks CLI scripts, open AE and allow scripts to write files/preferences.\n{details}"
+            ));
+        }
+
+        emit_import_progress(Some(app), 100, "After Effects original cut imported.");
+        console_log(
+            "NLE|after_effects_original_cut",
+            &format!(
+                "ok source={} segments={} sequence={}",
+                original_path,
+                segments.len(),
+                normalized_sequence_name
+            ),
+        );
+
+        Ok("After Effects original cut import complete.".to_string())
+    }
+}
+
+async fn import_original_cut_into_premiere(
+    app: &AppHandle,
+    abort_requested: &AtomicBool,
+    clips: Vec<OriginalCutClip>,
+    sequence_name: Option<String>,
+) -> Result<String, String> {
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = app;
+        let _ = abort_requested;
+        let _ = clips;
+        let _ = sequence_name;
+        return Err(
+            "Original-cut script import for Premiere is currently implemented for Windows builds only."
+                .to_string(),
+        );
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        let (original_path, normalized_sequence_name, segments) =
+            normalize_original_cut_input(app, clips, sequence_name)?;
+
+        emit_import_progress(Some(app), 96, "Preparing Premiere original-cut XML...");
+
+        if is_import_cancel_requested(abort_requested) {
+            return Err(import_canceled_error());
+        }
+
+        let timeline_xml_path = write_original_cut_timeline_xml(
+            app,
+            &original_path,
+            &normalized_sequence_name,
+            &segments,
+            "amverge_premiere_original_cut",
+        )
+        .await?;
+
+        let timeline_xml = timeline_xml_path.to_string_lossy().to_string();
+        console_log(
+            "NLE|premiere_original_cut",
+            &format!("timeline_xml={}", timeline_xml_path.display()),
+        );
+
+        emit_import_progress(
+            Some(app),
+            98,
+            "Preparing Premiere Pro original-cut import...",
+        );
+        let script_path = write_temp_script(
+            "amverge_premiere_original_cut_import_ui",
+            "ps1",
+            &build_premiere_ui_import_ps(&[timeline_xml]),
+        )?;
+
+        let premiere_already_running = is_windows_process_running("Adobe Premiere Pro.exe");
+        if !premiere_already_running {
+            let premiere = resolve_premiere_executable()
+                .ok_or("Premiere Pro executable was not found.".to_string())?;
+            emit_import_progress(Some(app), 98, "Launching Premiere Pro...");
+            spawn_editor_process(&premiere, "Premiere Pro", "NLE|premiere_original_cut")?;
+        }
+
+        let message = run_windows_import_with_retries(
+            Some(app),
+            abort_requested,
+            "NLE|premiere_original_cut",
+            "Premiere Pro",
+            30,
+            !premiere_already_running,
+            Some("Adobe Premiere Pro.exe"),
+            "Premiere Pro was closed before the original-cut import completed.",
+            "Premiere Pro did not become ready in time. Make sure a project is open, then retry.",
+            || run_editor_ui_import_ps(&script_path, "Premiere Pro"),
+        )
+        .await?;
+
+        console_log(
+            "NLE|premiere_original_cut",
+            &format!(
+                "ok source={} segments={} sequence={} xml={}",
+                original_path,
+                segments.len(),
+                normalized_sequence_name,
+                timeline_xml_path.display()
+            ),
+        );
+        Ok(message)
+    }
+}
+
+fn build_davinci_original_cut_script(
+    timeline_xml_path: &str,
+    original_path: &str,
+    sequence_name: &str,
+) -> String {
+    let source_dir = Path::new(original_path)
+        .parent()
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_default();
+
+    [
+        "import os".to_string(),
+        "import sys".to_string(),
+        "".to_string(),
+        format!(
+            "TIMELINE_XML_PATH = r'{}'",
+            escape_py_single_quoted(timeline_xml_path)
+        ),
+        format!("SOURCE_PATH = r'{}'", escape_py_single_quoted(original_path)),
+        format!("SOURCE_DIR = r'{}'", escape_py_single_quoted(&source_dir)),
+        format!(
+            "SEQUENCE_NAME = r'{}'",
+            escape_py_single_quoted(sequence_name)
+        ),
+        "".to_string(),
+        "def ensure_resolve_module():".to_string(),
+        "    try:".to_string(),
+        "        import DaVinciResolveScript as dvr_script".to_string(),
+        "        return dvr_script".to_string(),
+        "    except Exception:".to_string(),
+        "        pass".to_string(),
+        "".to_string(),
+        "    candidates = []".to_string(),
+        "    if os.name == 'nt':".to_string(),
+        "        program_data = os.environ.get('PROGRAMDATA', r'C:\\\\ProgramData')".to_string(),
+        "        candidates.append(os.path.join(program_data, 'Blackmagic Design', 'DaVinci Resolve', 'Support', 'Developer', 'Scripting', 'Modules'))".to_string(),
+        "    elif sys.platform == 'darwin':".to_string(),
+        "        candidates.append('/Library/Application Support/Blackmagic Design/DaVinci Resolve/Developer/Scripting/Modules')".to_string(),
+        "    else:".to_string(),
+        "        candidates.append('/opt/resolve/Developer/Scripting/Modules')".to_string(),
+        "".to_string(),
+        "    for path in candidates:".to_string(),
+        "        if os.path.isdir(path) and path not in sys.path:".to_string(),
+        "            sys.path.append(path)".to_string(),
+        "".to_string(),
+        "    import DaVinciResolveScript as dvr_script".to_string(),
+        "    return dvr_script".to_string(),
+        "".to_string(),
+        "dvr_script = ensure_resolve_module()".to_string(),
+        "resolve = dvr_script.scriptapp('Resolve')".to_string(),
+        "if not resolve:".to_string(),
+        "    raise RuntimeError('Could not connect to DaVinci Resolve. Ensure Resolve Studio is running and External scripting is set to Local.')".to_string(),
+        "pm = resolve.GetProjectManager()".to_string(),
+        "project = pm.GetCurrentProject() if pm else None".to_string(),
+        "if not project:".to_string(),
+        "    raise RuntimeError('No Resolve project is open.')".to_string(),
+        "media_pool = project.GetMediaPool()".to_string(),
+        "if not media_pool:".to_string(),
+        "    raise RuntimeError('Could not access Resolve media pool.')".to_string(),
+        "if not os.path.exists(TIMELINE_XML_PATH):".to_string(),
+        "    raise RuntimeError('Timeline XML not found: ' + TIMELINE_XML_PATH)".to_string(),
+        "if os.path.exists(SOURCE_PATH):".to_string(),
+        "    try:".to_string(),
+        "        media_pool.ImportMedia([SOURCE_PATH])".to_string(),
+        "    except Exception:".to_string(),
+        "        pass".to_string(),
+        "import_options = {'timelineName': SEQUENCE_NAME, 'importSourceClips': True}".to_string(),
+        "if SOURCE_DIR and os.path.isdir(SOURCE_DIR):".to_string(),
+        "    import_options['sourceClipsPath'] = SOURCE_DIR".to_string(),
+        "timeline = media_pool.ImportTimelineFromFile(TIMELINE_XML_PATH, import_options)".to_string(),
+        "if not timeline:".to_string(),
+        "    timeline = media_pool.ImportTimelineFromFile(TIMELINE_XML_PATH)".to_string(),
+        "if not timeline:".to_string(),
+        "    raise RuntimeError('Resolve failed to import timeline XML.')".to_string(),
+        "try:".to_string(),
+        "    project.SetCurrentTimeline(timeline)".to_string(),
+        "except Exception:".to_string(),
+        "    pass".to_string(),
+        "print('DaVinci Resolve original cut import complete.')".to_string(),
+    ]
+    .join("\n")
+}
+
+async fn import_original_cut_into_davinci_resolve(
+    app: &AppHandle,
+    abort_requested: &AtomicBool,
+    clips: Vec<OriginalCutClip>,
+    sequence_name: Option<String>,
+) -> Result<String, String> {
+    let (original_path, normalized_sequence_name, segments) =
+        normalize_original_cut_input(app, clips, sequence_name)?;
+
+    #[cfg(target_os = "windows")]
+    emit_import_progress(
+        Some(app),
+        96,
+        "Preparing DaVinci Resolve original-cut XML...",
+    );
+
+    #[cfg(target_os = "windows")]
+    if is_import_cancel_requested(abort_requested) {
+        return Err(import_canceled_error());
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = app;
+        let _ = abort_requested;
+    }
+
+    let timeline_xml_path = write_original_cut_timeline_xml(
+        app,
+        &original_path,
+        &normalized_sequence_name,
+        &segments,
+        "amverge_resolve_original_cut",
+    )
+    .await?;
+    let script_body = build_davinci_original_cut_script(
+        timeline_xml_path.to_string_lossy().as_ref(),
+        &original_path,
+        &normalized_sequence_name,
+    );
+    let script_path = write_temp_script("amverge_resolve_original_cut", "py", &script_body)?;
+
+    #[cfg(target_os = "windows")]
+    {
+        let resolve_running = is_windows_process_running("Resolve.exe");
+        if !resolve_running {
+            if let Some(resolve_exe) = resolve_davinci_executable() {
+                emit_import_progress(Some(app), 98, "Launching DaVinci Resolve...");
+                spawn_editor_process(&resolve_exe, "DaVinci Resolve", "NLE|davinci_original_cut")?;
+            } else {
+                return Err("DaVinci Resolve executable was not found.".to_string());
+            }
+        }
+
+        let message = run_windows_import_with_retries(
+            Some(app),
+            abort_requested,
+            "NLE|davinci_original_cut",
+            "DaVinci Resolve",
+            30,
+            !resolve_running,
+            Some("Resolve.exe"),
+            "DaVinci Resolve was closed before the original-cut import completed.",
+            "DaVinci Resolve did not become ready for original-cut scripting in time.",
+            || run_python_script(&script_path),
+        )
+        .await?;
+
+        console_log(
+            "NLE|davinci_original_cut",
+            &format!(
+                "ok source={} segments={} sequence={} xml={}",
+                original_path,
+                segments.len(),
+                normalized_sequence_name,
+                timeline_xml_path.display()
+            ),
+        );
+        return Ok(message);
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        let result = run_python_script(&script_path)?;
+        return Ok(result);
+    }
 }
 
 #[cfg(target_os = "windows")]
@@ -436,15 +1400,6 @@ async fn import_into_davinci_resolve(
     media_paths: &[String],
     abort_requested: &AtomicBool,
 ) -> Result<String, String> {
-    #[cfg(not(target_os = "windows"))]
-    {
-        let _ = app;
-        let _ = abort_requested;
-    }
-
-    #[cfg(target_os = "windows")]
-    emit_import_progress(Some(app), 98, "Preparing DaVinci Resolve auto-import...");
-
     let script_path = write_temp_script(
         "amverge_resolve_import",
         "py",
@@ -453,6 +1408,7 @@ async fn import_into_davinci_resolve(
 
     #[cfg(target_os = "windows")]
     {
+        emit_import_progress(Some(app), 98, "Preparing DaVinci Resolve auto-import...");
         let resolve_running = is_windows_process_running("Resolve.exe");
         if !resolve_running {
             if let Some(resolve_exe) = resolve_davinci_executable() {
@@ -463,7 +1419,7 @@ async fn import_into_davinci_resolve(
             }
         }
 
-        return run_windows_import_with_retries(
+        run_windows_import_with_retries(
             Some(app),
             abort_requested,
             "NLE|davinci",
@@ -475,23 +1431,37 @@ async fn import_into_davinci_resolve(
             "DaVinci Resolve did not become ready for scripting in time.",
             || run_python_script(&script_path),
         )
-        .await;
+        .await
     }
 
-    run_python_script(&script_path)
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = app;
+        let _ = abort_requested;
+        run_python_script(&script_path)
+    }
 }
 
 fn run_python_script(script_path: &Path) -> Result<String, String> {
     let mut launch_errors: Vec<String> = Vec::new();
 
-    let candidates: Vec<(&str, Vec<&str>)> = if cfg!(target_os = "windows") {
-        vec![("python", vec![]), ("py", vec!["-3"])]
+    let candidates: Vec<(String, Vec<String>)> = if cfg!(target_os = "windows") {
+        let mut c: Vec<(String, Vec<String>)> = Vec::new();
+        if let Some(p) = resolve_local_venv_python() {
+            c.push((p.to_string_lossy().to_string(), vec![]));
+        }
+        c.push(("python".to_string(), vec![]));
+        c.push(("py".to_string(), vec!["-3".to_string()]));
+        c
     } else {
-        vec![("python3", vec![]), ("python", vec![])]
+        vec![
+            ("python3".to_string(), vec![]),
+            ("python".to_string(), vec![]),
+        ]
     };
 
     for (exe, extra_args) in candidates {
-        let mut cmd = Command::new(exe);
+        let mut cmd = Command::new(&exe);
         apply_no_window(&mut cmd);
         cmd.args(extra_args)
             .arg(script_path)
@@ -581,6 +1551,35 @@ fn run_python_script(script_path: &Path) -> Result<String, String> {
         "Failed to run DaVinci scripting bridge.\n{}",
         launch_errors.join("\n")
     ))
+}
+
+#[cfg(target_os = "windows")]
+fn resolve_local_venv_python() -> Option<PathBuf> {
+    let current = std::env::current_dir().ok()?;
+    let candidate_roots = if current.ends_with("src-tauri") {
+        vec![
+            current
+                .parent()
+                .and_then(|p| p.parent())
+                .map(|p| p.to_path_buf()),
+            Some(current.clone()),
+        ]
+    } else {
+        vec![Some(current)]
+    };
+
+    for root in candidate_roots.into_iter().flatten() {
+        let python = root
+            .join("backend")
+            .join("venv")
+            .join("Scripts")
+            .join("python.exe");
+        if python.exists() {
+            return Some(python);
+        }
+    }
+
+    None
 }
 
 fn runtime_temp_path(prefix: &str, extension: &str) -> Result<PathBuf, String> {
@@ -1037,7 +2036,7 @@ fn build_davinci_import_script(media_paths: &[String]) -> String {
         "dvr_script = ensure_resolve_module()".to_string(),
         "resolve = dvr_script.scriptapp('Resolve')".to_string(),
         "if not resolve:".to_string(),
-        "    raise RuntimeError('Could not connect to DaVinci Resolve. Open Resolve and enable external scripting.')"
+        "    raise RuntimeError('Could not connect to DaVinci Resolve. Ensure Resolve Studio is running and External scripting is set to Local.')"
             .to_string(),
         "".to_string(),
         "pm = resolve.GetProjectManager()".to_string(),
@@ -1052,6 +2051,34 @@ fn build_davinci_import_script(media_paths: &[String]) -> String {
         "if not media_pool:".to_string(),
         "    raise RuntimeError('Could not access Resolve media pool.')".to_string(),
         "".to_string(),
+        "def norm(p):".to_string(),
+        "    return os.path.normcase(os.path.normpath(str(p or ''))).replace('\\\\', '/')".to_string(),
+        "".to_string(),
+        "def iter_clips(folder):".to_string(),
+        "    if not folder:".to_string(),
+        "        return".to_string(),
+        "    for clip in (folder.GetClipList() or []):".to_string(),
+        "        yield clip".to_string(),
+        "    for sub in (folder.GetSubFolderList() or []):".to_string(),
+        "        for clip in iter_clips(sub):".to_string(),
+        "            yield clip".to_string(),
+        "".to_string(),
+        "def clip_exists(project_obj, file_path):".to_string(),
+        "    try:".to_string(),
+        "        root = project_obj.GetMediaPool().GetRootFolder()".to_string(),
+        "    except Exception:".to_string(),
+        "        return False".to_string(),
+        "    wanted = norm(file_path)".to_string(),
+        "    for clip in iter_clips(root):".to_string(),
+        "        try:".to_string(),
+        "            props = clip.GetClipProperty() or {}".to_string(),
+        "            clip_path = props.get('File Path') or props.get('FilePath') or ''".to_string(),
+        "            if norm(clip_path) == wanted:".to_string(),
+        "                return True".to_string(),
+        "        except Exception:".to_string(),
+        "            pass".to_string(),
+        "    return False".to_string(),
+        "".to_string(),
         "normalized = []".to_string(),
         "for p in MEDIA_FILES:".to_string(),
         "    ap = os.path.abspath(p)".to_string(),
@@ -1061,15 +2088,20 @@ fn build_davinci_import_script(media_paths: &[String]) -> String {
         "if missing:".to_string(),
         "    raise RuntimeError('Resolve import paths not found: ' + '; '.join(missing))".to_string(),
         "".to_string(),
-        "result = media_pool.ImportMedia(normalized)".to_string(),
+        "to_import = [p for p in normalized if not clip_exists(project, p)]".to_string(),
+        "if not to_import:".to_string(),
+        "    print('DaVinci Resolve import complete.')".to_string(),
+        "    raise SystemExit(0)".to_string(),
+        "".to_string(),
+        "result = media_pool.ImportMedia(to_import)".to_string(),
         "if not result:".to_string(),
-        "    clip_infos = [{'FilePath': p} for p in normalized]".to_string(),
+        "    clip_infos = [{'FilePath': p} for p in to_import]".to_string(),
         "    result = media_pool.ImportMedia(clip_infos)".to_string(),
         "".to_string(),
         "if not result:".to_string(),
         "    imported_any = False".to_string(),
         "    failed = []".to_string(),
-        "    for p in normalized:".to_string(),
+        "    for p in to_import:".to_string(),
         "        r = media_pool.ImportMedia([p])".to_string(),
         "        if r:".to_string(),
         "            imported_any = True".to_string(),

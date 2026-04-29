@@ -45,6 +45,7 @@ frontend/src-tauri/gen/schemas/
 **/*.njsproj
 **/*.sln
 **/*.sw?
+AGENTS.md
 
 #############################################
 # App outputs / generated assets

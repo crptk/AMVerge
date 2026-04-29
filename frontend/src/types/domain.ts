@@ -3,6 +3,10 @@ export type ClipItem = {
   src: string;
   thumbnail: string;
   originalName?: string;
+  originalPath?: string;
+  sceneIndex?: number;
+  startSec?: number;
+  endSec?: number | null;
 };
 
 export type EpisodeFolder = {

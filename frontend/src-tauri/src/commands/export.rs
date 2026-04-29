@@ -1,11 +1,14 @@
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::sync::atomic::Ordering;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, State};
 
 use crate::payloads::ProgressPayload;
+use crate::state::ExportAbortState;
 use crate::utils::ffmpeg::resolve_bundled_tool;
 use crate::utils::logging::{console_log, sanitize_for_console};
 use crate::utils::paths::file_name_only;
@@ -14,10 +17,38 @@ use crate::utils::process::apply_no_window;
 #[tauri::command]
 pub async fn export_clips(
     app: AppHandle,
+    abort_state: State<'_, ExportAbortState>,
     clips: Vec<String>,
     save_path: String,
     merge_enabled: bool,
 ) -> Result<Vec<String>, String> {
+    abort_state.abort_requested.store(false, Ordering::SeqCst);
+    if let Ok(mut lock) = abort_state.pid.lock() {
+        *lock = None;
+    }
+
+    let abort_requested = abort_state.abort_requested.clone();
+    let active_pid = abort_state.pid.clone();
+
+    struct ExportAbortGuard {
+        abort_requested: Arc<std::sync::atomic::AtomicBool>,
+        active_pid: Arc<Mutex<Option<u32>>>,
+    }
+
+    impl Drop for ExportAbortGuard {
+        fn drop(&mut self) {
+            self.abort_requested.store(false, Ordering::SeqCst);
+            if let Ok(mut lock) = self.active_pid.lock() {
+                *lock = None;
+            }
+        }
+    }
+
+    let _abort_guard = ExportAbortGuard {
+        abort_requested: abort_requested.clone(),
+        active_pid: active_pid.clone(),
+    };
+
     if clips.is_empty() {
         return Ok(Vec::new());
     }
@@ -82,6 +113,19 @@ pub async fn export_clips(
                 message: msg.clone(),
             },
         );
+    }
+
+    fn export_canceled_error() -> String {
+        "AMVERGE_CANCELED: Export canceled by user.".to_string()
+    }
+
+    fn is_canceled_error_text(value: &str) -> bool {
+        let lower = value.to_ascii_lowercase();
+        lower.contains("amverge_canceled") || lower.contains("canceled by user")
+    }
+
+    fn is_export_cancel_requested(abort_requested: &Arc<std::sync::atomic::AtomicBool>) -> bool {
+        abort_requested.load(Ordering::SeqCst)
     }
 
     async fn ffprobe_duration_ms(ffprobe: PathBuf, path: String) -> Result<Option<u64>, String> {
@@ -182,6 +226,8 @@ pub async fn export_clips(
         grand_total_ms: Option<u64>,
         message_prefix: &str,
         start_time: Instant,
+        abort_requested: Arc<std::sync::atomic::AtomicBool>,
+        active_pid: Arc<Mutex<Option<u32>>>,
     ) -> Result<(), String> {
         // Force progress to stderr so we can parse it (while still receiving real errors).
         // Note: ffmpeg writes key=value lines like out_time_ms=..., progress=continue/end.
@@ -189,6 +235,10 @@ pub async fn export_clips(
         args.insert(0, "-nostats".into());
         args.insert(0, "pipe:2".into());
         args.insert(0, "-progress".into());
+
+        if abort_requested.load(Ordering::SeqCst) {
+            return Err(export_canceled_error());
+        }
 
         let mut cmd = Command::new(&ffmpeg);
         apply_no_window(&mut cmd);
@@ -198,6 +248,11 @@ pub async fn export_clips(
             .stderr(Stdio::piped())
             .spawn()
             .map_err(|e| format!("Failed to spawn ffmpeg ({}): {e}", ffmpeg.display()))?;
+
+        let child_pid = child.id();
+        if let Ok(mut lock) = active_pid.lock() {
+            *lock = Some(child_pid);
+        }
 
         let stderr = child
             .stderr
@@ -210,6 +265,17 @@ pub async fn export_clips(
         let mut last_percent: Option<u8> = None;
 
         for line in reader.lines().flatten() {
+            if abort_requested.load(Ordering::SeqCst) {
+                let _ = child.kill();
+                let _ = child.wait();
+                if let Ok(mut lock) = active_pid.lock() {
+                    if lock.as_ref().copied() == Some(child_pid) {
+                        *lock = None;
+                    }
+                }
+                return Err(export_canceled_error());
+            }
+
             stderr_accum.push_str(&line);
             stderr_accum.push('\n');
 
@@ -267,6 +333,16 @@ pub async fn export_clips(
         let status = child
             .wait()
             .map_err(|e| format!("Failed waiting for ffmpeg: {e}"))?;
+
+        if let Ok(mut lock) = active_pid.lock() {
+            if lock.as_ref().copied() == Some(child_pid) {
+                *lock = None;
+            }
+        }
+
+        if abort_requested.load(Ordering::SeqCst) {
+            return Err(export_canceled_error());
+        }
 
         if !status.success() {
             // On failure, dump ffmpeg stderr to console (screenshot-friendly).
@@ -376,6 +452,10 @@ pub async fn export_clips(
 
         use tempfile::NamedTempFile;
 
+        if is_export_cancel_requested(&abort_requested) {
+            return Err(export_canceled_error());
+        }
+
         emit_export_progress(&app, 0, "Merging clips...", export_start_time);
 
         let out_str = save_path.to_str().ok_or("Invalid output path")?.to_string();
@@ -384,6 +464,9 @@ pub async fn export_clips(
         emit_export_progress(&app, 25, "Probing durations...", export_start_time);
         let mut total_ms: Option<u64> = Some(0);
         for c in &clips {
+            if is_export_cancel_requested(&abort_requested) {
+                return Err(export_canceled_error());
+            }
             match ffprobe_duration_ms(ffprobe.clone(), c.clone()).await {
                 Ok(Some(ms)) => {
                     if let Some(t) = total_ms {
@@ -402,6 +485,9 @@ pub async fn export_clips(
         let mut filelist =
             NamedTempFile::new().map_err(|e| format!("Failed to create temp file: {e}"))?;
         for c in &clips {
+            if is_export_cancel_requested(&abort_requested) {
+                return Err(export_canceled_error());
+            }
             // ffmpeg concat demuxer requires each line: file 'path'
             // Escape single quotes in paths
             let safe_path = c.replace("'", "'\\''");
@@ -467,6 +553,8 @@ pub async fn export_clips(
         let ffmpeg_clone = ffmpeg.clone();
         let total_ms_f = total_ms;
         let start_time = export_start_time;
+        let abort_requested_for_run = abort_requested.clone();
+        let active_pid_for_run = active_pid.clone();
         let out = tokio::task::spawn_blocking(move || {
             run_ffmpeg_with_progress(
                 app_for_ffmpeg,
@@ -477,12 +565,17 @@ pub async fn export_clips(
                 total_ms_f,
                 "Merging",
                 start_time,
+                abort_requested_for_run,
+                active_pid_for_run,
             )
         })
         .await
         .map_err(|e| format!("ffmpeg task panicked: {e}"))?;
 
         if let Err(e) = out {
+            if is_canceled_error_text(&e) {
+                return Err(e);
+            }
             console_log(
                 "ERROR|export_clips",
                 &format!("merge failed: {}", sanitize_for_console(&e)),
@@ -517,6 +610,9 @@ pub async fn export_clips(
         // Pre-cache codec info alongside durations to avoid redundant ffprobe calls per clip.
         let mut per_copy_safe: Vec<bool> = Vec::with_capacity(clips.len());
         for c in &clips {
+            if is_export_cancel_requested(&abort_requested) {
+                return Err(export_canceled_error());
+            }
             let d = ffprobe_duration_ms(ffprobe.clone(), c.clone())
                 .await
                 .ok()
@@ -535,6 +631,10 @@ pub async fn export_clips(
 
         let mut done_ms: u64 = 0;
         for (i, clip) in clips.iter().enumerate() {
+            if is_export_cancel_requested(&abort_requested) {
+                return Err(export_canceled_error());
+            }
+
             let clip_path = Path::new(clip);
             let clip_stem = clip_path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
 
@@ -615,6 +715,8 @@ pub async fn export_clips(
             let run_msg = mode_msg.clone();
             let run_args = args;
             let start_time = export_start_time;
+            let abort_requested_for_run = abort_requested.clone();
+            let active_pid_for_run = active_pid.clone();
             let result = tokio::task::spawn_blocking(move || {
                 run_ffmpeg_with_progress(
                     app_for_ffmpeg,
@@ -625,12 +727,17 @@ pub async fn export_clips(
                     grand_total,
                     &run_msg,
                     start_time,
+                    abort_requested_for_run,
+                    active_pid_for_run,
                 )
             })
             .await
             .map_err(|e| format!("ffmpeg task panicked: {e}"))?;
 
             if let Err(e) = result {
+                if is_export_cancel_requested(&abort_requested) {
+                    return Err(export_canceled_error());
+                }
                 // If copy failed, retry re-encode automatically.
                 if copy_ok {
                     console_log(
@@ -656,6 +763,8 @@ pub async fn export_clips(
                     let run_msg = format!("{msg} (re-encode)");
                     let run_args = ffmpeg_reencode_ae_args(input_str, output_str);
                     let start_time = export_start_time;
+                    let abort_requested_for_run = abort_requested.clone();
+                    let active_pid_for_run = active_pid.clone();
                     let result2 = tokio::task::spawn_blocking(move || {
                         run_ffmpeg_with_progress(
                             app_for_ffmpeg,
@@ -666,11 +775,16 @@ pub async fn export_clips(
                             grand_total,
                             &run_msg,
                             start_time,
+                            abort_requested_for_run,
+                            active_pid_for_run,
                         )
                     })
                     .await
                     .map_err(|e| format!("ffmpeg task panicked: {e}"))?;
                     if let Err(e2) = result2 {
+                        if is_canceled_error_text(&e2) {
+                            return Err(e2);
+                        }
                         console_log(
                             "ERROR|export_clips",
                             &format!(
@@ -686,6 +800,9 @@ pub async fn export_clips(
                         ));
                     }
                 } else {
+                    if is_canceled_error_text(&e) {
+                        return Err(e);
+                    }
                     console_log(
                         "ERROR|export_clips",
                         &format!(
@@ -713,4 +830,59 @@ pub async fn export_clips(
     console_log("EXPORT|end", "ok");
 
     Ok(exported_files)
+}
+
+#[tauri::command]
+pub async fn abort_export(abort_state: State<'_, ExportAbortState>) -> Result<String, String> {
+    abort_state.abort_requested.store(true, Ordering::SeqCst);
+
+    let pid = {
+        let lock = abort_state.pid.lock().map_err(|e| e.to_string())?;
+        *lock
+    };
+
+    let Some(pid) = pid else {
+        return Ok("Export cancellation requested.".to_string());
+    };
+
+    #[cfg(target_os = "windows")]
+    {
+        let result = tokio::task::spawn_blocking(move || {
+            let mut cmd = Command::new("taskkill");
+            apply_no_window(&mut cmd);
+            cmd.args(["/F", "/T", "/PID", &pid.to_string()]).output()
+        })
+        .await
+        .map_err(|e| format!("taskkill task panicked: {e}"))?
+        .map_err(|e| format!("Failed to run taskkill: {e}"))?;
+
+        if !result.status.success() {
+            let stderr = String::from_utf8_lossy(&result.stderr).trim().to_string();
+            console_log(
+                "EXPORT|abort",
+                &format!(
+                    "taskkill pid={pid} failed: {}",
+                    sanitize_for_console(&stderr)
+                ),
+            );
+        }
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = tokio::task::spawn_blocking(move || {
+            Command::new("kill")
+                .args(["-TERM", &pid.to_string()])
+                .output()
+        })
+        .await;
+    }
+
+    if let Ok(mut lock) = abort_state.pid.lock() {
+        if lock.as_ref().copied() == Some(pid) {
+            *lock = None;
+        }
+    }
+
+    Ok("Export cancellation requested.".to_string())
 }

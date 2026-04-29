@@ -297,6 +297,34 @@
     background: rgba(var(--accent-rgb), 0.8) !important;
 }
 
+.export-original-button {
+    width: 100% !important;
+    height: 38px !important;
+    margin-top: 2px !important;
+    background: rgba(255, 255, 255, 0.04) !important;
+    color: rgba(255, 255, 255, 0.92) !important;
+    border: 1px solid rgba(255, 255, 255, 0.25) !important;
+    font-size: 0.92rem !important;
+    font-weight: 600 !important;
+    letter-spacing: 0.8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    transition: all 0.2s ease !important;
+}
+
+.export-original-button:hover {
+    border-color: rgba(var(--accent-rgb), 0.65) !important;
+    color: var(--accent) !important;
+    background: rgba(var(--accent-rgb), 0.12) !important;
+}
+
+.export-original-button:active {
+    transform: translateY(0);
+    background: rgba(var(--accent-rgb), 0.2) !important;
+}
+
 .export-panel .checkbox-row {
     height: 36px;
     margin-right: 0;

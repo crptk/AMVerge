@@ -28,6 +28,10 @@ interface HomePageProps {
     mergeFileName?: string,
     editorTarget?: EditorTarget
   ) => Promise<void>;
+  handleExportOriginal: (
+    selectedClips: Set<string>,
+    editorTarget?: EditorTarget
+  ) => Promise<void>;
   sideBarEnabled: boolean;
   videoIsHEVC: boolean | null;
   userHasHEVC: React.RefObject<boolean>;
@@ -62,6 +66,7 @@ export default function HomePage({
   importToken,
   isEmpty,
   handleExport,
+  handleExportOriginal,
   sideBarEnabled,
   videoIsHEVC,
   userHasHEVC,
@@ -104,6 +109,7 @@ export default function HomePage({
           importToken={importToken}
           isEmpty={isEmpty}
           handleExport={handleExport}
+          handleExportOriginal={handleExportOriginal}
           sideBarEnabled={sideBarEnabled}
           videoIsHEVC={videoIsHEVC}
           userHasHEVC={userHasHEVC}

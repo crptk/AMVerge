@@ -231,6 +231,9 @@ pub async fn ensure_preview_proxy(
     }
 
     let final_path = proxy_path.to_string_lossy().to_string();
-    console_log("PROXY|end", &format!("ok proxy={}", file_name_only(&final_path)));
+    console_log(
+        "PROXY|end",
+        &format!("ok proxy={}", file_name_only(&final_path)),
+    );
     Ok(final_path)
 }

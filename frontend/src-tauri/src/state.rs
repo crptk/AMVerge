@@ -23,3 +23,9 @@ pub struct DiscordRPCState {
 pub struct EditorImportAbortState {
     pub abort_requested: AtomicBool,
 }
+
+#[derive(Default)]
+pub struct ExportAbortState {
+    pub abort_requested: Arc<AtomicBool>,
+    pub pid: Arc<Mutex<Option<u32>>>,
+}
