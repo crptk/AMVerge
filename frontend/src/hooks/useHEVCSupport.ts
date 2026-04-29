@@ -19,7 +19,7 @@ export default function useHEVCSupport(userHasHEVC: React.MutableRefObject<boole
 
       userHasHEVC.current = candidates.some((mime) => {
         const result = videoEl.canPlayType(mime);
-        return isTypeSupported(mime) || result === "probably" || result === "maybe";
+        return isTypeSupported(mime) || result === "probably";
       });
     } catch {
       userHasHEVC.current = false;

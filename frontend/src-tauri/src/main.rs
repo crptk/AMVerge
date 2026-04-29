@@ -261,16 +261,16 @@ async fn detect_scenes(
         root.pop();
 
         let script_path = root.join("backend").join("app.py");
-        let python_path = root
-            .join("backend")
-            .join("venv")
-            .join("Scripts")
-            .join("python.exe");
+        let python_path = if cfg!(windows) {
+            root.join("backend").join("venv").join("Scripts").join("python.exe")
+        } else {
+            root.join("backend").join("venv").join("bin").join("python")
+        };
 
         let python_name = python_path
             .file_name()
             .and_then(|x| x.to_str())
-            .unwrap_or("python.exe");
+            .unwrap_or(if cfg!(windows) { "python.exe" } else { "python" });
         console_log(
             "SCENE|spawn",
             &format!(
@@ -295,18 +295,25 @@ async fn detect_scenes(
             .ok_or("Can't get exe directory")?
             .to_path_buf();
 
+        let sidecar_rel = if cfg!(windows) {
+            "bin/backend_script-x86_64-pc-windows-msvc/backend_script.exe"
+        } else if cfg!(all(target_os = "macos", target_arch = "aarch64")) {
+            "bin/backend_script-aarch64-apple-darwin/backend_script"
+        } else if cfg!(target_os = "macos") {
+            "bin/backend_script-x86_64-apple-darwin/backend_script"
+        } else {
+            return Err("detect_scenes: unsupported platform".to_string());
+        };
+
         let backend = app
             .path()
-            .resolve(
-                "bin/backend_script-x86_64-pc-windows-msvc/backend_script.exe",
-                tauri::path::BaseDirectory::Resource,
-            )
+            .resolve(sidecar_rel, tauri::path::BaseDirectory::Resource)
             .map_err(|e| e.to_string())?;
 
         let backend_name = backend
             .file_name()
             .and_then(|x| x.to_str())
-            .unwrap_or("backend_script.exe");
+            .unwrap_or(if cfg!(windows) { "backend_script.exe" } else { "backend_script" });
         console_log(
             "SCENE|spawn",
             &format!("mode=prod exe={backend_name} args=[{video_name},{output_dir_base}]"),
@@ -456,21 +463,35 @@ async fn abort_detect_scenes(sidecar_state: State<'_, ActiveSidecar>) -> Result<
 
     console_log("ABORT", &format!("killing process tree pid={pid}"));
 
+    #[cfg(windows)]
     // taskkill /F /T kills the entire process tree (sidecar + ffmpeg children).
     let result = tokio::task::spawn_blocking(move || {
         let mut cmd = Command::new("taskkill");
         apply_no_window(&mut cmd);
-        cmd.args(["/F", "/T", "/PID", &pid.to_string()]).output()
+        cmd.args(["/F", "/T", "/PID", &pid.to_string()])
+            .output()
+            .map_err(|e| format!("Failed to run taskkill: {e}"))
     })
     .await
-    .map_err(|e| format!("taskkill task panicked: {e}"))?
-    .map_err(|e| format!("Failed to run taskkill: {e}"))?;
+    .map_err(|e| format!("taskkill task panicked: {e}"))??;
+
+    // kill -9 terminates the Python sidecar. ffmpeg children become orphans and
+    // exit naturally once they can no longer write progress back to the dead parent.
+    #[cfg(not(windows))]
+    let result = tokio::task::spawn_blocking(move || {
+        Command::new("kill")
+            .args(["-9", &pid.to_string()])
+            .output()
+            .map_err(|e| format!("Failed to run kill: {e}"))
+    })
+    .await
+    .map_err(|e| format!("kill task panicked: {e}"))??;
 
     if result.status.success() {
         console_log("ABORT", &format!("killed pid={pid} ok"));
     } else {
         let stderr = String::from_utf8_lossy(&result.stderr).trim().to_string();
-        console_log("ABORT", &format!("taskkill pid={pid} failed: {stderr}"));
+        console_log("ABORT", &format!("kill pid={pid} failed: {stderr}"));
     }
 
     Ok(())
@@ -1364,10 +1385,23 @@ async fn ensure_preview_proxy(
 }
 
 fn resolve_bundled_tool(app: &AppHandle, tool_name: &str) -> Result<PathBuf, String> {
-    // Resolve a bundled tool (ffmpeg/ffprobe) across common resource paths.
-    let exe_name = format!("{tool_name}.exe");
+    let exe_name = if cfg!(windows) {
+        format!("{tool_name}.exe")
+    } else {
+        tool_name.to_string()
+    };
 
-    // 1) Common bundled location: resources/bin/<tool>.exe
+    let internal_sidecar = if cfg!(windows) {
+        "bin/backend_script-x86_64-pc-windows-msvc/_internal"
+    } else if cfg!(all(target_os = "macos", target_arch = "aarch64")) {
+        "bin/backend_script-aarch64-apple-darwin/_internal"
+    } else if cfg!(target_os = "macos") {
+        "bin/backend_script-x86_64-apple-darwin/_internal"
+    } else {
+        return Err("resolve_bundled_tool: unsupported platform".to_string());
+    };
+
+    // 1) Common bundled location: resources/bin/<tool>
     if let Ok(p) = app.path().resolve(
         format!("bin/{exe_name}"),
         tauri::path::BaseDirectory::Resource,
@@ -1379,7 +1413,7 @@ fn resolve_bundled_tool(app: &AppHandle, tool_name: &str) -> Result<PathBuf, Str
 
     // 2) Alternative location if only backend internal <tool> is bundled
     if let Ok(p) = app.path().resolve(
-        format!("bin/backend_script-x86_64-pc-windows-msvc/_internal/{exe_name}"),
+        format!("{internal_sidecar}/{exe_name}"),
         tauri::path::BaseDirectory::Resource,
     ) {
         if p.exists() {
@@ -1387,17 +1421,13 @@ fn resolve_bundled_tool(app: &AppHandle, tool_name: &str) -> Result<PathBuf, Str
         }
     }
 
-    // 3) Dev fallback: walk upward looking for ./bin/<tool>.exe
+    // 3) Dev fallback: walk upward looking for ./bin/<tool>
     // Prefer the backend_script _internal tools (they include more codecs, e.g. software HEVC)
-    // over the plain ./bin/<tool>.exe.
+    // over the plain ./bin/<tool>.
     let exe = std::env::current_exe().map_err(|e| e.to_string())?;
     if let Some(mut dir) = exe.parent().map(|p| p.to_path_buf()) {
         for _ in 0..5 {
-            let internal_candidate = dir
-                .join("bin")
-                .join("backend_script-x86_64-pc-windows-msvc")
-                .join("_internal")
-                .join(&exe_name);
+            let internal_candidate = dir.join(internal_sidecar).join(&exe_name);
             if internal_candidate.exists() {
                 return Ok(internal_candidate);
             }

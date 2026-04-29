@@ -24,19 +24,21 @@ if IS_EXECUTABLE:
 else:
     BASE_DIR = os.path.dirname(__file__)
 
-FFMPEG = get_binary("ffmpeg.exe")
+_ff_ext = ".exe" if sys.platform == "win32" else ""
+FFMPEG = get_binary(f"ffmpeg{_ff_ext}")
 
 
 def get_log_dir() -> str:
     # In installed builds, the sidecar exe often lives under a read-only
     # install/resources directory. Always log to a user-writable location.
-    base = (
-        os.getenv("LOCALAPPDATA")
-        or os.getenv("APPDATA")
-        or tempfile.gettempdir()
-    )
-
-    return os.path.join(base, "AMVerge")
+    if sys.platform == "win32":
+        base = os.getenv("LOCALAPPDATA") or os.getenv("APPDATA") or tempfile.gettempdir()
+        return os.path.join(base, "AMVerge")
+    elif sys.platform == "darwin":
+        return os.path.join(os.path.expanduser("~"), "Library", "Logs", "AMVerge")
+    else:
+        xdg = os.getenv("XDG_STATE_HOME") or os.path.join(os.path.expanduser("~"), ".local", "state")
+        return os.path.join(xdg, "AMVerge")
 
 
 def ensure_log_dir() -> str:
