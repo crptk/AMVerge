@@ -1,4 +1,4 @@
-import React, { useMemo, useRef } from "react";
+import React, { useMemo, useRef, useCallback } from "react";
 import EditorVideoPlayer from "../components/previewPanel/videoPlayer/EditorVideoPlayer";
 import TimelineTrack from "../components/timeline/TimelineTrack";
 import type { UseTimelineReturn } from "../hooks/useTimeline";
@@ -26,7 +26,7 @@ type EditorPageProps = {
 
 export default function EditorPage({
   timeline,
-  clips,
+  clips: _clips,
   videoIsHEVC,
   userHasHEVC,
   importToken,
@@ -38,11 +38,11 @@ export default function EditorPage({
 }: EditorPageProps) {
   const { state: timelineState } = timeline;
 
-  // 1. Derive the active segment metadata
-  const activeSegmentRaw = useMemo(() => {
+  // 1. Derive the active segment — find which segment the playhead is over.
+  //    We memo on segments + a coarsened playhead (for segment lookup only).
+  const activeSegment = useMemo(() => {
     const { segments, playheadSec } = timelineState;
     const seg = segments.find(s => playheadSec >= s.start - 0.005 && playheadSec < s.end + 0.005);
-    
     if (!seg || !seg.sourceClip) return null;
 
     return {
@@ -53,37 +53,35 @@ export default function EditorPage({
       start: seg.start,
       sourceStart: seg.sourceStart ?? 0
     };
-  }, [timelineState.segments, Math.floor(timelineState.playheadSec * 10) / 10]);
-
-  // Use another memo to keep the OBJECT IDENTITY stable if the ID is the same
-  const activeSegment = useMemo(() => activeSegmentRaw, [activeSegmentRaw?.id, activeSegmentRaw?.clipId]);
+  }, [timelineState.segments, timelineState.playheadSec]);
 
   // 2. Track the LAST valid segment to prevent unmounting in gaps
   const lastSegmentRef = useRef(activeSegment);
-  
-  // Only update last valid if we actually found something
   if (activeSegment) {
     lastSegmentRef.current = activeSegment;
   }
 
-  // Only be "sticky" if the timeline isn't completely empty
-  const effectiveSegment = (timelineState.segments.length > 0) 
-    ? (activeSegment || lastSegmentRef.current) 
+  const effectiveSegment = (timelineState.segments.length > 0)
+    ? (activeSegment || lastSegmentRef.current)
     : null;
 
-  // 3. Derive the precise source time (changes every frame)
+  // 3. Derive the precise source time — recalculates on EVERY playhead change
+  //    This is the key fix: sourceTime must update every frame, not just on segment change.
   const sourceTime = useMemo(() => {
     if (!effectiveSegment) return 0;
     const offset = Math.max(0, timelineState.playheadSec - effectiveSegment.start);
     return effectiveSegment.sourceStart + offset;
-  }, [timelineState.playheadSec, effectiveSegment]);
+  }, [timelineState.playheadSec, effectiveSegment?.id, effectiveSegment?.start, effectiveSegment?.sourceStart]);
 
   const onExportClick = () => {
     console.log("[EditorPage] Export requested for:", Array.from(timelineClipIds));
     handleExport(timelineClipIds, true, defaultMergedName);
   };
 
-  // 4. Keyboard Shortcuts (Linked with Timeline)
+  // 4. Keyboard Shortcuts — use a ref for playheadSec to keep effect stable
+  const playheadRef = useRef(timelineState.playheadSec);
+  playheadRef.current = timelineState.playheadSec;
+
   React.useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
         if (
@@ -101,20 +99,20 @@ export default function EditorPage({
 
         if (e.code === "ArrowRight") {
             e.preventDefault();
-            timeline.setPlayhead(timelineState.playheadSec + (1/30));
+            timeline.setPlayhead(playheadRef.current + (1/30));
         }
 
         if (e.code === "ArrowLeft") {
             e.preventDefault();
-            timeline.setPlayhead(timelineState.playheadSec - (1/30));
+            timeline.setPlayhead(playheadRef.current - (1/30));
         }
     };
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [timeline.togglePlayback, timeline.setPlayhead, timelineState.playheadSec]);
+  }, [timeline.togglePlayback, timeline.setPlayhead]);
 
-  // 5. Gap/Master Timer (only moves if no video is currently driving the timeline)
+  // 5. Gap/Master Timer — use a ref so the RAF loop doesn't restart every frame
   React.useEffect(() => {
     if (!timelineState.isPlaying || activeSegment) return;
 
@@ -124,13 +122,13 @@ export default function EditorPage({
     const tick = (now: number) => {
         const delta = (now - lastTime) / 1000;
         lastTime = now;
-        timeline.setPlayhead(timelineState.playheadSec + delta);
+        timeline.setPlayhead(playheadRef.current + delta);
         rafId = requestAnimationFrame(tick);
     };
 
     rafId = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(rafId);
-  }, [timelineState.isPlaying, !!activeSegment, timelineState.playheadSec]);
+  }, [timelineState.isPlaying, !!activeSegment, timeline.setPlayhead]);
 
   return (
     <div className="editor-page-root">
@@ -171,18 +169,19 @@ export default function EditorPage({
                     importToken={importToken}
                     externalTime={sourceTime}
                     isPlaying={timelineState.isPlaying}
-                    onTimeUpdate={(time) => {
-                        const { segments, playheadSec } = timelineState;
+                    onTimeUpdate={useCallback((time: number) => {
+                        if (!effectiveSegment) return;
+                        const { segments } = timelineState;
                         const seg = segments.find(s => s.id === effectiveSegment.id);
                         if (seg) {
                             const offset = time - (seg.sourceStart ?? 0);
                             const newPlayheadSec = seg.start + offset;
                             
-                            if (Math.abs(playheadSec - newPlayheadSec) > 0.001) {
+                            if (Math.abs(playheadRef.current - newPlayheadSec) > 0.016) {
                                 timeline.setPlayhead(newPlayheadSec);
                             }
                         }
-                    }}
+                    }, [effectiveSegment?.id, timelineState.segments, timeline.setPlayhead])}
                 />
             </div>
           ) : (

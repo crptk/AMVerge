@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ClipsContainer from "./components/clipsGrid/ClipsContainer";
 import PreviewContainer from "./components/previewPanel/PreviewContainer";
-import TimelineTrack from "./components/timeline/TimelineTrack";
 import type { UseTimelineReturn } from "./hooks/useTimeline";
 import type { ClipItem } from "./types/domain";
 import type { GeneralSettings } from "./settings/generalSettings";
@@ -177,8 +176,6 @@ export default function MainLayout(props: LayoutProps) {
                     />
                 </div>
             </div>
-
-            {/* Timeline area removed from Selector Mode */}
         </div>
     )
 }

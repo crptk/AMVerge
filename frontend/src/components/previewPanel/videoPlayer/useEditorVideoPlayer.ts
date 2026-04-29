@@ -53,30 +53,30 @@ export function useEditorVideoPlayer({
     }, [selectedClip, videoIsHEVC, hasHevcSupport]);
 
     // 2. Synchronize externalTime -> video.currentTime
+    //    Use video.readyState inline instead of isVideoReady state to avoid
+    //    race conditions where the state update hasn't happened yet.
     useEffect(() => {
         if (externalTime === undefined || !videoRef.current) return;
         
         const video = videoRef.current;
         
-        // If duration is 0, metadata might not be loaded yet
-        if (video.duration === 0 || isNaN(video.duration)) {
-            return;
-        }
+        // Check readyState directly — more reliable than boolean state
+        if (video.readyState < 2) return;
 
         // Clamp to video duration to prevent stuck seeking logs
-        const targetTime = Math.min(externalTime, video.duration);
+        const targetTime = Math.min(externalTime, video.duration || Infinity);
         const diff = Math.abs(video.currentTime - targetTime);
         
-        // Prevent feedback loop: If the video is playing, don't let externalTime (which comes 
-        // from the timeline) jerk the playhead back unless it's a significant jump (scrubbing).
+        // Prevent feedback loop: If playing, only allow significant jumps (scrubbing)
         if (isPlaying && diff < 0.1) {
             return;
         }
 
-        if (diff > 0.01) {
+        // Lower threshold for frame-accurate scrubbing
+        if (diff > 0.005) {
             video.currentTime = targetTime;
         }
-    }, [externalTime, isVideoReady, isPlaying]);
+    }, [externalTime, isPlaying]);
 
     // 3. Synchronize isPlaying -> video.play()/pause()
     useEffect(() => {
@@ -90,11 +90,14 @@ export function useEditorVideoPlayer({
         }
     }, [isPlaying, isVideoReady]);
 
-    const handleLoadedMetadata = (video: HTMLVideoElement) => {
+    const handleLoadedMetadata = (_video: HTMLVideoElement) => {
         setIsVideoReady(true);
     };
 
-    // 4. Smooth 60fps Playhead Polling
+    // 4. Smooth 60fps Playhead Polling — use a ref for onTimeUpdate to avoid stale closures
+    const onTimeUpdateRef = useRef(onTimeUpdate);
+    onTimeUpdateRef.current = onTimeUpdate;
+
     useEffect(() => {
         if (!isPlaying || !videoRef.current || !isVideoReady) return;
 
@@ -102,15 +105,15 @@ export function useEditorVideoPlayer({
         const video = videoRef.current;
 
         const poll = () => {
-            if (onTimeUpdate && !video.paused) {
-                onTimeUpdate(video.currentTime);
+            if (onTimeUpdateRef.current && !video.paused) {
+                onTimeUpdateRef.current(video.currentTime);
             }
             rafId = requestAnimationFrame(poll);
         };
 
         rafId = requestAnimationFrame(poll);
         return () => cancelAnimationFrame(rafId);
-    }, [isPlaying, isVideoReady, onTimeUpdate]);
+    }, [isPlaying, isVideoReady]);
 
     const handleTimeUpdate = () => {
         // Fallback for standard events, though the RAF loop above handles the smooth updates
