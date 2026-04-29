@@ -112,23 +112,19 @@ export default function EditorPage({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [timeline.togglePlayback, timeline.setPlayhead]);
 
-  // 5. Gap/Master Timer — use a ref so the RAF loop doesn't restart every frame
-  React.useEffect(() => {
-    if (!timelineState.isPlaying || activeSegment) return;
-
-    let lastTime = performance.now();
-    let rafId: number;
-
-    const tick = (now: number) => {
-        const delta = (now - lastTime) / 1000;
-        lastTime = now;
-        timeline.setPlayhead(playheadRef.current + delta);
-        rafId = requestAnimationFrame(tick);
-    };
-
-    rafId = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(rafId);
-  }, [timelineState.isPlaying, !!activeSegment, timeline.setPlayhead]);
+  const handleTimeUpdate = useCallback((time: number) => {
+    if (!effectiveSegment) return;
+    const { segments } = timelineState;
+    const seg = segments.find(s => s.id === effectiveSegment.id);
+    if (seg) {
+        const offset = time - (seg.sourceStart ?? 0);
+        const newPlayheadSec = seg.start + offset;
+        
+        if (Math.abs(playheadRef.current - newPlayheadSec) > 0.01) {
+            timeline.setPlayhead(newPlayheadSec);
+        }
+    }
+  }, [effectiveSegment?.id, timelineState.segments, timeline.setPlayhead]);
 
   return (
     <div className="editor-page-root">
@@ -163,25 +159,13 @@ export default function EditorPage({
                 <EditorVideoPlayer
                     key={`editor-player-${effectiveSegment.src}`}
                     selectedClip={effectiveSegment.src}
-                    clipId={effectiveSegment.clipId}
                     videoIsHEVC={videoIsHEVC}
                     userHasHEVC={userHasHEVC}
                     importToken={importToken}
                     externalTime={sourceTime}
                     isPlaying={timelineState.isPlaying}
-                    onTimeUpdate={useCallback((time: number) => {
-                        if (!effectiveSegment) return;
-                        const { segments } = timelineState;
-                        const seg = segments.find(s => s.id === effectiveSegment.id);
-                        if (seg) {
-                            const offset = time - (seg.sourceStart ?? 0);
-                            const newPlayheadSec = seg.start + offset;
-                            
-                            if (Math.abs(playheadRef.current - newPlayheadSec) > 0.016) {
-                                timeline.setPlayhead(newPlayheadSec);
-                            }
-                        }
-                    }, [effectiveSegment?.id, timelineState.segments, timeline.setPlayhead])}
+                    isDragging={timelineState.isDraggingPlayhead}
+                    onTimeUpdate={handleTimeUpdate}
                 />
             </div>
           ) : (

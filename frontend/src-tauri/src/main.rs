@@ -35,11 +35,6 @@ fn main() {
             commands::discord::start_discord_rpc,
             commands::discord::update_discord_rpc,
             commands::discord::stop_discord_rpc,
-            commands::frame_cache::extract_video_frames,
-            commands::frame_cache::get_video_frame_info,
-            commands::frame_cache::get_frame_cache_path,
-            commands::frame_cache::delete_frame_cache,
-            commands::frame_cache::clear_all_frame_caches,
         ])
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { .. } = event {

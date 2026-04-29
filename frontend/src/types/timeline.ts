@@ -84,6 +84,8 @@ export type TimelineState = {
   viewport: TimelineViewport;
   /** Active drag — null when idle. */
   drag: DragInfo | null;
+  /** Whether the user is currently scrubbing the playhead. */
+  isDraggingPlayhead: boolean;
   /** Undo/redo history. */
   history: TimelineHistory;
 };

@@ -156,22 +156,19 @@ pub async fn ensure_preview_proxy(
             input
                 .to_str()
                 .ok_or_else(|| "Invalid input path".to_string())?,
-            "-map",
-            "0:v:0",
-            "-map",
-            "0:a?",
             "-c:v",
             "libx264",
+            "-vf",
+            "scale=-2:480",
+            "-g",
+            "1",
             "-preset",
             "veryfast",
             "-crf",
-            "28",
+            "32",
             "-pix_fmt",
             "yuv420p",
-            "-c:a",
-            "aac",
-            "-b:a",
-            "128k",
+            "-an", // No audio for preview proxy to speed up extraction
             "-movflags",
             "+faststart",
             output

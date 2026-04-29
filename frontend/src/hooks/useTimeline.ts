@@ -52,8 +52,10 @@ type Action =
   | { type: "UPDATE_SEGMENT"; id: string; start: number; end: number }
   | { type: "RENAME_SEGMENT"; id: string; label: string }
   | { type: "ADD_SEGMENT"; clip: any }
+  | { type: "REMOVE_SEGMENT"; id: string }
   | { type: "UNDO" }
-  | { type: "REDO" };
+  | { type: "REDO" }
+  | { type: "SET_IS_DRAGGING_PLAYHEAD"; isDragging: boolean };
 
 // ─── Initial state ──────────────────────────────────────────────────
 
@@ -69,6 +71,7 @@ function makeInitialState(): TimelineState {
       zoom: { pxPerSecond: 80 },
     },
     drag: null,
+    isDraggingPlayhead: false,
     history: { past: [], future: [] },
   };
 }
@@ -336,6 +339,25 @@ function timelineReducer(state: TimelineState, action: Action): TimelineState {
       const newTotal = closed.length > 0 ? closed[closed.length - 1].end + 1 : 0;
       return { ...nextState, selectedIds: new Set(), totalDuration: newTotal };
     }
+    case "REMOVE_SEGMENT": {
+      const remaining = state.segments.filter((s) => s.id !== action.id);
+      if (remaining.length === state.segments.length) return state;
+
+      // Close gaps
+      const closed: TimelineSegment[] = [];
+      let cursor = 0;
+      for (const seg of remaining) {
+        const duration = seg.end - seg.start;
+        closed.push({ ...seg, start: cursor, end: cursor + duration });
+        cursor += duration;
+      }
+
+      const nextState = record(closed);
+      const newTotal = closed.length > 0 ? closed[closed.length - 1].end + 1 : 0;
+      const nextSelected = new Set(state.selectedIds);
+      nextSelected.delete(action.id);
+      return { ...nextState, selectedIds: nextSelected, totalDuration: newTotal };
+    }
 
     // ── Selection ────────────────────────────────────────────────────
     case "TOGGLE_SELECT": {
@@ -503,6 +525,9 @@ function timelineReducer(state: TimelineState, action: Action): TimelineState {
       };
     }
 
+    case "SET_IS_DRAGGING_PLAYHEAD":
+      return { ...state, isDraggingPlayhead: action.isDragging };
+
     default:
       return state;
   }
@@ -553,6 +578,11 @@ export default function useTimeline(onChange?: (segments: TimelineSegment[]) => 
 
   const setIsPlaying = useCallback(
     (isPlaying: boolean) => dispatch({ type: "SET_IS_PLAYING", isPlaying }),
+    []
+  );
+
+  const setIsDraggingPlayhead = useCallback(
+    (isDragging: boolean) => dispatch({ type: "SET_IS_DRAGGING_PLAYHEAD", isDragging }),
     []
   );
 
@@ -683,6 +713,11 @@ export default function useTimeline(onChange?: (segments: TimelineSegment[]) => 
     []
   );
 
+  const removeSegment = useCallback(
+    (id: string) => dispatch({ type: "REMOVE_SEGMENT", id }),
+    []
+  );
+
   // ── Computed helpers ───────────────────────────────────────────────
 
   /** Convert seconds → pixel position relative to timeline origin. */
@@ -712,6 +747,7 @@ export default function useTimeline(onChange?: (segments: TimelineSegment[]) => 
     setPlayhead,
     togglePlayback,
     setIsPlaying,
+    setIsDraggingPlayhead,
 
     // operations
     splitAtPlayhead,
@@ -739,6 +775,7 @@ export default function useTimeline(onChange?: (segments: TimelineSegment[]) => 
     updateSegment,
     renameSegment,
     addSegment,
+    removeSegment,
 
     // history
     undo,

@@ -274,15 +274,7 @@ export default function HomePage({
       if (addedId) {
         const clipToAdd = clips.find(c => c.id === addedId);
         if (clipToAdd) {
-          console.log("[FrameCache] Appending clip and triggering extraction:", addedId);
           timeline.addSegment(clipToAdd);
-          
-          invoke("extract_video_frames", {
-            videoPath: clipToAdd.src,
-            cacheId: clipToAdd.id,
-            width: 160
-          }).then(res => console.log("[FrameCache] Extraction started/ready for:", addedId, "Path:", res))
-            .catch(err => console.error("[FrameCache] Extraction failed:", err));
         }
       }
     }
@@ -291,15 +283,12 @@ export default function HomePage({
     if (timelineClipIds.size < prev.size) {
       const removedId = Array.from(prev).find(id => !timelineClipIds.has(id));
       if (removedId) {
-        console.log("[FrameCache] Removing frame cache for deleted clip:", removedId);
-        invoke("delete_frame_cache", { cacheId: removedId })
-          .then(() => console.log("[FrameCache] Cache deleted for:", removedId))
-          .catch(err => console.error("[FrameCache] Cache deletion failed:", err));
+        timeline.removeSegment(removedId);
       }
     }
     
     prevTimelineClipIdsRef.current = timelineClipIds;
-  }, [timelineClipIds, activeMode, clips, timeline.addSegment]);
+  }, [timelineClipIds, activeMode, clips, timeline.addSegment, timeline.removeSegment]);
 
   // Bump clipSyncVersion only on genuine user-driven changes (Selector Mode only)
   useEffect(() => {

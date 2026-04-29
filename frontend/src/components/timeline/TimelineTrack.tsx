@@ -47,7 +47,6 @@ export default function TimelineTrack({ timeline, trackHeight = 96 }: Props) {
 
   const trackRef = useRef<HTMLDivElement>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
-  const isDraggingPlayhead = useRef(false);
   const playheadRafRef = useRef<number | null>(null);
   const hasAutoFittedRef = useRef(false);
 
@@ -109,10 +108,14 @@ export default function TimelineTrack({ timeline, trackHeight = 96 }: Props) {
   const handleRulerPointerDown = useCallback(
     (e: React.PointerEvent) => {
       e.stopPropagation();
+      console.log("[TimelineTrack] Ruler PointerDown - Starting Drag");
+      timeline.setIsDraggingPlayhead(true);
       movePlayheadToClientX(e.clientX);
 
       const onMove = (ev: PointerEvent) => movePlayheadThrottled(ev.clientX);
       const onUp = () => {
+        console.log("[TimelineTrack] Ruler PointerUp - Ending Drag");
+        timeline.setIsDraggingPlayhead(false);
         window.removeEventListener("pointermove", onMove);
         window.removeEventListener("pointerup", onUp);
         if (playheadRafRef.current) {
@@ -124,7 +127,7 @@ export default function TimelineTrack({ timeline, trackHeight = 96 }: Props) {
       window.addEventListener("pointermove", onMove);
       window.addEventListener("pointerup", onUp);
     },
-    [movePlayheadToClientX, movePlayheadThrottled]
+    [movePlayheadToClientX, movePlayheadThrottled, timeline.setIsDraggingPlayhead]
   );
 
   // ── Click on empty track → move playhead ──────────────────────────
@@ -174,11 +177,13 @@ export default function TimelineTrack({ timeline, trackHeight = 96 }: Props) {
   const handlePlayheadPointerDown = useCallback(
     (e: React.PointerEvent) => {
       e.stopPropagation();
-      isDraggingPlayhead.current = true;
+      console.log("[TimelineTrack] Playhead PointerDown - Starting Drag");
+      timeline.setIsDraggingPlayhead(true);
 
       const onMove = (ev: PointerEvent) => movePlayheadThrottled(ev.clientX);
       const onUp = () => {
-        isDraggingPlayhead.current = false;
+        console.log("[TimelineTrack] Playhead PointerUp - Ending Drag");
+        timeline.setIsDraggingPlayhead(false);
         window.removeEventListener("pointermove", onMove);
         window.removeEventListener("pointerup", onUp);
         if (playheadRafRef.current) {
@@ -190,7 +195,7 @@ export default function TimelineTrack({ timeline, trackHeight = 96 }: Props) {
       window.addEventListener("pointermove", onMove);
       window.addEventListener("pointerup", onUp);
     },
-    [movePlayheadThrottled]
+    [movePlayheadThrottled, timeline.setIsDraggingPlayhead]
   );
 
   // ── Keyboard shortcuts ─────────────────────────────────────────────

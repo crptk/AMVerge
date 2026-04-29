@@ -2,7 +2,6 @@ import React, { memo, useMemo } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import type { TimelineSegment, DragEdge } from "../../types/timeline";
 import useFilmstrip from "../../hooks/useFilmstrip";
-import useHighPrecisionFilmstrip from "../../hooks/useHighPrecisionFilmstrip";
 
 type Props = {
   segment: TimelineSegment;
@@ -88,38 +87,6 @@ function TimelineSegmentChip({
     };
   }, [filmstrip.spriteUrl, segment.sourceClip?.thumbnail, segment.sourceStart, pxPerSec]);
 
-  // ── High Precision Filmstrip ──────────────────────────────────────
-  const hpFilmstrip = useHighPrecisionFilmstrip(videoPath, segment.sourceClip?.id);
-  
-  const frameTiles = useMemo(() => {
-    if (!hpFilmstrip || !hpFilmstrip.cachePath) return [];
-    
-    const { fps, cachePath } = hpFilmstrip;
-    const sStart = segment.sourceStart ?? 0;
-    const sEnd = segment.sourceEnd ?? duration;
-    const sDur = sEnd - sStart;
-    
-    const tileWidth = 80; // pixels per thumbnail tile
-    const numTiles = Math.max(1, Math.ceil(bodyWidth / tileWidth));
-    
-    const tiles = [];
-    for (let i = 0; i < numTiles; i++) {
-        const timeOffset = (i / numTiles) * sDur;
-        const frameTime = sStart + timeOffset;
-        const frameIdx = Math.max(1, Math.floor(frameTime * fps) + 1);
-        const frameName = `frame_${String(frameIdx).padStart(6, '0')}.png`;
-        
-        const fullPath = `${cachePath}/${frameName}`;
-        const url = convertFileSrc(fullPath);
-        
-        tiles.push({
-            url,
-            id: `${segment.id}-tile-${i}`
-        });
-    }
-    return tiles;
-  }, [hpFilmstrip, segment.id, segment.sourceStart, segment.sourceEnd, bodyWidth, duration]);
-
   return (
     <div
       className={[
@@ -166,22 +133,10 @@ function TimelineSegmentChip({
 
         {/* Filmstrip body */}
         <div className="tl-segment-body">
-            {frameTiles.length > 0 ? (
-                <div className="tl-frame-container">
-                    {frameTiles.map(tile => (
-                        <div 
-                            key={tile.id} 
-                            className="tl-frame-tile"
-                            style={{ backgroundImage: `url(${tile.url})` }}
-                        />
-                    ))}
-                </div>
-            ) : (
-                <div
-                    className={`tl-segment-filmstrip ${filmstrip.spriteUrl ? "tl-segment-filmstrip--sprite" : ""} ${filmstrip.loading ? "tl-segment-filmstrip--loading" : ""}`}
-                    style={filmstripStyle ?? fallbackStyle}
-                />
-            )}
+            <div
+                className={`tl-segment-filmstrip ${filmstrip.spriteUrl ? "tl-segment-filmstrip--sprite" : ""} ${filmstrip.loading ? "tl-segment-filmstrip--loading" : ""}`}
+                style={filmstripStyle ?? fallbackStyle}
+            />
         </div>
 
         {/* Bottom progress strip */}
