@@ -1,0 +1,466 @@
+import React, { useRef, useCallback, useEffect } from "react";
+import type { UseTimelineReturn } from "../../hooks/useTimeline";
+import TimelineSegmentChip from "./TimelineSegmentChip";
+import TimelinePlayhead from "./TimelinePlayhead";
+import TimelineRuler from "./TimelineRuler";
+import "../../styles/home/timeline.css";
+
+type Props = {
+  timeline: UseTimelineReturn;
+  /** Height of the track area in px (default 64). */
+  trackHeight?: number;
+};
+
+/**
+ * Root timeline component.
+ *
+ * ┌─────────────────────────────────────────────────┐
+ * │  TimelineToolbar  (split / merge / zoom)         │
+ * ├─────────────────────────────────────────────────┤
+ * │  TimelineRuler   (time markings)                 │
+ * ├─────────────────────────────────────────────────┤
+ * │  ▓▓▓▓  ▓▓▓▓▓▓▓  ▓▓▓   track area + playhead   │
+ * └─────────────────────────────────────────────────┘
+ */
+export default function TimelineTrack({ timeline, trackHeight = 96 }: Props) {
+  const {
+    state,
+    setPlayhead,
+    splitAtPlayhead,
+    mergeSelected,
+    deleteSelected,
+    toggleSelect,
+    selectRange,
+    selectAll,
+    deselectAll,
+    startDrag,
+    moveDrag,
+    endDrag,
+    zoom,
+    setScroll,
+    secToPx,
+    pxToSec,
+    undo,
+    redo,
+    zoomToFit,
+  } = timeline;
+
+  const trackRef = useRef<HTMLDivElement>(null);
+  const isDraggingPlayhead = useRef(false);
+
+  // ── Total width in px ──────────────────────────────────────────────
+  const totalWidthPx =
+    state.totalDuration * state.viewport.zoom.pxPerSecond;
+
+  // ── Wheel → zoom or scroll ────────────────────────────────────────
+  const handleWheel = useCallback(
+    (e: React.WheelEvent) => {
+      if (e.ctrlKey || e.metaKey) {
+        // Zoom (Ctrl+scroll)
+        e.preventDefault();
+        const rect = trackRef.current?.getBoundingClientRect();
+        const anchorPx = rect ? e.clientX - rect.left : 0;
+        const anchorSec = pxToSec(anchorPx);
+        zoom(e.deltaY > 0 ? -1 : 1, anchorSec);
+      } else {
+        // Horizontal scroll
+        const deltaSec =
+          (e.deltaY + e.deltaX) / state.viewport.zoom.pxPerSecond;
+        setScroll(state.viewport.scrollOffsetSec + deltaSec);
+      }
+    },
+    [pxToSec, zoom, setScroll, state.viewport]
+  );
+
+  const movePlayheadToClientX = useCallback((clientX: number) => {
+    const rect = trackRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    setPlayhead(pxToSec(clientX - rect.left));
+  }, [setPlayhead, pxToSec]);
+
+  // ── Click on ruler → move playhead + scrub ──────────────────────
+  const handleRulerPointerDown = useCallback(
+    (e: React.PointerEvent) => {
+      e.stopPropagation();
+      movePlayheadToClientX(e.clientX);
+
+      const onMove = (ev: PointerEvent) => movePlayheadToClientX(ev.clientX);
+      const onUp = () => {
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup", onUp);
+      };
+
+      window.addEventListener("pointermove", onMove);
+      window.addEventListener("pointerup", onUp);
+    },
+    [movePlayheadToClientX]
+  );
+
+  // ── Click on empty track → move playhead ──────────────────────────
+  const handleTrackPointerDown = useCallback(
+    (e: React.PointerEvent) => {
+      // Only on direct track clicks (not segments)
+      if (e.target !== trackRef.current) return;
+      movePlayheadToClientX(e.clientX);
+      deselectAll();
+    },
+    [movePlayheadToClientX, deselectAll]
+  );
+
+  // ── Segment pointer events ─────────────────────────────────────────
+  const handleSegmentPointerDown = useCallback(
+    (
+      e: React.PointerEvent,
+      segmentId: string,
+      edge: "left" | "right" | "body"
+    ) => {
+      e.stopPropagation();
+
+      if (e.shiftKey) {
+        selectRange(segmentId);
+        return;
+      }
+
+      if (edge === "body") {
+        toggleSelect(segmentId, e.ctrlKey || e.metaKey);
+      }
+
+      startDrag(segmentId, edge, e.clientX);
+
+      const onPointerMove = (ev: PointerEvent) => moveDrag(ev.clientX);
+      const onPointerUp = () => {
+        endDrag();
+        window.removeEventListener("pointermove", onPointerMove);
+        window.removeEventListener("pointerup", onPointerUp);
+      };
+      window.addEventListener("pointermove", onPointerMove);
+      window.addEventListener("pointerup", onPointerUp);
+    },
+    [toggleSelect, selectRange, startDrag, moveDrag, endDrag]
+  );
+
+  // ── Playhead drag ──────────────────────────────────────────────────
+  const handlePlayheadPointerDown = useCallback(
+    (e: React.PointerEvent) => {
+      e.stopPropagation();
+      isDraggingPlayhead.current = true;
+
+      const onMove = (ev: PointerEvent) => movePlayheadToClientX(ev.clientX);
+      const onUp = () => {
+        isDraggingPlayhead.current = false;
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup", onUp);
+      };
+
+      window.addEventListener("pointermove", onMove);
+      window.addEventListener("pointerup", onUp);
+    },
+    [movePlayheadToClientX]
+  );
+
+  // ── Keyboard shortcuts ─────────────────────────────────────────────
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      // Only handle when the timeline area is likely focused
+      if (
+        e.target instanceof HTMLInputElement ||
+        e.target instanceof HTMLTextAreaElement
+      )
+        return;
+
+      switch (e.key) {
+        case "s":
+        case "S":
+          if (!e.ctrlKey && !e.metaKey) splitAtPlayhead();
+          break;
+        case "m":
+        case "M":
+          if (!e.ctrlKey && !e.metaKey) mergeSelected();
+          break;
+        case "Delete":
+        case "Backspace":
+          deleteSelected();
+          break;
+        case "a":
+          if (e.ctrlKey || e.metaKey) {
+            e.preventDefault();
+            selectAll();
+          }
+          break;
+        case "Escape":
+          deselectAll();
+          break;
+        case "z":
+        case "Z":
+          if (e.ctrlKey || e.metaKey) {
+            e.preventDefault();
+            if (e.shiftKey) {
+              redo();
+            } else {
+              undo();
+            }
+          }
+          break;
+        case "y":
+        case "Y":
+          if (e.ctrlKey || e.metaKey) {
+            e.preventDefault();
+            redo();
+          }
+          break;
+      }
+    };
+
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [splitAtPlayhead, mergeSelected, deleteSelected, selectAll, deselectAll, undo, redo]);
+
+  // ── Auto-zoom to fit & Responsiveness ────────────────────────────
+  useEffect(() => {
+    if (!trackRef.current) return;
+    const parent = trackRef.current.parentElement;
+    if (!parent) return;
+
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        if (state.totalDuration > 0) {
+          zoomToFit(entry.contentRect.width);
+        }
+      }
+    });
+
+    observer.observe(parent);
+    return () => observer.disconnect();
+  }, [state.totalDuration, zoomToFit]);
+
+  // ── Render ─────────────────────────────────────────────────────────
+
+  const playheadPx = secToPx(state.playheadSec);
+  const canMerge = state.selectedIds.size >= 2;
+  const canSplit = state.segments.some(
+    (s) =>
+      state.playheadSec > s.start + 1 / 30 &&
+      state.playheadSec < s.end - 1 / 30
+  );
+  const canDelete = state.selectedIds.size > 0;
+
+  return (
+    <div className="tl-root" id="timeline-root">
+      {/* ── Toolbar ───────────────────────────────────────────────── */}
+      <div className="tl-toolbar" id="timeline-toolbar">
+        <div className="tl-toolbar-group">
+          <button
+            className="tl-btn"
+            id="tl-btn-split"
+            disabled={!canSplit}
+            onClick={splitAtPlayhead}
+            title="Split at playhead (S)"
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+              <path d="M8 1v14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+              <path d="M3 4l5 4-5 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" opacity="0.6" />
+              <path d="M13 4l-5 4 5 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" opacity="0.6" />
+            </svg>
+            <span>Split</span>
+          </button>
+
+          <button
+            className="tl-btn"
+            id="tl-btn-merge"
+            disabled={!canMerge}
+            onClick={mergeSelected}
+            title="Merge selected (M)"
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+              <path d="M2 8h12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+              <path d="M5 4l-3 4 3 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" opacity="0.6" />
+              <path d="M11 4l3 4-3 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" opacity="0.6" />
+            </svg>
+            <span>Merge</span>
+          </button>
+
+          <button
+            className="tl-btn tl-btn-danger"
+            id="tl-btn-delete"
+            disabled={!canDelete}
+            onClick={deleteSelected}
+            title="Delete selected (Del)"
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+              <path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+            </svg>
+            <span>Delete</span>
+          </button>
+        </div>
+
+        <div className="tl-toolbar-group">
+          <button
+            className="tl-btn tl-btn-icon"
+            onClick={undo}
+            disabled={state.history.past.length === 0}
+            title="Undo (Ctrl+Z)"
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+              <path d="M4 7l-3 3 3 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+              <path d="M1 10h10a4 4 0 0 0 0-8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+            </svg>
+          </button>
+          <button
+            className="tl-btn tl-btn-icon"
+            onClick={redo}
+            disabled={state.history.future.length === 0}
+            title="Redo (Ctrl+Y)"
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+              <path d="M12 7l3 3-3 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+              <path d="M15 10H5a4 4 0 0 1 0-8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+            </svg>
+          </button>
+        </div>
+
+        <div className="tl-toolbar-group tl-toolbar-info">
+          <span className="tl-time-display" id="tl-playhead-time">
+            {formatTimecode(state.playheadSec)}
+          </span>
+          <span className="tl-separator">|</span>
+          <span className="tl-duration-display" id="tl-total-duration">
+            {formatTimecode(state.totalDuration)}
+          </span>
+        </div>
+
+        <div className="tl-toolbar-group">
+          <button
+            className="tl-btn tl-btn-icon"
+            id="tl-btn-zoom-out"
+            onClick={() => zoom(-1)}
+            title="Zoom out"
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+              <circle cx="7" cy="7" r="5" stroke="currentColor" strokeWidth="1.5" />
+              <path d="M4.5 7h5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+              <path d="M11 11l3.5 3.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+            </svg>
+          </button>
+
+          <div className="tl-zoom-bar" id="tl-zoom-bar">
+            <div
+              className="tl-zoom-fill"
+              style={{
+                width: `${((state.viewport.zoom.pxPerSecond - 2) / (600 - 2)) * 100}%`,
+              }}
+            />
+          </div>
+
+          <button
+            className="tl-btn tl-btn-icon"
+            id="tl-btn-zoom-in"
+            onClick={() => zoom(1)}
+            title="Zoom in"
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+              <circle cx="7" cy="7" r="5" stroke="currentColor" strokeWidth="1.5" />
+              <path d="M4.5 7h5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+              <path d="M7 4.5v5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+              <path d="M11 11l3.5 3.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+            </svg>
+          </button>
+
+          <button
+            className="tl-btn tl-btn-fit"
+            onClick={() => {
+              if (trackRef.current) {
+                zoomToFit(trackRef.current.parentElement?.clientWidth || 0);
+              }
+            }}
+            title="Fit to screen"
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+              <rect x="2" y="4" width="12" height="8" rx="1.5" stroke="currentColor" strokeWidth="1.5" />
+              <path d="M5 8h6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+            </svg>
+            <span>Fit</span>
+          </button>
+        </div>
+      </div>
+
+      {/* ── Ruler ──────────────────────────────────────────────── */}
+      <TimelineRuler
+        totalDuration={state.totalDuration}
+        viewport={state.viewport}
+        secToPx={secToPx}
+        onPointerDown={handleRulerPointerDown}
+      />
+
+      {/* ── Track area ─────────────────────────────────────────── */}
+      <div
+        className="tl-track-wrapper"
+        id="timeline-track-wrapper"
+        onWheel={handleWheel}
+      >
+        <div
+          className="tl-track"
+          id="timeline-track"
+          ref={trackRef}
+          style={{
+            width: totalWidthPx,
+            height: trackHeight,
+          }}
+          onPointerDown={handleTrackPointerDown}
+        >
+          {state.segments.map((seg) => (
+            <TimelineSegmentChip
+              key={seg.id}
+              segment={seg}
+              isSelected={state.selectedIds.has(seg.id)}
+              isDragging={state.drag?.segmentId === seg.id}
+              left={secToPx(seg.start)}
+              width={
+                (seg.end - seg.start) * state.viewport.zoom.pxPerSecond
+              }
+              height={trackHeight}
+              onPointerDown={handleSegmentPointerDown}
+            />
+          ))}
+
+          {/* ── Playhead ──────────────────────────────────────── */}
+          <TimelinePlayhead
+            leftPx={playheadPx}
+            height={trackHeight}
+            onPointerDown={handlePlayheadPointerDown}
+          />
+        </div>
+      </div>
+
+      {/* ── Selection info bar ────────────────────────────────── */}
+      {state.selectedIds.size > 0 && (
+        <div className="tl-selection-bar" id="tl-selection-bar">
+          <span className="tl-selection-count">
+            {state.selectedIds.size} segment{state.selectedIds.size !== 1 ? "s" : ""} selected
+          </span>
+          {canMerge && (
+            <span className="tl-selection-hint">
+              Press <kbd>M</kbd> to merge
+            </span>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Timecode formatter ───────────────────────────────────────────────
+
+function formatTimecode(sec: number): string {
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  const s = Math.floor(sec % 60);
+  const f = Math.floor((sec % 1) * 30); // 30 fps frame index
+
+  const parts: string[] = [];
+  if (h > 0) parts.push(String(h).padStart(2, "0"));
+  parts.push(String(m).padStart(2, "0"));
+  parts.push(String(s).padStart(2, "0"));
+  parts.push(String(f).padStart(2, "0"));
+
+  return parts.join(":");
+}

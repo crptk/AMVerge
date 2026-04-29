@@ -1,0 +1,511 @@
+/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   TIMELINE  –  CapCut-inspired dark track
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+
+/* ── Root Container ───────────────────────────────────────────────── */
+
+.tl-root {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    background: linear-gradient(180deg, #0d0d0d 0%, #111111 100%);
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 10px 10px 0 0;
+    overflow: hidden;
+    font-family: 'Jersey 10', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+/* ── Toolbar ──────────────────────────────────────────────────────── */
+
+.tl-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 6px 14px;
+    background: rgba(0, 0, 0, 0.45);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    flex-shrink: 0;
+    flex-wrap: wrap; /* Allow wrapping on small screens */
+}
+
+.tl-toolbar-group {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+}
+
+@media (max-width: 800px) {
+    .tl-toolbar {
+        justify-content: center;
+        gap: 16px;
+    }
+    .tl-toolbar-info {
+        order: -1; /* Move time display to the top/center when wrapped */
+        width: 100%;
+        justify-content: center;
+    }
+}
+
+.tl-toolbar-info {
+    gap: 10px;
+}
+
+/* ── Toolbar Buttons ──────────────────────────────────────────────── */
+
+.tl-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    height: 28px;
+    padding: 0 10px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.04);
+    color: rgba(255, 255, 255, 0.8);
+    font-family: inherit;
+    font-size: 15px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    white-space: nowrap;
+}
+
+.tl-btn:hover:not(:disabled) {
+    background: rgba(var(--accent-rgb), 0.12);
+    border-color: rgba(var(--accent-rgb), 0.3);
+    color: var(--accent);
+    box-shadow: 0 0 12px rgba(var(--accent-rgb), 0.08);
+}
+
+.tl-btn:active:not(:disabled) {
+    transform: scale(0.96);
+}
+
+.tl-btn:disabled {
+    opacity: 0.3;
+    cursor: default;
+    pointer-events: none;
+}
+
+.tl-btn svg {
+    width: 14px;
+    height: 14px;
+    flex-shrink: 0;
+}
+
+.tl-btn-icon {
+    width: 28px;
+    padding: 0;
+    justify-content: center;
+}
+
+.tl-btn-danger:hover:not(:disabled) {
+    background: rgba(255, 60, 60, 0.12);
+    border-color: rgba(255, 60, 60, 0.3);
+    color: #ff5555;
+    box-shadow: 0 0 12px rgba(255, 60, 60, 0.08);
+}
+
+.tl-btn-fit {
+    background: rgba(var(--accent-rgb), 0.08);
+    border-color: rgba(var(--accent-rgb), 0.2);
+    color: var(--accent);
+}
+
+.tl-btn-fit:hover:not(:disabled) {
+    background: rgba(var(--accent-rgb), 0.2);
+    border-color: var(--accent);
+}
+
+/* ── Time Display ─────────────────────────────────────────────────── */
+
+.tl-time-display {
+    font-size: 17px;
+    color: var(--accent);
+    letter-spacing: 1.5px;
+    font-variant-numeric: tabular-nums;
+    text-shadow: 0 0 10px rgba(var(--accent-rgb), 0.3);
+}
+
+.tl-separator {
+    color: rgba(255, 255, 255, 0.15);
+    font-size: 14px;
+}
+
+.tl-duration-display {
+    font-size: 15px;
+    color: rgba(255, 255, 255, 0.35);
+    letter-spacing: 1.5px;
+    font-variant-numeric: tabular-nums;
+}
+
+/* ── Zoom Bar ─────────────────────────────────────────────────────── */
+
+.tl-zoom-bar {
+    width: 80px;
+    height: 4px;
+    border-radius: 2px;
+    background: rgba(255, 255, 255, 0.08);
+    position: relative;
+    overflow: hidden;
+}
+
+.tl-zoom-fill {
+    height: 100%;
+    border-radius: 2px;
+    background: linear-gradient(90deg, var(--accent), rgba(var(--accent-rgb), 0.5));
+    transition: width 0.15s ease;
+    box-shadow: 0 0 6px rgba(var(--accent-rgb), 0.3);
+}
+
+/* ── Ruler ─────────────────────────────────────────────────────────── */
+
+.tl-ruler {
+    height: 24px;
+    background: rgba(0, 0, 0, 0.3);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    overflow: hidden;
+    position: relative;
+    flex-shrink: 0;
+    cursor: pointer;
+    user-select: none;
+}
+
+.tl-ruler-inner {
+    position: relative;
+    height: 100%;
+}
+
+.tl-ruler-tick {
+    position: absolute;
+    top: 0;
+    height: 100%;
+    border-left: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.tl-ruler-tick--major {
+    border-left-color: rgba(255, 255, 255, 0.18);
+}
+
+.tl-ruler-label {
+    position: absolute;
+    top: 4px;
+    left: 5px;
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.3);
+    white-space: nowrap;
+    pointer-events: none;
+    letter-spacing: 0.5px;
+}
+
+.tl-ruler-tick--major .tl-ruler-label {
+    color: rgba(255, 255, 255, 0.5);
+}
+
+/* ── Track Wrapper (scrollable viewport) ──────────────────────────── */
+
+.tl-track-wrapper {
+    overflow-x: auto;
+    overflow-y: hidden;
+    flex: 1;
+    min-height: 104px;
+    position: relative;
+    background:
+        repeating-linear-gradient(
+            90deg,
+            transparent,
+            transparent 79px,
+            rgba(255, 255, 255, 0.02) 79px,
+            rgba(255, 255, 255, 0.02) 80px
+        );
+}
+
+/* Custom scrollbar */
+.tl-track-wrapper::-webkit-scrollbar {
+    height: 6px;
+}
+
+.tl-track-wrapper::-webkit-scrollbar-track {
+    background: rgba(0, 0, 0, 0.3);
+}
+
+.tl-track-wrapper::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 3px;
+}
+
+.tl-track-wrapper::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.2);
+}
+
+/* ── Track ─────────────────────────────────────────────────────────── */
+
+.tl-track {
+    position: relative;
+    min-width: 100%;
+    cursor: text; /* text cursor on empty space to hint "click to place playhead" */
+}
+
+/* ── Segment Chip ─────────────────────────────────────────────────── */
+
+.tl-segment {
+    position: absolute;
+    display: flex;
+    border-radius: 6px;
+    overflow: hidden;
+    cursor: pointer;
+    transition:
+        box-shadow 0.15s ease,
+        filter 0.15s ease;
+
+    /* Default segment fill — uses segment accent or global accent */
+    background: linear-gradient(
+        180deg,
+        rgba(var(--accent-rgb), 0.28) 0%,
+        rgba(var(--accent-rgb), 0.14) 100%
+    );
+    border: 1px solid rgba(var(--accent-rgb), 0.2);
+}
+
+.tl-segment:hover {
+    box-shadow:
+        0 0 16px rgba(var(--accent-rgb), 0.12),
+        inset 0 0 20px rgba(var(--accent-rgb), 0.05);
+    border-color: rgba(var(--accent-rgb), 0.35);
+}
+
+.tl-segment--selected {
+    background: linear-gradient(
+        180deg,
+        rgba(var(--accent-rgb), 0.45) 0%,
+        rgba(var(--accent-rgb), 0.22) 100%
+    );
+    border-color: var(--accent);
+    box-shadow:
+        0 0 18px rgba(var(--accent-rgb), 0.2),
+        inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.tl-segment--dragging {
+    cursor: col-resize;
+    filter: brightness(1.2);
+    box-shadow:
+        0 4px 20px rgba(var(--accent-rgb), 0.25),
+        0 0 0 2px rgba(var(--accent-rgb), 0.4);
+    z-index: 10;
+}
+
+/* ── Segment Handles ──────────────────────────────────────────────── */
+
+.tl-segment-handle {
+    flex-shrink: 0;
+    cursor: col-resize;
+    position: relative;
+    z-index: 2;
+    transition: background 0.12s ease;
+}
+
+.tl-segment-handle::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 2px;
+    height: 18px;
+    border-radius: 1px;
+    background: rgba(255, 255, 255, 0.15);
+    transition: background 0.12s ease;
+}
+
+.tl-segment-handle--left::after {
+    left: 3px;
+}
+
+.tl-segment-handle--right::after {
+    right: 3px;
+}
+
+.tl-segment-handle:hover {
+    background: rgba(var(--accent-rgb), 0.2);
+}
+
+.tl-segment-handle:hover::after {
+    background: var(--accent);
+    box-shadow: 0 0 6px rgba(var(--accent-rgb), 0.4);
+}
+
+/* ── Segment Body ─────────────────────────────────────────────────── */
+
+.tl-segment-body {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: flex-end;
+    padding: 0 8px 4px;
+    position: relative;
+    overflow: hidden;
+}
+
+/* Base filmstrip layer (shared between fallback thumbnail and sprite) */
+.tl-segment-filmstrip {
+    position: absolute;
+    inset: 0;
+    opacity: 0.55;
+    pointer-events: none;
+    z-index: 0;
+    filter: brightness(0.85) contrast(1.05);
+    background-position: left top;
+    transition: opacity 0.3s ease;
+}
+
+/* When we have the real sprite sheet, show it more prominently */
+.tl-segment-filmstrip--sprite {
+    opacity: 0.7;
+    filter: brightness(0.9) contrast(1.08);
+}
+
+/* Separator lines between frames — only for fallback (repeating thumbnails) */
+.tl-segment-filmstrip:not(.tl-segment-filmstrip--sprite)::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-image: repeating-linear-gradient(
+        90deg,
+        transparent,
+        transparent 159px,
+        rgba(0, 0, 0, 0.5) 159px,
+        rgba(0, 0, 0, 0.5) 160px
+    );
+    z-index: 1;
+}
+
+/* Bottom vignette gradient for text readability */
+.tl-segment-filmstrip::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 60%;
+    background: linear-gradient(
+        to bottom,
+        transparent 0%,
+        rgba(0, 0, 0, 0.5) 100%
+    );
+    z-index: 1;
+    pointer-events: none;
+}
+
+.tl-segment-label {
+    font-size: 12px;
+    font-weight: 600;
+    color: #ffffff;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    pointer-events: none;
+    letter-spacing: 0.5px;
+    position: relative;
+    z-index: 2;
+    text-shadow: 0 1px 4px rgba(0, 0, 0, 0.9), 0 0 8px rgba(0, 0, 0, 0.6);
+}
+
+.tl-segment-duration {
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.8);
+    white-space: nowrap;
+    flex-shrink: 0;
+    pointer-events: none;
+    font-variant-numeric: tabular-nums;
+    position: relative;
+    z-index: 2;
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8), 0 0 6px rgba(0, 0, 0, 0.5);
+}
+
+/* ── Playhead ─────────────────────────────────────────────────────── */
+
+.tl-playhead {
+    position: absolute;
+    top: -24px; /* extends above track into ruler space */
+    z-index: 20;
+    pointer-events: none;
+    transform: translateX(-50%);
+}
+
+.tl-playhead-head {
+    width: 14px;
+    height: 14px;
+    margin: 0 auto;
+    pointer-events: auto;
+    cursor: ew-resize;
+    position: relative;
+
+    /* Triangle using clip-path */
+    background: var(--accent);
+    clip-path: polygon(0 0, 100% 0, 50% 100%);
+    filter: drop-shadow(0 0 6px rgba(var(--accent-rgb), 0.5));
+    transition: filter 0.15s ease;
+}
+
+.tl-playhead-head:hover {
+    filter: drop-shadow(0 0 10px rgba(var(--accent-rgb), 0.8));
+}
+
+.tl-playhead-stem {
+    width: 2px;
+    margin: 0 auto;
+    background: var(--accent);
+    opacity: 0.7;
+    pointer-events: none;
+    box-shadow: 0 0 4px rgba(var(--accent-rgb), 0.3);
+}
+
+/* ── Selection Info Bar ───────────────────────────────────────────── */
+
+.tl-selection-bar {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    padding: 5px 14px;
+    background: rgba(var(--accent-rgb), 0.06);
+    border-top: 1px solid rgba(var(--accent-rgb), 0.12);
+    flex-shrink: 0;
+}
+
+.tl-selection-count {
+    font-size: 13px;
+    color: rgba(255, 255, 255, 0.6);
+    letter-spacing: 0.5px;
+}
+
+.tl-selection-hint {
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.35);
+}
+
+.tl-selection-hint kbd {
+    display: inline-block;
+    padding: 1px 5px;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 3px;
+    background: rgba(255, 255, 255, 0.06);
+    font-family: inherit;
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.5);
+    margin: 0 2px;
+}
+
+/* ── Animations ───────────────────────────────────────────────────── */
+
+@keyframes tl-pulse-accent {
+    0%, 100% { box-shadow: 0 0 8px rgba(var(--accent-rgb), 0.15); }
+    50%      { box-shadow: 0 0 16px rgba(var(--accent-rgb), 0.3); }
+}
+
+.tl-segment--selected {
+    animation: tl-pulse-accent 2s ease-in-out infinite;
+}

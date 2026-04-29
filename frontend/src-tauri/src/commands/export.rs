@@ -704,3 +704,110 @@ pub async fn export_clips(
 
     Ok(())
 }
+
+#[tauri::command]
+pub async fn fast_merge(
+    app: AppHandle,
+    clips: Vec<String>,
+    output_path: String,
+) -> Result<String, String> {
+    if clips.is_empty() {
+        return Err("No clips to merge".into());
+    }
+
+    let ffmpeg = resolve_bundled_tool(&app, "ffmpeg")?;
+    
+    // Create a temporary file list for ffmpeg concat
+    use std::io::Write;
+    use tempfile::NamedTempFile;
+    
+    let mut filelist = NamedTempFile::new().map_err(|e| format!("Failed to create temp file: {e}"))?;
+    for c in &clips {
+        let safe_path = c.replace("'", "'\\''");
+        writeln!(filelist, "file '{}'", safe_path).map_err(|e| format!("Failed to write to temp file: {e}"))?;
+    }
+    let filelist_path = filelist.path().to_string_lossy().to_string();
+
+    let mut cmd = std::process::Command::new(&ffmpeg);
+    apply_no_window(&mut cmd);
+    
+    let result = cmd
+        .args([
+            "-y",
+            "-f", "concat",
+            "-safe", "0",
+            "-i", &filelist_path,
+            "-c", "copy", // Fast stream copy
+            &output_path,
+        ])
+        .output()
+        .map_err(|e| format!("Failed to run ffmpeg: {e}"))?;
+
+    if !result.status.success() {
+        let stderr = String::from_utf8_lossy(&result.stderr);
+        return Err(format!("FFmpeg merge failed: {}", stderr));
+    }
+
+    Ok(output_path)
+}
+
+#[tauri::command]
+pub async fn fast_split(
+    app: AppHandle,
+    input_path: String,
+    split_time: f64,
+    output_path1: String,
+    output_path2: String,
+    thumb_path2: String,
+) -> Result<(), String> {
+    let ffmpeg = resolve_bundled_tool(&app, "ffmpeg")?;
+
+    console_log("SPLIT", &format!("input={} split_at={:.2}s", file_name_only(&input_path), split_time));
+
+    // Part 1: [0 -> split_time]
+    let mut cmd1 = Command::new(&ffmpeg);
+    apply_no_window(&mut cmd1);
+    let out1 = cmd1.args([
+        "-y",
+        "-i", &input_path,
+        "-t", &split_time.to_string(),
+        "-c", "copy",
+        "-avoid_negative_ts", "make_zero",
+        &output_path1
+    ]).output().map_err(|e| format!("Part 1 failed: {e}"))?;
+
+    if !out1.status.success() {
+        return Err(format!("FFmpeg Part 1 failed: {}", String::from_utf8_lossy(&out1.stderr)));
+    }
+
+    // Part 2: [split_time -> end]
+    let mut cmd2 = Command::new(&ffmpeg);
+    apply_no_window(&mut cmd2);
+    let out2 = cmd2.args([
+        "-y",
+        "-ss", &split_time.to_string(),
+        "-i", &input_path,
+        "-c", "copy",
+        "-avoid_negative_ts", "make_zero",
+        &output_path2
+    ]).output().map_err(|e| format!("Part 2 failed: {e}"))?;
+
+    if !out2.status.success() {
+        return Err(format!("FFmpeg Part 2 failed: {}", String::from_utf8_lossy(&out2.stderr)));
+    }
+
+    // Thumbnail for Part 2 (since Part 1 can usually reuse Part 2's source thumb if it started at 0)
+    let mut cmd3 = Command::new(&ffmpeg);
+    apply_no_window(&mut cmd3);
+    let _ = cmd3.args([
+        "-y",
+        "-ss", &split_time.to_string(),
+        "-i", &input_path,
+        "-frames:v", "1",
+        "-q:v", "2",
+        "-s", "360x202", // standard thumbnail size
+        &thumb_path2
+    ]).output();
+
+    Ok(())
+}

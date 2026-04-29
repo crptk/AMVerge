@@ -205,3 +205,33 @@
 .clip-download-btn:active {
     transform: translateY(0) scale(0.95) !important;
 }
+
+.clip-status-overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.4);
+    backdrop-filter: blur(4px);
+    z-index: 20;
+    pointer-events: none;
+}
+
+.status-text {
+    color: white;
+    font-size: 14px;
+    font-weight: 600;
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+    background: rgba(0, 0, 0, 0.6);
+    padding: 6px 12px;
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+    0% { opacity: 0.8; transform: scale(1); }
+    50% { opacity: 1; transform: scale(1.05); }
+    100% { opacity: 0.8; transform: scale(1); }
+}

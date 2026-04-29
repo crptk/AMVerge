@@ -10,7 +10,7 @@ from typing import Any
 import av
 from PIL import Image
 
-from utils.video_utils import generate_keyframes, emit_progress, get_binary, merge_short_scenes
+from utils.video_utils import generate_keyframes, emit_progress, get_binary, merge_short_scenes, get_video_duration
 
 # Running commands like ffmpeg can open a command window on Windows.
 # This prevents that when the backend is launched from the app.
@@ -198,12 +198,16 @@ def collect_scenes(
     output_dir: str,
     file_name: str,
     cut_points: list[float],
+    total_duration: float,
 ) -> list[dict[str, Any]]:
     final_scenes: list[dict[str, Any]] = []
     boundaries = [0.0] + cut_points
+    # Add the final duration as the last boundary
+    all_boundaries = boundaries + [total_duration]
 
-    for index, start in enumerate(boundaries):
-        end = boundaries[index + 1] if index + 1 < len(boundaries) else None
+    for index in range(len(boundaries)):
+        start = all_boundaries[index]
+        end = all_boundaries[index + 1]
 
         out_path = os.path.join(output_dir, f"{file_name}_{index:04d}.mp4")
         thumb_path = os.path.join(output_dir, f"{file_name}_{index:04d}.jpg")
@@ -264,13 +268,16 @@ def trim_scenes_at_keyframes(video_path: str, output_dir: str) -> list[dict[str,
 
     emit_progress(75, "Building scenes...")
 
+    video_duration = run_stage(75, "Getting duration...", lambda: get_video_duration(video_path))
+
     final_scenes = run_stage(
         75,
         "Building scenes...",    
         lambda: collect_scenes(
         output_dir=output_dir,
         file_name=file_name,
-        cut_points=cut_points)
+        cut_points=cut_points,
+        total_duration=video_duration)
     )
 
     run_stage(

@@ -65,6 +65,14 @@ function App() {
   const [cols, setCols] = useState(6);
   const [isDragging, setIsDragging] = useState(false);
   const [sideBarEnabled, setSideBarEnabled] = useState(true);
+  const [timelineEnabled, setTimelineEnabled] = useState(() => {
+    try {
+      const raw = localStorage.getItem("amverge_timeline_enabled_v1");
+      return raw === null ? true : raw === "true";
+    } catch {
+      return true;
+    }
+  });
   const [activePage, setActivePage] = useState<Page>("home");
   const [themeSettings, setThemeSettings] = useState<ThemeSettings>(() => loadThemeSettings());
   const [generalSettings, setGeneralSettings] = useState<GeneralSettings>(() => loadGeneralSettings());
@@ -77,6 +85,10 @@ function App() {
   useEffect(() => {
     saveGeneralSettings(generalSettings);
   }, [generalSettings]);
+
+  useEffect(() => {
+    localStorage.setItem("amverge_timeline_enabled_v1", String(timelineEnabled));
+  }, [timelineEnabled]);
 
   const handleResetGeneralSettings = async () => {
     try {
@@ -512,10 +524,13 @@ function App() {
             mainLayoutWrapperRef={mainLayoutWrapperRef}
             gridRef={gridRef}
             clips={state.clips}
+            setClips={setClips}
             importToken={importToken}
             isEmpty={isEmpty}
             handleExport={handleExport}
             sideBarEnabled={sideBarEnabled}
+            timelineEnabled={timelineEnabled}
+            setTimelineEnabled={setTimelineEnabled}
             videoIsHEVC={state.videoIsHEVC}
             userHasHEVC={userHasHEVC}
             focusedClip={state.focusedClip}

@@ -6,12 +6,16 @@ type UseVideoPlayerArgs = {
     selectedClip: string;
     videoIsHEVC: boolean | null;
     userHasHEVC: RefObject<boolean>;
+    externalTime?: number;
+    onTimeUpdate?: (time: number) => void;
 };
 
 export function useVideoPlayer({
     selectedClip,
     videoIsHEVC,
     userHasHEVC,
+    externalTime,
+    onTimeUpdate,
 }: UseVideoPlayerArgs) {
     const videoRef = useRef<HTMLVideoElement | null>(null);
     const progressRef = useRef<HTMLDivElement | null>(null);
@@ -28,7 +32,7 @@ export function useVideoPlayer({
 
     const [effectiveClip, setEffectiveClip] = useState<string | null>(selectedClip);
     const [isVideoReady, setIsVideoReady] = useState(false);
-    const [isPlaying, setIsPlaying] = useState(true);
+    const [isPlaying, setIsPlaying] = useState(false);
     const [isMuted, setIsMuted] = useState(false);
     const [currentTime, setCurrentTime] = useState(0);
     const [duration, setDuration] = useState(0);
@@ -162,7 +166,7 @@ export function useVideoPlayer({
         video.style.setProperty("--aspect-ratio", `${video.videoWidth} / ${video.videoHeight}`);
         setDuration(video.duration);
         requestFirstFrame(video);
-        safePlay(video);
+        if (isPlaying) safePlay(video);
     };
 
     const handleLoadedData = () => {
@@ -174,6 +178,19 @@ export function useVideoPlayer({
         if (!video) return;
 
         setCurrentTime(video.currentTime);
+        
+        // Only drive the timeline from the video if the video is fully ready.
+        if (isVideoReady) {
+            // If the user is manually scrubbing the video player's progress bar, sync it immediately.
+            if (isScrubbing) {
+                if (onTimeUpdate) onTimeUpdate(video.currentTime);
+            } 
+            // If it's playing naturally, sync it, but ignore intermediate updates during a seek 
+            // (e.g. if the timeline was scrubbed) to prevent rubber-banding.
+            else if (isPlaying && !video.seeking) {
+                if (onTimeUpdate) onTimeUpdate(video.currentTime);
+            }
+        }
     };
 
     const handlePlay = (video: HTMLVideoElement) => {
@@ -202,8 +219,19 @@ export function useVideoPlayer({
 
     useEffect(() => {
         const video = videoRef.current;
-        if (!video || !selectedClip) return;
+        if (!video) return;
 
+        // 1. Handle Empty State
+        if (!selectedClip) {
+            setEffectiveClip(null);
+            setIsVideoReady(false);
+            setCurrentTime(0);
+            setDuration(0);
+            setIsPlaying(false);
+            return;
+        }
+
+        // 2. Cleanup old clip state
         proxyInFlightRef.current = false;
         proxyAttemptedForClipRef.current = null;
         hasFirstFrameRef.current = false;
@@ -211,76 +239,57 @@ export function useVideoPlayer({
         if (videoFrameCallbackIdRef.current && (video as any).cancelVideoFrameCallback) {
             try {
                 (video as any).cancelVideoFrameCallback(videoFrameCallbackIdRef.current);
-            } catch {
-                // ignore
-            }
+            } catch { /* ignore */ }
         }
-
         videoFrameCallbackIdRef.current = null;
 
-        setEffectiveClip(null);
-        setIsVideoReady(false);
-        setCurrentTime(0);
-        setDuration(0);
-        setIsPlaying(false);
-    }, [selectedClip]);
-
-    useEffect(() => {
-        if (!selectedClip) {
-            setEffectiveClip(null);
-            setIsVideoReady(false);
-            return;
-        }
-
-        if (hasHevcSupport) {
-            if (effectiveClip !== selectedClip) setEffectiveClip(selectedClip);
-            setIsVideoReady(false);
+        // 3. Determine if we can use the source directly or need a proxy
+        if (hasHevcSupport || videoIsHEVC === false) {
+            if (effectiveClip !== selectedClip) {
+                setEffectiveClip(selectedClip);
+                setIsVideoReady(false);
+            }
             return;
         }
 
         if (videoIsHEVC === null) {
-            if (effectiveClip !== null) setEffectiveClip(null);
             setIsVideoReady(false);
             return;
         }
 
-        if (videoIsHEVC === false) {
-            if (effectiveClip !== selectedClip) setEffectiveClip(selectedClip);
+        // 4. Proxy Logic
+        if (effectiveClip && effectiveClip !== selectedClip) {
+            // Only set to false if we are actually changing the clip
             setIsVideoReady(false);
-            return;
         }
 
-        if (effectiveClip && effectiveClip !== selectedClip) return;
-        if (proxyInFlightRef.current) return;
-        if (proxyAttemptedForClipRef.current === selectedClip) return;
+        if (proxyInFlightRef.current || proxyAttemptedForClipRef.current === selectedClip) return;
 
         proxyAttemptedForClipRef.current = selectedClip;
         proxyInFlightRef.current = true;
 
-        setEffectiveClip(null);
-        setIsVideoReady(false);
-
         invoke<string>("ensure_preview_proxy", { clipPath: selectedClip })
             .then((proxyPath) => {
                 proxyInFlightRef.current = false;
-                if (!proxyPath) return;
-                if (selectedClipRef.current !== selectedClip) return;
+                if (!proxyPath || selectedClipRef.current !== selectedClip) return;
 
                 setEffectiveClip(proxyPath);
                 setIsVideoReady(false);
 
                 setTimeout(() => {
-                    const video = videoRef.current;
-                    if (!video) return;
-                    video.load();
-                    safePlay(video);
+                    const v = videoRef.current;
+                    if (!v) return;
+                    v.load();
+                    if (isPlaying) safePlay(v);
                 }, 0);
             })
             .catch((err) => {
                 proxyInFlightRef.current = false;
                 if (import.meta.env.DEV) console.warn("ensure_preview_proxy failed", err);
+                // Fallback to original even if proxy failed
+                setEffectiveClip(selectedClip);
             });
-    }, [selectedClip, videoIsHEVC, hasHevcSupport, effectiveClip]);
+    }, [selectedClip, videoIsHEVC, hasHevcSupport]);
 
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
@@ -352,6 +361,16 @@ export function useVideoPlayer({
             }
         };
     }, [isScrubbing, duration]);
+
+    useEffect(() => {
+        if (externalTime === undefined || !videoRef.current || !duration) return;
+        
+        // Only seek if the difference is more than 10ms to avoid jitter
+        if (Math.abs(videoRef.current.currentTime - externalTime) > 0.01) {
+            videoRef.current.currentTime = externalTime;
+            setCurrentTime(externalTime);
+        }
+    }, [externalTime, duration]);
 
     return {
         videoRef,

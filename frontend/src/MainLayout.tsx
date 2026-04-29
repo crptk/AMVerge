@@ -3,6 +3,8 @@ import { GeneralSettings } from "./settings/generalSettings";
 import { ThemeSettings } from "./settings/themeSettings";
 import ClipsContainer from "./components/clipsGrid/ClipsContainer.tsx";
 import PreviewContainer from "./components/previewPanel/PreviewContainer.tsx";
+import { TimelineTrack } from "./components/timeline";
+import { UseTimelineReturn } from "./hooks/useTimeline";
 import { ClipItem } from "./types/domain";
 
 type LayoutProps = {
@@ -37,10 +39,13 @@ type LayoutProps = {
     setGeneralSettings: React.Dispatch<React.SetStateAction<GeneralSettings>>;
     onDownloadClip: (clip: ClipItem) => void;
     themeSettings: ThemeSettings;
+    timeline: UseTimelineReturn;
+    timelineEnabled: boolean;
 };
 
 export default function MainLayout(props: LayoutProps) {
     const [leftWidth, setLeftWidth] = useState(65);
+    const [timelineHeight, setTimelineHeight] = useState(200);
 
     const focusedClipThumbnail = useMemo(
         () =>
@@ -50,7 +55,24 @@ export default function MainLayout(props: LayoutProps) {
         [props.focusedClip, props.clips]
     );
 
-    // track active resize listeners so we can clean up on unmount.
+    // ── Timeline-Preview Link ────────────────────────────────────────
+    const activeTimelineSource = useMemo(() => {
+        if (!props.timelineEnabled) return null;
+        const { segments, playheadSec } = props.timeline.state;
+        // Find segment under playhead
+        const seg = segments.find(s => playheadSec >= s.start && playheadSec < s.end);
+        if (!seg || !seg.sourceClip) return null;
+
+        const offset = playheadSec - seg.start;
+        const sourceTime = (seg.sourceStart ?? 0) + offset;
+
+        return {
+            src: seg.sourceClip.src,
+            time: sourceTime,
+            thumbnail: seg.sourceClip.thumbnail
+        };
+    }, [props.timelineEnabled, props.timeline.state.playheadSec, props.timeline.state.segments]);
+
     const resizeCleanupRef = useRef<(() => void) | null>(null);
 
     useEffect(() => {
@@ -59,20 +81,16 @@ export default function MainLayout(props: LayoutProps) {
         };
     }, []);
 
-    const startResize = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    const startHorizontalResize = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
         const startX = e.clientX;
         const container = e.currentTarget.parentElement as HTMLElement;
         const leftPane = container.children[0] as HTMLElement;
-
-
         const startLeftWidth = leftPane.offsetWidth;
         const totalWidth = container.offsetWidth;
 
         const onMouseMove = (ev: MouseEvent) => {
             const delta = ev.clientX - startX;
-            const newPercent =
-                ((startLeftWidth + delta) / totalWidth) * 100;
-            
+            const newPercent = ((startLeftWidth + delta) / totalWidth) * 100;
             setLeftWidth(Math.min(85, Math.max(15, newPercent)));
         };
 
@@ -82,65 +100,114 @@ export default function MainLayout(props: LayoutProps) {
             resizeCleanupRef.current = null;
         };
 
-        // remove any stale listeners before attaching new ones.
         resizeCleanupRef.current?.();
-
         window.addEventListener("mousemove", onMouseMove);
         window.addEventListener("mouseup", onMouseUp);
         resizeCleanupRef.current = onMouseUp;
     }, []);
+
+    const startVerticalResize = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+        const startY = e.clientY;
+        const startHeight = timelineHeight;
+
+        const onMouseMove = (ev: MouseEvent) => {
+            const delta = startY - ev.clientY;
+            setTimelineHeight(Math.min(500, Math.max(150, startHeight + delta)));
+        };
+
+        const onMouseUp = () => {
+            window.removeEventListener("mousemove", onMouseMove);
+            window.removeEventListener("mouseup", onMouseUp);
+        };
+
+        window.addEventListener("mousemove", onMouseMove);
+        window.addEventListener("mouseup", onMouseUp);
+    }, [timelineHeight]);
+
     return (
-        <div className="split-layout">
-            <div className="left-pane" style={{ width: `${leftWidth}%`}}>
-                <ClipsContainer 
-                    gridSize={props.gridSize}
-                    gridRef={props.gridRef}
-                    cols={props.cols}
-                    gridPreview={props.gridPreview}
-                    selectedClips={props.selectedClips}
-                    setSelectedClips={props.setSelectedClips}
-                    clips={props.clips}
-                    importToken={props.importToken}
-                    loading={props.loading}
-                    isEmpty={props.isEmpty}
-                    videoIsHEVC={props.videoIsHEVC}
-                    userHasHEVC={props.userHasHEVC}
-                    setFocusedClip={props.setFocusedClip}
-                    focusedClip={props.focusedClip}
-                    generalSettings={props.generalSettings}
-                    onDownloadClip={props.onDownloadClip}
-                    themeSettings={props.themeSettings}
-                 />
-            </div>
-            
-    
-            <div
-                className="divider"
-                onMouseDown={(e) => startResize(e)}
-            >
-                <span className="subdivider"/>
+        <div className="main-layout-root" style={{ display: 'flex', flexDirection: 'column', height: '100%', width: '100%' }}>
+            <div className="split-layout" style={{ flex: 1, minHeight: 0 }}>
+                <div className="left-pane" style={{ width: `${leftWidth}%` }}>
+                    <ClipsContainer
+                        gridSize={props.gridSize}
+                        gridRef={props.gridRef}
+                        cols={props.cols}
+                        gridPreview={props.gridPreview}
+                        selectedClips={props.selectedClips}
+                        setSelectedClips={props.setSelectedClips}
+                        clips={props.clips}
+                        importToken={props.importToken}
+                        loading={props.loading}
+                        isEmpty={props.isEmpty}
+                        videoIsHEVC={props.videoIsHEVC}
+                        userHasHEVC={props.userHasHEVC}
+                        setFocusedClip={props.setFocusedClip}
+                        focusedClip={props.focusedClip}
+                        generalSettings={props.generalSettings}
+                        onDownloadClip={props.onDownloadClip}
+                        themeSettings={props.themeSettings}
+                    />
+                </div>
 
-                <span className="subdivider"/>
+                <div className="divider" onMouseDown={startHorizontalResize}>
+                    <span className="subdivider" />
+                    <span className="subdivider" />
+                </div>
+
+                <div className="right-pane" style={{ width: `${100 - leftWidth}%` }}>
+                    <PreviewContainer
+                        focusedClip={activeTimelineSource?.src ?? (props.timelineEnabled ? null : props.focusedClip)}
+                        focusedClipThumbnail={activeTimelineSource?.thumbnail ?? (props.timelineEnabled ? null : focusedClipThumbnail)}
+                        externalTime={activeTimelineSource?.time}
+                        selectedClips={props.selectedClips}
+                        handleExport={props.handleExport}
+                        videoIsHEVC={props.videoIsHEVC}
+                        userHasHEVC={props.userHasHEVC}
+                        importToken={props.importToken}
+                        exportDir={props.exportDir}
+                        onPickExportDir={props.onPickExportDir}
+                        onExportDirChange={props.onExportDirChange}
+                        defaultMergedName={props.defaultMergedName}
+                        generalSettings={props.generalSettings}
+                        setGeneralSettings={props.setGeneralSettings}
+                        onTimeUpdate={(time) => {
+                            if (!props.timelineEnabled) return;
+                            const { segments, playheadSec } = props.timeline.state;
+                            // Find the segment that is currently active under the playhead
+                            const seg = segments.find(s => playheadSec >= s.start && playheadSec < s.end);
+                            if (seg && seg.sourceClip) {
+                                // Calculate the new global timeline playhead based on the video's local time
+                                const newPlayheadSec = seg.start + (time - (seg.sourceStart ?? 0));
+                                // Avoid infinite feedback loop by checking difference
+                                if (Math.abs(playheadSec - newPlayheadSec) > 0.05) {
+                                    props.timeline.setPlayhead(newPlayheadSec);
+                                }
+                            }
+                        }}
+                    />
+                </div>
             </div>
 
+            {/* Vertical Resize Handle for Timeline */}
+            {props.timelineEnabled && (
+                <>
+                    <div 
+                        className="timeline-v-divider" 
+                        onMouseDown={startVerticalResize}
+                        style={{ 
+                            height: '4px', 
+                            cursor: 'ns-resize', 
+                            background: 'rgba(255,255,255,0.05)',
+                            borderTop: '1px solid rgba(255,255,255,0.1)',
+                            zIndex: 10
+                        }}
+                    />
 
-            <div className="right-pane" style={{ width: `${100 - leftWidth}%` }}>
-                <PreviewContainer 
-                    focusedClip={props.focusedClip}
-                    focusedClipThumbnail={focusedClipThumbnail}
-                    selectedClips={props.selectedClips}
-                    handleExport={props.handleExport}
-                    videoIsHEVC={props.videoIsHEVC}
-                    userHasHEVC={props.userHasHEVC}
-                    importToken={props.importToken}
-                    exportDir={props.exportDir}
-                    onPickExportDir={props.onPickExportDir}
-                    onExportDirChange={props.onExportDirChange}
-                    defaultMergedName={props.defaultMergedName}
-                    generalSettings={props.generalSettings}
-                    setGeneralSettings={props.setGeneralSettings}
-                />
-            </div>
+                    <div className="timeline-container" style={{ height: `${timelineHeight}px`, flexShrink: 0 }}>
+                        <TimelineTrack timeline={props.timeline} trackHeight={timelineHeight - 80} />
+                    </div>
+                </>
+            )}
         </div>
     )
 }

@@ -1,8 +1,11 @@
 export type ClipItem = {
   id: string;
   src: string;
+  srcList?: string[];
   thumbnail: string;
   originalName?: string;
+  start?: number;
+  end?: number;
 };
 
 export type EpisodeFolder = {

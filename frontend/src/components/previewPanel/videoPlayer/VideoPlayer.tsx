@@ -9,6 +9,8 @@ type VideoPlayerProps = {
     userHasHEVC: RefObject<boolean>;
     posterPath: string | null;
     importToken: string;
+    externalTime?: number;
+    onTimeUpdate?: (time: number) => void;
 };
 
 export default function VideoPlayer({
@@ -17,6 +19,8 @@ export default function VideoPlayer({
     userHasHEVC,
     posterPath,
     importToken,
+    externalTime,
+    onTimeUpdate,
 }: VideoPlayerProps) {
     const {
         videoRef,
@@ -45,6 +49,8 @@ export default function VideoPlayer({
         selectedClip,
         videoIsHEVC,
         userHasHEVC,
+        externalTime,
+        onTimeUpdate,
     });
 
     return (
@@ -53,7 +59,7 @@ export default function VideoPlayer({
                 <video
                     ref={videoRef}
                     src={effectiveClip ? `${convertFileSrc(effectiveClip)}?v=${importToken}` : undefined}
-                    poster={posterPath ? `${convertFileSrc(posterPath)}?v=${importToken}` : undefined}
+                    poster={!externalTime && posterPath ? `${convertFileSrc(posterPath)}?v=${importToken}` : undefined}
                     preload="metadata"
                     muted
                     loop

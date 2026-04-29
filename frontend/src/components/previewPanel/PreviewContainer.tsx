@@ -30,6 +30,8 @@ type PreviewContainerProps = {
   defaultMergedName: string;
   generalSettings: GeneralSettings;
   setGeneralSettings: React.Dispatch<React.SetStateAction<GeneralSettings>>;
+  externalTime?: number;
+  onTimeUpdate?: (time: number) => void;
 };
 
 export default function PreviewContainer (props: PreviewContainerProps) {
@@ -70,6 +72,8 @@ export default function PreviewContainer (props: PreviewContainerProps) {
            userHasHEVC={props.userHasHEVC}
            posterPath={props.focusedClipThumbnail}
            importToken={props.importToken}
+           externalTime={props.externalTime}
+           onTimeUpdate={props.onTimeUpdate}
           />
           ) : (
             <p>No clip selected</p>
