@@ -39,8 +39,7 @@ type PreviewContainerProps = {
     selectedClips: Set<string>,
     enableMerged: boolean,
     mergeFileName?: string,
-    editorTarget?: EditorTarget,
-    autoImport?: boolean
+    editorTarget?: EditorTarget
   ) => Promise<void>;
   exportDir: string | null;
   onPickExportDir: () => void;
@@ -53,7 +52,6 @@ type PreviewContainerProps = {
 export default function PreviewContainer (props: PreviewContainerProps) {
   const [mergeEnabled, setMergeEnabled] = React.useState(true);
   const [editorTarget, setEditorTarget] = React.useState<EditorTarget>("premiere");
-  const [autoImport, setAutoImport] = React.useState(true);
   const [showMergeNameModal, setShowMergeNameModal] = React.useState(false);
   const mergeNameInputRef = React.useRef<HTMLInputElement | null>(null);
 
@@ -70,7 +68,7 @@ export default function PreviewContainer (props: PreviewContainerProps) {
     if (mergeEnabled) {
       setShowMergeNameModal(true);
     } else {
-      props.handleExport(props.selectedClips, false, undefined, editorTarget, autoImport);
+      props.handleExport(props.selectedClips, false, undefined, editorTarget);
     }
   };
 
@@ -78,7 +76,7 @@ export default function PreviewContainer (props: PreviewContainerProps) {
     const value = (mergeNameInputRef.current?.value ?? "").trim();
     if (!value) return;
     setShowMergeNameModal(false);
-    props.handleExport(props.selectedClips, true, value, editorTarget, autoImport);
+    props.handleExport(props.selectedClips, true, value, editorTarget);
   };
   return (
     <main  className="preview-container" >
@@ -150,25 +148,13 @@ export default function PreviewContainer (props: PreviewContainerProps) {
                 className={`editor-target-chip ${className} ${editorTarget === value ? "active" : ""}`}
                 onClick={() => setEditorTarget(value)}
                 title={`Send to ${label}`}
+                aria-label={`Send to ${label}`}
               >
                 <span className={`editor-brand-icon ${className}`}>
-                  <img src={icon} alt="" className="editor-target-icon" />
+                  <img src={icon} alt={label} className="editor-target-icon" />
                 </span>
-                <span>{label}</span>
               </button>
             ))}
-          </div>
-          <div className="checkbox-row auto-import-row">
-            <label className="custom-checkbox">
-              <input
-                type="checkbox"
-                className="checkbox"
-                checked={autoImport}
-                onChange={(e) => setAutoImport(e.target.checked)}
-              />
-              <span className="checkmark"></span>
-            </label>
-            <p>Auto-import into the open project</p>
           </div>
         </div>
 

@@ -36,6 +36,12 @@ export default function useImportExport(props: ImportExportProps) {
   const [batchTotal, setBatchTotal] = useState(0);
   const [batchDone, setBatchDone] = useState(0);
   const [batchCurrentFile, setBatchCurrentFile] = useState("");
+
+  const editorLabel = (target: EditorTarget): string => {
+    if (target === "after_effects") return "After Effects";
+    if (target === "davinci_resolve") return "DaVinci Resolve";
+    return "Premiere Pro";
+  };
   const onImportClick = async () => {
     const files = await open({
       multiple: true,
@@ -219,8 +225,7 @@ export default function useImportExport(props: ImportExportProps) {
     selectedClips: Set<string>,
     mergeEnabled: boolean,
     mergeFileName?: string,
-    editorTarget: EditorTarget = "premiere",
-    autoImport = true
+    editorTarget: EditorTarget = "premiere"
   ) => {
     if (selectedClips.size === 0) return;
 
@@ -285,12 +290,22 @@ export default function useImportExport(props: ImportExportProps) {
         });
       }
 
-      if (autoImport && exportedPaths.length > 0) {
+      if (exportedPaths.length > 0) {
         try {
+          props.setProgress(99);
+          props.setProgressMsg(
+            `Export finished. Preparing ${editorLabel(editorTarget)} auto-import...`
+          );
+
           const result = await invoke<string>("import_media_to_editor", {
             editorTarget,
             mediaPaths: exportedPaths,
           });
+
+          props.setProgress(100);
+          props.setProgressMsg(
+            result?.trim() || `${editorLabel(editorTarget)} import complete.`
+          );
           console.log(result);
         } catch (err) {
           console.warn("Auto-import failed:", err);

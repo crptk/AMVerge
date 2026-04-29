@@ -26,8 +26,7 @@ interface HomePageProps {
     selectedClips: Set<string>,
     mergeEnabled: boolean,
     mergeFileName?: string,
-    editorTarget?: EditorTarget,
-    autoImport?: boolean
+    editorTarget?: EditorTarget
   ) => Promise<void>;
   sideBarEnabled: boolean;
   videoIsHEVC: boolean | null;

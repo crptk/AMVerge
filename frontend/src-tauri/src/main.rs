@@ -5,8 +5,8 @@ mod payloads;
 mod state;
 mod utils;
 
+use state::{ActiveSidecar, DiscordRPCState, PreviewProxyLocks};
 use tauri::Manager;
-use state::{ActiveSidecar, PreviewProxyLocks, DiscordRPCState};
 
 fn main() {
     tauri::Builder::default()
@@ -20,7 +20,7 @@ fn main() {
             commands::scenes::detect_scenes,
             commands::scenes::abort_detect_scenes,
             commands::export::export_clips,
-            commands::export::import_media_to_editor,
+            commands::editor_import::import_media_to_editor,
             commands::preview::check_hevc,
             commands::preview::hover_preview_error,
             commands::preview::ensure_preview_proxy,
