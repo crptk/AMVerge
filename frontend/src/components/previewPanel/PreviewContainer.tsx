@@ -2,9 +2,8 @@ import VideoPlayer from "./videoPlayer/VideoPlayer.tsx"
 import HowToUse from "./HowToUse.tsx"
 import React from "react";
 import { FaFolderOpen, FaFileExport, FaVideo, FaLayerGroup, FaFolder, FaRocket } from "react-icons/fa";
-import { GeneralSettings } from "../../settings/generalSettings";
 import Dropdown from "../common/Dropdown";
-
+import { GeneralSettingsStore, useGeneralSettingsStore } from "../../store/settingsStore.ts";
 const EXPORT_OPTIONS = [
   { value: "mp4", label: "MP4" },
   { value: "mkv", label: "MKV" },
@@ -28,15 +27,15 @@ type PreviewContainerProps = {
   onPickExportDir: () => void;
   onExportDirChange: (dir: string) => void;
   defaultMergedName: string;
-  generalSettings: GeneralSettings;
-  setGeneralSettings: React.Dispatch<React.SetStateAction<GeneralSettings>>;
 };
 
 export default function PreviewContainer (props: PreviewContainerProps) {
   const [mergeEnabled, setMergeEnabled] = React.useState(true);
   const [showMergeNameModal, setShowMergeNameModal] = React.useState(false);
   const mergeNameInputRef = React.useRef<HTMLInputElement | null>(null);
+  const exportFormat = useGeneralSettingsStore(s => s.exportFormat);
 
+  const setExportFormat = useGeneralSettingsStore(s => s.setExportFormat);
   React.useEffect(() => {
     if (showMergeNameModal) {
       requestAnimationFrame(() => {
@@ -89,12 +88,15 @@ export default function PreviewContainer (props: PreviewContainerProps) {
             <Dropdown
               className="export-format-select"
               options={EXPORT_OPTIONS}
-              value={props.generalSettings.exportFormat}
+              value={exportFormat}
               onChange={(val) =>
-                props.setGeneralSettings((prev) => ({
-                  ...prev,
-                  exportFormat: val as any,
-                }))
+                {
+                  setExportFormat(exportFormat); 
+                }
+                // props.setGeneralSettings((prev) => ({
+                //   ...prev,
+                //   exportFormat: val as any,
+                // }))
               }
             />
           </div>

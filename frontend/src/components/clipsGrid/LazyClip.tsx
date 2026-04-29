@@ -9,6 +9,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { LazyClipProps } from "./types.ts"
 import { DownloadButton } from "./DownloadButton.tsx";
+import { useGeneralSettingsStore } from "../../store/settingsStore.ts";
 
 const DOWNLOAD_TONE_SAMPLE_SIZE = 24;
 const DOWNLOAD_TONE_SOURCE_SIZE = 34;
@@ -30,7 +31,6 @@ export const LazyClip = memo(function LazyClip({
   reportStaggerDemand,
   videoIsHEVC,
   userHasHEVC,
-  generalSettings,
   onDownloadClip,
   themeSettings,
 }: LazyClipProps) {
@@ -71,6 +71,9 @@ export const LazyClip = memo(function LazyClip({
     showVideo && !forceThumbnail && !waitingForRequiredProxy && !waitingForCodecInfo && staggerGate;
   const shouldShowThumbnail = !showVideo || !shouldMountVideo || !isVideoReady;
 
+  const audioPlaybackHover = useGeneralSettingsStore(s => s.audioPlaybackHover);
+  const playbackVolume = useGeneralSettingsStore(s => s.playbackVolume);
+  
   // when Preview-all is enabled and we need an HEVC proxy, register demand only while visible.
   // this allows the parent to re-prioritize work when the user scrolls.
   useEffect(() => {
@@ -271,9 +274,9 @@ export const LazyClip = memo(function LazyClip({
     if (shouldPlay) {
       // Audio logic: only play audio if hovered AND setting is enabled.
       // Grid preview (Preview-all) should remain muted unless specifically hovered.
-      const audioEnabled = isHovered && generalSettings.audioPlaybackHover;
+      const audioEnabled = isHovered && audioPlaybackHover;
       v.muted = !audioEnabled;
-      v.volume = generalSettings.playbackVolume;
+      v.volume = playbackVolume;
 
       v.autoplay = true;
       v.loop = true;
@@ -292,7 +295,7 @@ export const LazyClip = memo(function LazyClip({
         // ignore
       }
     }
-  }, [showVideo, shouldMountVideo, effectiveSrc, isHovered, generalSettings.audioPlaybackHover, generalSettings.playbackVolume]);
+  }, [showVideo, shouldMountVideo, effectiveSrc, isHovered, audioPlaybackHover, playbackVolume]);
 
   const handleClick = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
@@ -421,7 +424,7 @@ export const LazyClip = memo(function LazyClip({
             <video
               className="clip"
               src={`${convertFileSrc(effectiveSrc)}?v=${importToken}`}
-              muted={!(isHovered && generalSettings.audioPlaybackHover)}
+              muted={!(isHovered && audioPlaybackHover)}
               loop
               autoPlay
               playsInline
@@ -435,9 +438,9 @@ export const LazyClip = memo(function LazyClip({
               }}
               onLoadedMetadata={(e) => {
                 if (gridPreview || isHovered) {
-                  const audioEnabled = isHovered && generalSettings.audioPlaybackHover;
+                  const audioEnabled = isHovered && audioPlaybackHover;
                   e.currentTarget.muted = !audioEnabled;
-                  e.currentTarget.volume = generalSettings.playbackVolume;
+                  e.currentTarget.volume = playbackVolume;
                   e.currentTarget.play().catch(() => {});
                 }
               }}
@@ -492,9 +495,9 @@ export const LazyClip = memo(function LazyClip({
                       const vid = videoRef.current;
                       if (!vid) return;
                       
-                      const audioEnabled = isHovered && generalSettings.audioPlaybackHover;
+                      const audioEnabled = isHovered && audioPlaybackHover;
                       vid.muted = !audioEnabled;
-                      vid.volume = generalSettings.playbackVolume;
+                      vid.volume = playbackVolume;
                       
                       vid.load();
                       vid.play().catch(() => {});

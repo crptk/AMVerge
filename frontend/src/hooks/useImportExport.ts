@@ -3,7 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { ClipItem, EpisodeEntry } from "../types/domain"
 import { fileNameFromPath, truncateFileName, detectScenes } from "../utils/episodeUtils";
-import { GeneralSettings } from "../settings/generalSettings";
+import { useGeneralSettingsStore } from "../store/settingsStore";
 
 type ImportExportProps = {
   abortedRef: React.RefObject<boolean>;
@@ -23,9 +23,8 @@ type ImportExportProps = {
   setProgress: React.Dispatch<React.SetStateAction<number>>;
   setProgressMsg: React.Dispatch<React.SetStateAction<string>>;
   episodesPath: string | null;
-  exportFormat: "mp4" | "mkv" | "mov" | "avi";
+  exportFormat: "mp4" | "mkv" | "mov" | "avi" | "xml";
   onRPCUpdate?: (data: any) => void;
-  generalSettings: GeneralSettings;
 };
 
 export default function useImportExport(props: ImportExportProps) {
@@ -35,6 +34,11 @@ export default function useImportExport(props: ImportExportProps) {
   const [batchTotal, setBatchTotal] = useState(0);
   const [batchDone, setBatchDone] = useState(0);
   const [batchCurrentFile, setBatchCurrentFile] = useState("");
+  
+  const rpcShowButtons = useGeneralSettingsStore(s => s.rpcShowButtons);
+  const rpcShowFileName = useGeneralSettingsStore(s => s.rpcShowFilename);
+  const rpcShowMiniIcons = useGeneralSettingsStore(s => s.rpcShowMiniIcons);
+
   const onImportClick = async () => {
     const files = await open({
       multiple: true,
@@ -77,19 +81,19 @@ export default function useImportExport(props: ImportExportProps) {
       setImportToken(Date.now().toString());
 
       const rpcButtons = [];
-      if (props.generalSettings.rpcShowButtons) {
+      if (rpcShowButtons) {
         rpcButtons.push({ label: "Discord Server", url: "https://discord.gg/asJkqwqb" });
         rpcButtons.push({ label: "Website", url: "https://amverge.app/" });
       }
 
       props.onRPCUpdate?.({
         type: "update",
-        details: `Detecting: ${props.generalSettings.rpcShowFilename ? fileNameFromPath(file) : "Video"}`,
+        details: `Detecting: ${rpcShowFileName ? fileNameFromPath(file) : "Video"}`,
         state: "Processing Video",
         large_image: "amverge_logo",
-        small_image: props.generalSettings.rpcShowMiniIcons ? "loading_icon_new" : undefined,
-        small_text: props.generalSettings.rpcShowMiniIcons ? "Detecting..." : undefined,
-        buttons: props.generalSettings.rpcShowButtons,
+        small_image: rpcShowMiniIcons ? "loading_icon_new" : undefined,
+        small_text: rpcShowMiniIcons ? "Detecting..." : undefined,
+        buttons: rpcShowButtons,
       });
 
       const formatted = await detectScenes(file, episodeId, props.episodesPath);
@@ -235,15 +239,14 @@ export default function useImportExport(props: ImportExportProps) {
       const clipArray = selected.map((c: ClipItem) => c.src);
       const format = props.exportFormat || "mp4";
 
-      const rpcButtons = [];
       props.onRPCUpdate?.({
         type: "update",
         details: `Exporting ${selected.length} clips`,
         state: "Saving Progress",
         large_image: "amverge_logo",
-        small_image: props.generalSettings.rpcShowMiniIcons ? "save_icon_new" : undefined,
-        small_text: props.generalSettings.rpcShowMiniIcons ? "Exporting..." : undefined,
-        buttons: props.generalSettings.rpcShowButtons,
+        small_image: rpcShowMiniIcons ? "save_icon_new" : undefined,
+        small_text: rpcShowMiniIcons ? "Exporting..." : undefined,
+        buttons: rpcShowButtons,
       });
 
       if (mergeEnabled) {
@@ -274,9 +277,9 @@ export default function useImportExport(props: ImportExportProps) {
         details: "Export Finished!",
         state: "Success",
         large_image: "amverge_logo",
-        small_image: props.generalSettings.rpcShowMiniIcons ? "check_icon_new" : undefined,
-        small_text: props.generalSettings.rpcShowMiniIcons ? "Done" : undefined,
-        buttons: props.generalSettings.rpcShowButtons,
+        small_image: rpcShowMiniIcons ? "check_icon_new" : undefined,
+        small_text: rpcShowMiniIcons ? "Done" : undefined,
+        buttons: rpcShowButtons,
       });
 
       // Revert back to normal state after 10 seconds
@@ -286,9 +289,9 @@ export default function useImportExport(props: ImportExportProps) {
           details: "Editing Episode",
           state: "Ready",
           large_image: "amverge_logo",
-          small_image: props.generalSettings.rpcShowMiniIcons ? "edit_icon_new" : undefined,
-          small_text: props.generalSettings.rpcShowMiniIcons ? "Editing" : undefined,
-          buttons: props.generalSettings.rpcShowButtons,
+          small_image: rpcShowMiniIcons ? "edit_icon_new" : undefined,
+          small_text: rpcShowMiniIcons ? "Editing" : undefined,
+          buttons: rpcShowButtons,
         });
       }, 10000);
     } catch (err) {

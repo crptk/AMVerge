@@ -1,20 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Event, listen } from "@tauri-apps/api/event";
-import { 
-  applyThemeSettings, 
-  loadThemeSettings, 
-  saveThemeSettings, 
-  DEFAULT_THEME,
-  type ThemeSettings 
-} from "./settings/themeSettings";
 
 import {
-  loadGeneralSettings,
-  saveGeneralSettings,
-  DEFAULT_GENERAL_SETTINGS,
-  type GeneralSettings,
-} from "./settings/generalSettings";
+  applyThemeSettings,
+  useGeneralSettingsStore,
+  useThemeSettingsStore
+} from "./store/settingsStore.ts"
 
 import AppLayout from "./components/AppLayout";
 import HomePage from "./pages/HomePage";
@@ -66,38 +58,34 @@ function App() {
   const [isDragging, setIsDragging] = useState(false);
   const [sideBarEnabled, setSideBarEnabled] = useState(true);
   const [activePage, setActivePage] = useState<Page>("home");
-  const [themeSettings, setThemeSettings] = useState<ThemeSettings>(() => loadThemeSettings());
-  const [generalSettings, setGeneralSettings] = useState<GeneralSettings>(() => loadGeneralSettings());
+  // const [generalSettings, setGeneralSettings] = useState<GeneralSettings>(() => loadGeneralSettings());
+  const generalSettings = useGeneralSettingsStore();
+  const themeSettings = useThemeSettingsStore();
 
   useEffect(() => {
     applyThemeSettings(themeSettings);
-    saveThemeSettings(themeSettings);
   }, [themeSettings]);
 
-  useEffect(() => {
-    saveGeneralSettings(generalSettings);
-  }, [generalSettings]);
+  // useEffect(() => {
+  //   saveGeneralSettings(generalSettings);
+  // }, [generalSettings]);
 
-  const handleResetGeneralSettings = async () => {
-    try {
-      const resolvedOldPath = await invoke<string>("move_episodes_to_new_dir", {
-        oldDir: generalSettings.episodesPath,
-        newDir: null,
-      });
+  // const handleResetGeneralSettings = async () => {
+  //   try {
+  //     const resolvedOldPath = await invoke<string>("move_episodes_to_new_dir", {
+  //       oldDir: generalSettings.episodesPath,
+  //       newDir: null,
+  //     });
 
-      const defaultEpisodesPath = await invoke<string>("get_default_episodes_dir");
+  //     const defaultEpisodesPath = await invoke<string>("get_default_episodes_dir");
 
-      remapEpisodePaths(resolvedOldPath, defaultEpisodesPath);      
-      saveGeneralSettings(DEFAULT_GENERAL_SETTINGS);
-      setGeneralSettings(DEFAULT_GENERAL_SETTINGS);
-    } catch (err) {
-      window.alert("Failed to reset episode directory: " + String(err));
-    }
-  };
-
-  const handleResetTheme = async() => {
-    setThemeSettings(DEFAULT_THEME);
-  }
+  //     remapEpisodePaths(resolvedOldPath, defaultEpisodesPath);      
+  //     saveGeneralSettings(DEFAULT_GENERAL_SETTINGS);
+  //     setGeneralSettings(DEFAULT_GENERAL_SETTINGS);
+  //   } catch (err) {
+  //     window.alert("Failed to reset episode directory: " + String(err));
+  //   }
+  // };
 
   const [progress, setProgress] = useState(0);
   const [progressMsg, setProgressMsg] = useState("Starting...");
@@ -162,7 +150,6 @@ function App() {
     episodesPath: generalSettings.episodesPath,
     exportFormat: generalSettings.exportFormat,
     onRPCUpdate: updateRPC,
-    generalSettings,
   });
 
   // Episode panel actions
@@ -527,7 +514,6 @@ function App() {
             openedEpisodeId={state.openedEpisodeId}
             importedVideoPath={state.importedVideoPath}
             generalSettings={generalSettings}
-            setGeneralSettings={setGeneralSettings}
             onDownloadClip={handleDownloadSingleClip}
             themeSettings={themeSettings}
           />
@@ -535,13 +521,8 @@ function App() {
           <Menu />
         ) : (
           <Settings
-            themeSettings={themeSettings}
-            setThemeSettings={setThemeSettings}
             generalSettings={generalSettings}
-            setGeneralSettings={setGeneralSettings}
-            onGeneralSettingsReset={handleResetGeneralSettings}
             onEpisodesPathChanged={remapEpisodePaths}
-            onThemeReset={handleResetTheme}
           />
         )}
       </div>

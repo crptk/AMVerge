@@ -17,7 +17,6 @@ export type ClipContainerProps = {
   userHasHEVC: React.RefObject<boolean>;
   setFocusedClip: React.Dispatch<React.SetStateAction<string | null>>;
   focusedClip: string | null;
-  generalSettings: GeneralSettings;
   onDownloadClip: (clip: ClipItem) => void;
   themeSettings: ThemeSettings;
 };
@@ -59,7 +58,6 @@ export type LazyClipProps = {
   reportStaggerDemand: (key: string, demand: { order: number; onReady: () => void } | null) => void;
   videoIsHEVC: boolean | null;
   userHasHEVC: React.RefObject<boolean>;
-  generalSettings: GeneralSettings;
   onDownloadClip: (clip: ClipItem) => void;
   themeSettings: ThemeSettings;
 };

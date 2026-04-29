@@ -1,25 +1,27 @@
 import { open } from "@tauri-apps/plugin-dialog";
 import { invoke } from "@tauri-apps/api/core";
-import { type GeneralSettings } from "../../settings/generalSettings";
 import { useEffect, useState } from "react";
+import { useGeneralSettingsStore } from "../../store/settingsStore";
 
 type GeneralSectionProps = {
-  generalSettings: GeneralSettings;
-  setGeneralSettings: React.Dispatch<React.SetStateAction<GeneralSettings>>;
-  onGeneralSettingsReset: () => void;
   onEpisodesPathChanged: (oldPath: string, newPath: string) => void;
 };
 
 export default function GeneralSection({
-  generalSettings,
-  setGeneralSettings,
-  onGeneralSettingsReset,
   onEpisodesPathChanged,
 }: GeneralSectionProps) {
   const [loading, setLoading] = useState(false);
   const [showFactoryResetConfirm, setShowFactoryResetConfirm] = useState(false);
   const factoryResetConfirmation =
     "This will restore AMVerge to its default settings and move your episode storage folder back to AppData. Any custom settings or storage location changes you made will be reset.";
+
+  const episodesPath = useGeneralSettingsStore(s => s.episodesPath);
+  const setepisodesPath = useGeneralSettingsStore(s => s.setEpisodesPath);
+  const audioPlaybackHover = useGeneralSettingsStore(s => s.audioPlaybackHover);
+  const setAudioPlaybackHover = useGeneralSettingsStore(s => s.setAudioPlaybackHover);
+  const playbackVolume = useGeneralSettingsStore(s => s.playbackVolume);
+  const setPlaybackVolume = useGeneralSettingsStore(s => s.setPlaybackVolume);
+
   useEffect(() => {
     if (!showFactoryResetConfirm) return;
 
@@ -41,18 +43,19 @@ export default function GeneralSection({
     });
 
     if (selected && typeof selected === "string") {
-      if (generalSettings.episodesPath !== selected) {
+      if (episodesPath !== selected) {
         setLoading(true);
 
         try {
           const resolvedOldPath = await invoke<string>("move_episodes_to_new_dir", {
-            oldDir: generalSettings.episodesPath,
+            oldDir: episodesPath,
             newDir: selected,
           });
 
           onEpisodesPathChanged(resolvedOldPath, selected);
           
-          setGeneralSettings((prev) => ({ ...prev, episodesPath: selected }));
+          setepisodesPath(selected)
+          // setGeneralSettings((prev) => ({ ...prev, episodesPath: selected }));
         } catch (err) {
           window.alert("Failed to move existing episodes: " + String(err));
         } finally {
@@ -93,12 +96,15 @@ export default function GeneralSection({
             <input
               type="checkbox"
               className="checkbox"
-              checked={generalSettings.audioPlaybackHover}
+              checked={audioPlaybackHover}
               onChange={(e) =>
-                setGeneralSettings((prev) => ({
-                  ...prev,
-                  audioPlaybackHover: e.target.checked,
-                }))
+                {
+                  setAudioPlaybackHover(e.target.checked);
+                }
+                // setGeneralSettings((prev) => ({
+                //   ...prev,
+                //   audioPlaybackHover: e.target.checked,
+                // }))
               }
             />
             <span className="checkmark"></span>
@@ -117,16 +123,19 @@ export default function GeneralSection({
             min="0"
             max="1"
             step="0.01"
-            value={generalSettings.playbackVolume}
+            value={playbackVolume}
             onChange={(e) =>
-              setGeneralSettings((prev) => ({
-                ...prev,
-                playbackVolume: parseFloat(e.target.value),
-              }))
+              {
+                setPlaybackVolume(parseFloat(e.target.value));
+              }
+              // setGeneralSettings((prev) => ({
+              //   ...prev,
+              //   playbackVolume: parseFloat(e.target.value),
+              // }))
             }
           />
           <span className="settings-value">
-            {Math.round(generalSettings.playbackVolume * 100)}%
+            {Math.round(playbackVolume * 100)}%
           </span>
         </div>
       </div>
@@ -143,13 +152,13 @@ export default function GeneralSection({
             onClick={handlePickDir}
             disabled={loading}
           >
-            {generalSettings.episodesPath ? "Change" : "Select Path"}
+            {episodesPath ? "Change" : "Select Path"}
           </button>
           <span
             className="settings-path-value"
-            title={generalSettings.episodesPath || "Default (App Data)"}
+            title={episodesPath || "Default (App Data)"}
           >
-            {generalSettings.episodesPath || "Default (App Data)"}
+            {episodesPath || "Default (App Data)"}
           </span>
         </div>
       </div>
@@ -201,7 +210,7 @@ export default function GeneralSection({
                 className="episode-modal-btn primary"
                 onClick={() => {
                   setShowFactoryResetConfirm(false);
-                  void onGeneralSettingsReset();
+                  // void onGeneralSettingsReset();
                 }}
               >
                 Reset

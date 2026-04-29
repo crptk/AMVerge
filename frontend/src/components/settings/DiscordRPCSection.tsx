@@ -1,14 +1,14 @@
-import { type GeneralSettings } from "../../settings/generalSettings";
+import { useGeneralSettingsStore } from "../../store/settingsStore";
 
-type DiscordRPCSectionProps = {
-  generalSettings: GeneralSettings;
-  setGeneralSettings: React.Dispatch<React.SetStateAction<GeneralSettings>>;
-};
-
-export default function DiscordRPCSection({
-  generalSettings,
-  setGeneralSettings,
-}: DiscordRPCSectionProps) {
+export default function DiscordRPCSection() {
+  const discordRPCEnabled = useGeneralSettingsStore(s => s.discordRPCEnabled);
+  const setDiscordRPCEnabled = useGeneralSettingsStore(s => s.setDiscordRPCEnabled);
+  const rpcShowFilename = useGeneralSettingsStore(s => s.rpcShowFilename);
+  const setRpcShowFilename = useGeneralSettingsStore(s => s.setRpcShowFilename);
+  const rpcShowButtons = useGeneralSettingsStore(s => s.rpcShowButtons);
+  const setRpcShowButtons = useGeneralSettingsStore(s => s.setRpcShowButtons);
+  const rpcShowMiniIcons = useGeneralSettingsStore(s => s.rpcShowMiniIcons);
+  const setRpcShowMiniIcons = useGeneralSettingsStore(s => s.setRpcShowButtons);
   return (
     <section className="panel">
       <h3>Discord Rich Presence</h3>
@@ -20,12 +20,11 @@ export default function DiscordRPCSection({
             <input
               type="checkbox"
               className="checkbox"
-              checked={generalSettings.enableDiscordRPC}
+              checked={discordRPCEnabled}
               onChange={(e) =>
-                setGeneralSettings((prev) => ({
-                  ...prev,
-                  enableDiscordRPC: e.target.checked,
-                }))
+                {
+                  setDiscordRPCEnabled(e.target.checked); 
+                }
               }
             />
             <span className="checkmark"></span>
@@ -36,7 +35,7 @@ export default function DiscordRPCSection({
         Display your current AMVerge activity on your Discord profile.
       </p>
 
-      {generalSettings.enableDiscordRPC && (
+      {discordRPCEnabled && (
         <>
           <div className="settings-row">
             <label className="settings-label">Show filename</label>
@@ -45,12 +44,15 @@ export default function DiscordRPCSection({
                 <input
                   type="checkbox"
                   className="checkbox"
-                  checked={generalSettings.rpcShowFilename}
+                  checked={rpcShowFilename}
                   onChange={(e) =>
-                    setGeneralSettings((prev) => ({
-                      ...prev,
-                      rpcShowFilename: e.target.checked,
-                    }))
+                  {
+                    setRpcShowFilename(e.target.checked);
+                  }
+                    // setGeneralSettings((prev) => ({
+                    //   ...prev,
+                    //   rpcShowFilename: e.target.checked,
+                    // }))
                   }
                 />
                 <span className="checkmark"></span>
@@ -68,12 +70,15 @@ export default function DiscordRPCSection({
                 <input
                   type="checkbox"
                   className="checkbox"
-                  checked={generalSettings.rpcShowMiniIcons}
+                  checked={rpcShowMiniIcons}
                   onChange={(e) =>
-                    setGeneralSettings((prev) => ({
-                      ...prev,
-                      rpcShowMiniIcons: e.target.checked,
-                    }))
+                    {
+                      setRpcShowMiniIcons(e.target.checked); 
+                    }
+                    // setGeneralSettings((prev) => ({
+                    //   ...prev,
+                    //   rpcShowMiniIcons: e.target.checked,
+                    // }))
                   }
                 />
                 <span className="checkmark"></span>
@@ -91,12 +96,15 @@ export default function DiscordRPCSection({
                 <input
                   type="checkbox"
                   className="checkbox"
-                  checked={generalSettings.rpcShowButtons}
+                  checked={rpcShowButtons}
                   onChange={(e) =>
-                    setGeneralSettings((prev) => ({
-                      ...prev,
-                      rpcShowButtons: e.target.checked,
-                    }))
+                  {
+                    setRpcShowButtons(e.target.checked);
+                  }
+                    // setGeneralSettings((prev) => ({
+                    //   ...prev,
+                    //   rpcShowButtons: e.target.checked,
+                    // }))
                   }
                 />
                 <span className="checkmark"></span>

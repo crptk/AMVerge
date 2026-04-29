@@ -1,21 +1,11 @@
 import { useId, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { invoke, convertFileSrc } from "@tauri-apps/api/core";
-import { getDarkerColor, type ThemeSettings } from "../../settings/themeSettings";
 import ColorPicker from "../common/ColorPicker";
 import CropModal from "./CropModal";
+import { useThemeSettingsStore, getDarkerColor } from "../../store/settingsStore";
 
-type AppearanceSectionProps = {
-  themeSettings: ThemeSettings;
-  setThemeSettings: React.Dispatch<React.SetStateAction<ThemeSettings>>;
-  onThemeReset: () => void;
-};
-
-export default function AppearanceSection({
-  themeSettings,
-  setThemeSettings,
-  onThemeReset
-}: AppearanceSectionProps) {
+export default function AppearanceSection() {
   const accentId = useId();
   const bgGradientId = useId();
   const bgOpacityId = useId();
@@ -23,6 +13,23 @@ export default function AppearanceSection({
 
   const [imageToCrop, setImageToCrop] = useState<string | null>(null);
   const [originalPath, setOriginalPath] = useState<string | null>(null);
+
+  const currentAccentColor = useThemeSettingsStore(s => s.accentColor);
+  const currentBackgroundGradientColor = useThemeSettingsStore(s => s.backgroundGradientColor);
+  const currentBackgroundImage = useThemeSettingsStore(s => s.backgroundImagePath);
+  const currentBackgroundOpacity = useThemeSettingsStore(s => s.backgroundOpacity);
+  const currentBackgroundBlur = useThemeSettingsStore(s => s.backgroundBlur);
+  const currentShowDownloadButton = useThemeSettingsStore(s => s.showDownloadButton);
+
+
+
+  const resetTheme = useThemeSettingsStore(s => s.resetThemeSettings);
+  const setShowDownloadButton = useThemeSettingsStore(s => s.setShowDownloadButton);
+  const setBackgroundBlur = useThemeSettingsStore(s => s.setBackgroundBlur);
+  const setBackgroundImagePath = useThemeSettingsStore(s => s.setBackgroundImagePath);
+  const setAccentColor = useThemeSettingsStore(s => s.setAccentColor);
+  const setBackgroundGradientColor = useThemeSettingsStore(s => s.setBackgroundGradientColor);
+  const setBackgroundOpacity = useThemeSettingsStore(s => s.setBackgroundOpacity);
 
   const handlePickImage = async () => {
     const selected = await open({
@@ -58,10 +65,7 @@ export default function AppearanceSection({
         }
       });
 
-      setThemeSettings((prev) => ({
-        ...prev,
-        backgroundImagePath: `${storedPath}?t=${Date.now()}`,
-      }));
+      setBackgroundImagePath(`${storedPath}?t=${Date.now()}`);
       setImageToCrop(null);
       setOriginalPath(null);
     } catch (error) {
@@ -78,25 +82,13 @@ export default function AppearanceSection({
         </label>
         <div className="settings-control">
           <ColorPicker
-            color={themeSettings.accentColor}
+            color={currentAccentColor}
             onChange={(newColor) => {
-              setThemeSettings((prev) => {
-                const currentDark = getDarkerColor(prev.accentColor);
-                const isDefaultGradient =
-                  prev.backgroundGradientColor === "#001a00" ||
-                  prev.backgroundGradientColor === currentDark;
-
-                return {
-                  ...prev,
-                  accentColor: newColor,
-                  backgroundGradientColor: isDefaultGradient
-                    ? getDarkerColor(newColor)
-                    : prev.backgroundGradientColor,
-                };
-              });
+              setAccentColor(newColor);
+              setBackgroundGradientColor(getDarkerColor(newColor));
             }}
           />
-          <span className="settings-value">{themeSettings.accentColor.toUpperCase()}</span>
+          <span className="settings-value">{currentAccentColor.toUpperCase()}</span>
         </div>
       </div>
       <p style={{ fontSize: "0.8rem", opacity: 0.6, marginLeft: "24px", marginBottom: "16px", marginTop: "-4px" }}>
@@ -109,16 +101,11 @@ export default function AppearanceSection({
         </label>
         <div className="settings-control">
           <ColorPicker
-            color={themeSettings.backgroundGradientColor}
-            onChange={(newColor) =>
-              setThemeSettings((prev) => ({
-                ...prev,
-                backgroundGradientColor: newColor,
-              }))
-            }
+            color={currentBackgroundGradientColor}
+            onChange={(newColor) => { setBackgroundGradientColor(newColor); }}
           />
           <span className="settings-value">
-            {themeSettings.backgroundGradientColor.toUpperCase()}
+            {currentBackgroundGradientColor.toUpperCase()}
           </span>
         </div>
       </div>
@@ -130,15 +117,13 @@ export default function AppearanceSection({
         <label className="settings-label">Background image</label>
         <div className="settings-control">
           <button className="buttons" type="button" onClick={handlePickImage}>
-            {themeSettings.backgroundImagePath ? "Change" : "Upload"}
+            {currentBackgroundImage ? "Change" : "Upload"}
           </button>
           <button
             className="buttons"
             type="button"
-            onClick={() =>
-              setThemeSettings((prev) => ({ ...prev, backgroundImagePath: null }))
-            }
-            disabled={!themeSettings.backgroundImagePath}
+            onClick={() => { setBackgroundImagePath(null); } }
+            disabled={!currentBackgroundImage}
           >
             Clear
           </button>
@@ -159,16 +144,11 @@ export default function AppearanceSection({
             min="0"
             max="1"
             step="0.01"
-            value={themeSettings.backgroundOpacity}
-            onChange={(e) =>
-              setThemeSettings((prev) => ({
-                ...prev,
-                backgroundOpacity: parseFloat(e.target.value),
-              }))
-            }
+            value={currentBackgroundOpacity}
+            onChange={(e) => { setBackgroundOpacity(parseFloat(e.target.value)); }}
           />
           <span className="settings-value">
-            {Math.round(themeSettings.backgroundOpacity * 100)}%
+            {Math.round(currentBackgroundOpacity * 100)}%
           </span>
         </div>
       </div>
@@ -187,15 +167,10 @@ export default function AppearanceSection({
             min="0"
             max="100"
             step="1"
-            value={themeSettings.backgroundBlur}
-            onChange={(e) =>
-              setThemeSettings((prev) => ({
-                ...prev,
-                backgroundBlur: parseInt(e.target.value),
-              }))
-            }
+            value={currentBackgroundBlur}
+            onChange={(e) => { setBackgroundBlur(parseInt(e.target.value)); }}
           />
-          <span className="settings-value">{themeSettings.backgroundBlur}px</span>
+          <span className="settings-value">{currentBackgroundBlur}px</span>
         </div>
       </div>
       <p style={{ fontSize: "0.8rem", opacity: 0.6, marginLeft: "24px", marginBottom: "16px", marginTop: "-4px" }}>
@@ -209,13 +184,8 @@ export default function AppearanceSection({
             <input
               type="checkbox"
               className="checkbox"
-              checked={themeSettings.showDownloadButton}
-              onChange={(e) =>
-                setThemeSettings((prev) => ({
-                  ...prev,
-                  showDownloadButton: e.target.checked,
-                }))
-              }
+              checked={currentShowDownloadButton}
+              onChange={(e) => { setShowDownloadButton(e.target.checked); }}
             />
             <span className="checkmark"></span>
           </label>
@@ -234,7 +204,7 @@ export default function AppearanceSection({
         <div className="settings-control">
           <button
             className="buttons"
-            onClick={onThemeReset}
+            onClick={resetTheme}
             style={{ width: "auto", padding: "0 16px", marginBottom: 0 }}
           >
             Reset to Defaults
