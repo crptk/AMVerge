@@ -18,9 +18,8 @@ export default function Sidebar({
         <EpisodePanel {...props} />
       ) : (
         <div className="sidebar-library">
-          <div className="sidebar-library-header">
-            <FaVideo />
-            <span>CLIP ASSETS</span>
+          <div className="episode-panel-header">
+            <div className="episode-panel-title">Clip Assets</div>
           </div>
           <ClipsContainer {...props} cols={2} />
         </div>

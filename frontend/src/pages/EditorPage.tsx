@@ -126,8 +126,40 @@ export default function EditorPage({
     }
   }, [effectiveSegment?.id, timelineState.segments, timeline.setPlayhead]);
 
+  const [timelineHeight, setTimelineHeight] = React.useState(() => {
+    const saved = localStorage.getItem("amverge_editor_timeline_height");
+    return saved ? parseInt(saved, 10) : 300;
+  });
+  const [activeResizer, setActiveResizer] = React.useState<"timeline" | null>(null);
+
+  const onResizerMouseDown = (e: React.MouseEvent) => {
+    e.preventDefault();
+    setActiveResizer("timeline");
+  };
+
+  React.useEffect(() => {
+    if (!activeResizer) return;
+
+    const onMouseMove = (e: MouseEvent) => {
+      const newHeight = Math.max(150, Math.min(600, window.innerHeight - e.clientY));
+      setTimelineHeight(newHeight);
+    };
+
+    const onMouseUp = () => {
+      setActiveResizer(null);
+      localStorage.setItem("amverge_editor_timeline_height", timelineHeight.toString());
+    };
+
+    window.addEventListener("mousemove", onMouseMove);
+    window.addEventListener("mouseup", onMouseUp);
+    return () => {
+      window.removeEventListener("mousemove", onMouseMove);
+      window.removeEventListener("mouseup", onMouseUp);
+    };
+  }, [activeResizer, timelineHeight]);
+
   return (
-    <div className="editor-page-root">
+    <div className={`editor-page-root ${activeResizer ? 'is-resizing' : ''}`}>
       {/* ── Header ── */}
       <header className="editor-header">
         <button className="editor-back-btn" onClick={onBackToSelector}>
@@ -152,34 +184,45 @@ export default function EditorPage({
       </header>
 
       {/* ── Main View Area ── */}
-      <main className="editor-viewport">
-        <div className="editor-preview-container">
-          {effectiveSegment ? (
-            <div className="editor-video-wrapper">
-                <EditorVideoPlayer
-                    key={`editor-player-${effectiveSegment.src}`}
-                    selectedClip={effectiveSegment.src}
-                    videoIsHEVC={videoIsHEVC}
-                    userHasHEVC={userHasHEVC}
-                    importToken={importToken}
-                    externalTime={sourceTime}
-                    isPlaying={timelineState.isPlaying}
-                    isDragging={timelineState.isDraggingPlayhead}
-                    onTimeUpdate={handleTimeUpdate}
-                />
-            </div>
-          ) : (
-            <div className="editor-preview-empty">
-              <p>Add clips to the timeline to begin editing</p>
-            </div>
-          )}
-        </div>
-      </main>
+      <main className="editor-main-layout">
+        <section className="editor-viewport">
+          <div className="editor-preview-container">
+            {effectiveSegment ? (
+              <div className="editor-video-wrapper">
+                  <EditorVideoPlayer
+                      key={`editor-player-${effectiveSegment.src}`}
+                      selectedClip={effectiveSegment.src}
+                      videoIsHEVC={videoIsHEVC}
+                      userHasHEVC={userHasHEVC}
+                      importToken={importToken}
+                      externalTime={sourceTime}
+                      isPlaying={timelineState.isPlaying}
+                      isDragging={timelineState.isDraggingPlayhead}
+                      onTimeUpdate={handleTimeUpdate}
+                  />
+              </div>
+            ) : (
+              <div className="editor-preview-empty">
+                <p>Add clips to the timeline to begin editing</p>
+              </div>
+            )}
+          </div>
+        </section>
 
-      {/* ── Timeline Area ── */}
-      <footer className="editor-timeline-area">
-        <TimelineTrack timeline={timeline} trackHeight={220} />
-      </footer>
+        {/* Vertical Resizer */}
+        <div 
+          className="editor-resizer-h" 
+          onMouseDown={onResizerMouseDown}
+        />
+
+        {/* Timeline Area */}
+        <footer 
+          className="editor-timeline-area" 
+          style={{ height: `${timelineHeight}px` }}
+        >
+          <TimelineTrack timeline={timeline} trackHeight={timelineHeight - 80} />
+        </footer>
+      </main>
     </div>
   );
 }

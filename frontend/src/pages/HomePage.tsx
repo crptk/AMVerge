@@ -101,6 +101,13 @@ export default function HomePage({
     selectedClipsRef.current = selectedClips;
   }, [selectedClips]);
 
+  // If editor is disabled in settings, force switch back to selector mode
+  useEffect(() => {
+    if (!generalSettings.enableEditor && activeMode === "editor") {
+      setActiveMode("selector");
+    }
+  }, [generalSettings.enableEditor, activeMode, setActiveMode]);
+
 
   const timelineClipIdsRef = useRef(timelineClipIds);
   useEffect(() => {
@@ -364,16 +371,18 @@ export default function HomePage({
           </svg>
           SELECTOR
         </button>
-        <button 
-          className={`mode-tab ${activeMode === "editor" ? "active" : ""}`}
-          onClick={() => setActiveMode("editor")}
-        >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M2 12h20M2 6h20M2 18h20" />
-            <rect x="6" y="4" width="2" height="16" />
-          </svg>
-          EDITOR
-        </button>
+        {generalSettings.enableEditor && (
+          <button 
+            className={`mode-tab ${activeMode === "editor" ? "active" : ""}`}
+            onClick={() => setActiveMode("editor")}
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M2 12h20M2 6h20M2 18h20" />
+              <rect x="6" y="4" width="2" height="16" />
+            </svg>
+            EDITOR
+          </button>
+        )}
       </div>
 
       <div className="main-layout-wrapper" ref={mainLayoutWrapperRef}>

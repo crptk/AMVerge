@@ -87,6 +87,29 @@ export default function GeneralSection({
       </p>
 
       <div className="settings-row">
+        <label className="settings-label">Video Editor</label>
+        <div className="settings-control">
+          <label className="custom-checkbox">
+            <input
+              type="checkbox"
+              className="checkbox"
+              checked={generalSettings.enableEditor}
+              onChange={(e) =>
+                setGeneralSettings((prev) => ({
+                  ...prev,
+                  enableEditor: e.target.checked,
+                }))
+              }
+            />
+            <span className="checkmark"></span>
+          </label>
+        </div>
+      </div>
+      <p style={{ fontSize: "0.8rem", opacity: 0.6, marginLeft: "24px", marginBottom: "16px", marginTop: "-4px" }}>
+        Enable the timeline editor and video assembly features.
+      </p>
+
+      <div className="settings-row">
         <label className="settings-label">Audio Playback Hover</label>
         <div className="settings-control">
           <label className="custom-checkbox">
