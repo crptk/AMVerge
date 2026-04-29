@@ -483,6 +483,32 @@
     z-index: 1;
 }
 
+/* High Precision Filmstrip */
+.tl-frame-container {
+    display: flex;
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+    opacity: 0.85;
+}
+
+.tl-segment--selected .tl-frame-container {
+    opacity: 1;
+}
+
+.tl-frame-tile {
+    flex: 1;
+    height: 100%;
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    border-right: 1px solid rgba(0, 0, 0, 0.15); /* subtle separation between frames */
+}
+.tl-frame-tile:last-child {
+    border-right: none;
+}
+
 /* ── Segment Progress Strip (bottom) ──────────────────────────────── */
 
 .tl-segment-progress {

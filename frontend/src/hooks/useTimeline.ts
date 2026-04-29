@@ -30,6 +30,8 @@ const MAX_PX_PER_SEC = 600;
 type Action =
   | { type: "INIT"; segments: TimelineSegment[]; totalDuration: number }
   | { type: "SET_PLAYHEAD"; sec: number }
+  | { type: "SET_IS_PLAYING"; isPlaying: boolean }
+  | { type: "TOGGLE_PLAYBACK" }
   | { type: "SPLIT_AT_PLAYHEAD" }
   | { type: "MERGE_SELECTED" }
   | { type: "MERGE_SUCCESS"; id: string; newSrc: string }
@@ -49,6 +51,7 @@ type Action =
   | { type: "SET_SCROLL"; offsetSec: number }
   | { type: "UPDATE_SEGMENT"; id: string; start: number; end: number }
   | { type: "RENAME_SEGMENT"; id: string; label: string }
+  | { type: "ADD_SEGMENT"; clip: any }
   | { type: "UNDO" }
   | { type: "REDO" };
 
@@ -59,6 +62,7 @@ function makeInitialState(): TimelineState {
     segments: [],
     totalDuration: 0,
     playheadSec: 0,
+    isPlaying: false,
     selectedIds: new Set(),
     viewport: {
       scrollOffsetSec: 0,
@@ -108,6 +112,36 @@ function timelineReducer(state: TimelineState, action: Action): TimelineState {
         },
       };
     }
+    case "ADD_SEGMENT": {
+      const { clip } = action;
+      const duration = (clip.end !== undefined && clip.start !== undefined) 
+        ? Math.max(0.1, clip.end - clip.start) 
+        : 5;
+      
+      const lastSeg = segments.length > 0 ? segments[segments.length - 1] : null;
+      const start = lastSeg ? lastSeg.end : 0;
+      
+      const newSeg: TimelineSegment = {
+        id: clip.id || genId(),
+        start,
+        end: start + duration,
+        label: clip.originalName || "New Clip",
+        sourceClip: clip,
+        sourceStart: clip.start ?? 0,
+        sourceEnd: clip.end ?? duration
+      };
+      
+      const newSegments = [...segments, newSeg];
+      return {
+        ...state,
+        segments: newSegments,
+        totalDuration: Math.max(state.totalDuration, newSeg.end + 1),
+        history: {
+          past: [...history.past.slice(-49), segments],
+          future: []
+        }
+      };
+    }
     // ── Bootstrap ────────────────────────────────────────────────────
     case "INIT": {
       const initializedSegments = action.segments.map((s) => ({
@@ -134,6 +168,12 @@ function timelineReducer(state: TimelineState, action: Action): TimelineState {
         ...state,
         playheadSec: clamp(action.sec, 0, state.totalDuration),
       };
+    }
+    case "SET_IS_PLAYING": {
+        return { ...state, isPlaying: action.isPlaying };
+    }
+    case "TOGGLE_PLAYBACK": {
+        return { ...state, isPlaying: !state.isPlaying };
     }
 
     // ── Split ────────────────────────────────────────────────────────
@@ -487,7 +527,7 @@ export default function useTimeline(onChange?: (segments: TimelineSegment[]) => 
       }
     }
   }, [state.segments, onChange]);
-
+ 
   // ── Public API (stable callbacks) ────────────────────────────────
 
   const init = useCallback(
@@ -503,6 +543,16 @@ export default function useTimeline(onChange?: (segments: TimelineSegment[]) => 
 
   const setPlayhead = useCallback(
     (sec: number) => dispatch({ type: "SET_PLAYHEAD", sec }),
+    []
+  );
+
+  const togglePlayback = useCallback(
+    () => dispatch({ type: "TOGGLE_PLAYBACK" }),
+    []
+  );
+
+  const setIsPlaying = useCallback(
+    (isPlaying: boolean) => dispatch({ type: "SET_IS_PLAYING", isPlaying }),
     []
   );
 
@@ -628,6 +678,11 @@ export default function useTimeline(onChange?: (segments: TimelineSegment[]) => 
     []
   );
 
+  const addSegment = useCallback(
+    (clip: any) => dispatch({ type: "ADD_SEGMENT", clip }),
+    []
+  );
+
   // ── Computed helpers ───────────────────────────────────────────────
 
   /** Convert seconds → pixel position relative to timeline origin. */
@@ -655,6 +710,8 @@ export default function useTimeline(onChange?: (segments: TimelineSegment[]) => 
 
     // playhead
     setPlayhead,
+    togglePlayback,
+    setIsPlaying,
 
     // operations
     splitAtPlayhead,
@@ -681,6 +738,7 @@ export default function useTimeline(onChange?: (segments: TimelineSegment[]) => 
     // direct edits
     updateSegment,
     renameSegment,
+    addSegment,
 
     // history
     undo,

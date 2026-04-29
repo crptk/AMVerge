@@ -14,6 +14,7 @@ import {
   saveGeneralSettings,
   DEFAULT_GENERAL_SETTINGS,
   type GeneralSettings,
+  type Page,
 } from "./settings/generalSettings";
 
 import AppLayout from "./components/AppLayout";
@@ -21,7 +22,6 @@ import HomePage from "./pages/HomePage";
 import Menu from "./pages/Menu";
 import Settings from "./pages/Settings";
 import LoadingOverlay from "./components/LoadingOverlay";
-import { type Page } from "./components/sidebar/types";
 
 import useAppState from "./hooks/useAppState";
 import useEpisodePanelState from "./hooks/useEpisodePanelState";
@@ -76,6 +76,21 @@ function App() {
   const [activePage, setActivePage] = useState<Page>("home");
   const [themeSettings, setThemeSettings] = useState<ThemeSettings>(() => loadThemeSettings());
   const [generalSettings, setGeneralSettings] = useState<GeneralSettings>(() => loadGeneralSettings());
+
+  const [activeMode, setActiveMode] = useState<"selector" | "editor">(() => {
+    try {
+      const raw = localStorage.getItem("amverge_active_mode_v1");
+      return (raw === "editor") ? "editor" : "selector";
+    } catch {
+      return "selector";
+    }
+  });
+
+  const [timelineClipIds, setTimelineClipIds] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    localStorage.setItem("amverge_active_mode_v1", activeMode);
+  }, [activeMode]);
 
   useEffect(() => {
     applyThemeSettings(themeSettings);
@@ -476,6 +491,7 @@ function App() {
         sideBarEnabled,
         activePage,
         setActivePage,
+        activeMode,
         episodeFolders: state.episodeFolders,
         episodes: state.episodes,
         selectedEpisodeId: state.selectedEpisodeId,
@@ -495,6 +511,26 @@ function App() {
         onMoveFolder: handleMoveFolder,
         onSortEpisodePanel: handleSortEpisodePanel,
         onClearEpisodePanelCache: handleClearEpisodePanelCache,
+        // Clips grid props for the sidebar in editor mode
+        clips: state.clips,
+        gridSize,
+        gridRef,
+        cols: 2,
+        gridPreview,
+        selectedClips: state.selectedClips,
+        setSelectedClips,
+        setTimelineClipIds,
+        timelineClipIds,
+        importToken,
+        loading,
+        isEmpty,
+        videoIsHEVC: state.videoIsHEVC,
+        userHasHEVC,
+        setFocusedClip,
+        focusedClip: state.focusedClip,
+        generalSettings,
+        onDownloadClip: handleDownloadSingleClip,
+        themeSettings,
       }}
       navbarProps={{
         setSideBarEnabled,
@@ -545,6 +581,10 @@ function App() {
             setGeneralSettings={setGeneralSettings}
             onDownloadClip={handleDownloadSingleClip}
             themeSettings={themeSettings}
+            activeMode={activeMode}
+            setActiveMode={setActiveMode}
+            timelineClipIds={timelineClipIds}
+            setTimelineClipIds={setTimelineClipIds}
           />
         ) : activePage === "menu" ? (
           <Menu />

@@ -39,6 +39,7 @@ type PreviewContainerProps = {
   generalSettings: GeneralSettings;
   setGeneralSettings: React.Dispatch<React.SetStateAction<GeneralSettings>>;
   onTimeUpdate?: (time: number) => void;
+  activeMode?: "selector" | "editor";
 };
 
 export default function PreviewContainer (props: PreviewContainerProps) {
@@ -53,12 +54,12 @@ export default function PreviewContainer (props: PreviewContainerProps) {
 
   // Auto-switch to program when timeline is scrubbed/active (Only on initial load/presence)
   React.useEffect(() => {
-    if (hasProgram && !hasSource) {
+    if (props.activeMode === "editor") {
       setActiveView("program");
-    } else if (hasSource && !hasProgram) {
+    } else if (props.activeMode === "selector" && hasSource) {
       setActiveView("source");
     }
-  }, [hasProgram, hasSource]);
+  }, [props.activeMode, hasSource, hasProgram]);
 
   // Auto-switch to SOURCE when a new clip is focused in the grid
   const lastSourceRef = React.useRef(props.sourceClip);

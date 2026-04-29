@@ -41,11 +41,11 @@ type LayoutProps = {
     themeSettings: ThemeSettings;
     timeline: UseTimelineReturn;
     timelineEnabled: boolean;
+    activeMode: "selector" | "editor";
 };
 
 export default function MainLayout(props: LayoutProps) {
     const [leftWidth, setLeftWidth] = useState(65);
-    const [timelineHeight, setTimelineHeight] = useState(200);
 
     const focusedClipThumbnail = useMemo(
         () =>
@@ -57,7 +57,6 @@ export default function MainLayout(props: LayoutProps) {
 
     // ── Timeline-Preview Link ────────────────────────────────────────
     const activeTimelineSource = useMemo(() => {
-        if (!props.timelineEnabled) return null;
         const { segments, playheadSec } = props.timeline.state;
         // Find segment under playhead
         const seg = segments.find(s => playheadSec >= s.start && playheadSec < s.end);
@@ -67,11 +66,12 @@ export default function MainLayout(props: LayoutProps) {
         const sourceTime = (seg.sourceStart ?? 0) + offset;
 
         return {
+            id: seg.id, // Track the segment ID
             src: seg.sourceClip.src,
             time: sourceTime,
             thumbnail: seg.sourceClip.thumbnail
         };
-    }, [props.timelineEnabled, props.timeline.state.playheadSec, props.timeline.state.segments]);
+    }, [props.timeline.state.playheadSec, props.timeline.state.segments]);
 
     const resizeCleanupRef = useRef<(() => void) | null>(null);
 
@@ -104,25 +104,7 @@ export default function MainLayout(props: LayoutProps) {
         window.addEventListener("mousemove", onMouseMove);
         window.addEventListener("mouseup", onMouseUp);
         resizeCleanupRef.current = onMouseUp;
-    }, []);
-
-    const startVerticalResize = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-        const startY = e.clientY;
-        const startHeight = timelineHeight;
-
-        const onMouseMove = (ev: MouseEvent) => {
-            const delta = startY - ev.clientY;
-            setTimelineHeight(Math.min(500, Math.max(150, startHeight + delta)));
-        };
-
-        const onMouseUp = () => {
-            window.removeEventListener("mousemove", onMouseMove);
-            window.removeEventListener("mouseup", onMouseUp);
-        };
-
-        window.addEventListener("mousemove", onMouseMove);
-        window.addEventListener("mouseup", onMouseUp);
-    }, [timelineHeight]);
+    }, [setLeftWidth]);
 
     return (
         <div className="main-layout-root" style={{ display: 'flex', flexDirection: 'column', height: '100%', width: '100%' }}>
@@ -175,25 +157,19 @@ export default function MainLayout(props: LayoutProps) {
                         defaultMergedName={props.defaultMergedName}
                         generalSettings={props.generalSettings}
                         setGeneralSettings={props.setGeneralSettings}
+                        activeMode={props.activeMode}
                         onTimeUpdate={(time) => {
                             if (!props.timelineEnabled) return;
                             const { segments, playheadSec } = props.timeline.state;
 
-                            // Find the segment that matches the current video source and is close to the playhead
-                            // This is more robust than just checking playheadSec
-                            const seg = segments.find(s => 
-                                s.sourceClip?.src === props.focusedClip || // Check if it's the focused one (Source)
-                                s.sourceClip?.src === activeTimelineSource?.src // Or the active timeline one (Program)
-                            );
+                            // Use the specific segment ID we derived
+                            const seg = segments.find(s => s.id === activeTimelineSource?.id);
 
                             if (seg) {
-                                // Calculate where the playhead SHOULD be based on this segment's position
-                                // time is the current time in the source file
                                 const offset = time - (seg.sourceStart ?? 0);
                                 const newPlayheadSec = seg.start + offset;
 
-                                // Avoid infinite feedback loop by checking difference
-                                if (Math.abs(playheadSec - newPlayheadSec) > 0.01) {
+                                if (Math.abs(playheadSec - newPlayheadSec) > 0.05) {
                                     props.timeline.setPlayhead(newPlayheadSec);
                                 }
                             }
@@ -202,26 +178,7 @@ export default function MainLayout(props: LayoutProps) {
                 </div>
             </div>
 
-            {/* Vertical Resize Handle for Timeline */}
-            {props.timelineEnabled && (
-                <>
-                    <div 
-                        className="timeline-v-divider" 
-                        onMouseDown={startVerticalResize}
-                        style={{ 
-                            height: '4px', 
-                            cursor: 'ns-resize', 
-                            background: 'rgba(255,255,255,0.05)',
-                            borderTop: '1px solid rgba(255,255,255,0.1)',
-                            zIndex: 10
-                        }}
-                    />
-
-                    <div className="timeline-container" style={{ height: `${timelineHeight}px`, flexShrink: 0 }}>
-                        <TimelineTrack timeline={props.timeline} trackHeight={timelineHeight - 80} />
-                    </div>
-                </>
-            )}
+            {/* Timeline area removed from Selector Mode */}
         </div>
     )
 }

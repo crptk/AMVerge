@@ -1,4 +1,4 @@
-import type { RefObject } from "react";
+import React, { useEffect, type RefObject } from "react";
 import { FaExpand, FaPause, FaPlay, FaVolumeMute, FaVolumeUp } from "react-icons/fa";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { useVideoPlayer } from "./useVideoPlayer";
@@ -22,6 +22,11 @@ export default function VideoPlayer({
     externalTime,
     onTimeUpdate,
 }: VideoPlayerProps) {
+    useEffect(() => {
+        console.log("[VideoPlayer] Mounted with clip:", selectedClip);
+        return () => console.log("[VideoPlayer] Unmounted clip:", selectedClip);
+    }, [selectedClip]);
+
     const {
         videoRef,
         progressRef,
@@ -59,7 +64,7 @@ export default function VideoPlayer({
                 <video
                     ref={videoRef}
                     src={effectiveClip ? `${convertFileSrc(effectiveClip)}?v=${importToken}` : undefined}
-                    poster={!externalTime && posterPath ? `${convertFileSrc(posterPath)}?v=${importToken}` : undefined}
+                    poster={(externalTime === undefined) && posterPath ? `${convertFileSrc(posterPath)}?v=${importToken}` : undefined}
                     preload="metadata"
                     muted
                     loop
@@ -68,7 +73,7 @@ export default function VideoPlayer({
                         e.preventDefault();
                         e.stopPropagation();
                     }}
-                    style={{ opacity: isVideoReady ? 1 : 0 }}
+                    style={{ width: '100%', height: '100%', objectFit: 'contain' }}
                     onError={(e) => {
                         const video = e.currentTarget;
                         triggerProxyFallback(`onError_${video.error?.code ?? "unknown"}`);

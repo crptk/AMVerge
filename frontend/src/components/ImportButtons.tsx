@@ -11,8 +11,6 @@ type ImportButtonsProps = {
   >;
   onImport: () => void;
   loading: boolean;
-  timelineEnabled: boolean;
-  setTimelineEnabled: (val: boolean) => void;
 };
 
 export default function ImportButtons(props: ImportButtonsProps) {
@@ -41,18 +39,6 @@ export default function ImportButtons(props: ImportButtonsProps) {
                 <span className="checkmark"></span>
               </label>
               <span>Grid preview</span>    
-            </div>
-            <div className="checkbox-row">
-              <label className="custom-checkbox">
-                <input 
-                  type="checkbox" 
-                  className="checkbox"
-                  checked={props.timelineEnabled}
-                  onChange={(e) => props.setTimelineEnabled(e.target.checked)}
-                />
-                <span className="checkmark"></span>
-              </label>
-              <span>Timeline</span>    
             </div>
             <div className="checkbox-row">
               <label className="custom-checkbox">

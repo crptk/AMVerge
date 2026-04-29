@@ -77,6 +77,8 @@ export type TimelineState = {
   totalDuration: number;
   /** Current playhead position in seconds. */
   playheadSec: number;
+  /** Whether the timeline is currently playing. */
+  isPlaying: boolean;
   /** Currently selected segment IDs (for multi-select merge). */
   selectedIds: Set<string>;
   viewport: TimelineViewport;

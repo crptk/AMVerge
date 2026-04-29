@@ -42,6 +42,28 @@ export type SidebarProps = {
   onSortEpisodePanel: (direction: "asc" | "desc") => void;
   onClearEpisodePanelCache: () => void | Promise<void>;
   sideBarEnabled: boolean;
+  activeMode: "selector" | "editor";
+
+  // Clips grid props for the sidebar in editor mode
+  clips: any[];
+  gridSize: number;
+  gridRef: React.RefObject<HTMLDivElement | null>;
+  cols: number;
+  gridPreview: boolean;
+  selectedClips: Set<string>;
+  setSelectedClips: (val: Set<string> | ((prev: Set<string>) => Set<string>)) => void;
+  timelineClipIds: Set<string>;
+  setTimelineClipIds: (val: Set<string> | ((prev: Set<string>) => Set<string>)) => void;
+  importToken: string;
+  loading: boolean;
+  isEmpty: boolean;
+  videoIsHEVC: boolean | null;
+  userHasHEVC: React.RefObject<boolean>;
+  setFocusedClip: (val: string | null) => void;
+  focusedClip: string | null;
+  generalSettings: any;
+  onDownloadClip: (clip: any) => void;
+  themeSettings: any;
 };
 
 export type EpisodePanelProps = Omit<SidebarProps, "activePage" | "setActivePage">;

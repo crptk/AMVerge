@@ -1,0 +1,208 @@
+.editor-page-root {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: 100%;
+  background: #0a0a0a;
+  color: #e0e0e0;
+  overflow: hidden;
+}
+
+/* ── Header ── */
+.editor-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 20px;
+  height: 60px;
+  background: rgba(15, 15, 15, 0.8);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  z-index: 100;
+}
+
+.editor-back-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: transparent;
+  border: none;
+  color: rgba(255, 255, 255, 0.5);
+  font-family: 'Jersey 10', sans-serif;
+  font-size: 1.2rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  padding: 8px 12px;
+  border-radius: 6px;
+}
+
+.editor-back-btn:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: #fff;
+}
+
+.editor-title {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+.editor-filename {
+  font-family: 'Jersey 10', sans-serif;
+  font-size: 1.4rem;
+  letter-spacing: 0.05em;
+  color: #fff;
+  max-width: 400px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.editor-status-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.75rem;
+  color: rgb(var(--accent-rgb));
+  opacity: 0.8;
+  font-family: monospace;
+}
+
+.editor-export-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 24px;
+  background: rgb(var(--accent-rgb));
+  border: none;
+  border-radius: 4px;
+  color: #000;
+  font-family: 'Jersey 10', sans-serif;
+  font-size: 1.2rem;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 0 20px rgb(var(--accent-rgb) / 0.3);
+}
+
+.editor-export-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 0 30px rgb(var(--accent-rgb) / 0.5);
+  filter: brightness(1.1);
+}
+
+/* ── Viewport ── */
+.editor-viewport {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 40px;
+  background: radial-gradient(circle at center, #151515 0%, #0a0a0a 100%);
+  min-height: 0;
+}
+
+.editor-preview-container {
+  width: 100%;
+  height: 100%;
+  max-width: 1400px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.editor-video-wrapper {
+  width: 100%;
+  height: 100%;
+  background: #000;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 30px 60px rgba(0, 0, 0, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.editor-video-wrapper .video-wrapper {
+  height: 100%;
+}
+
+.editor-preview-empty {
+  text-align: center;
+  opacity: 0.3;
+}
+
+.editor-preview-empty p {
+  font-family: 'Jersey 10', sans-serif;
+  font-size: 1.5rem;
+}
+
+/* ── Timeline ── */
+.editor-timeline-area {
+  height: 300px;
+  background: #111;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  display: flex;
+  flex-direction: column;
+}
+
+/* Override timeline styles for standalone mode if needed */
+.editor-timeline-area .tl-root {
+  background: transparent;
+}
+
+/* ── Sidebar Library ── */
+.sidebar-library {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.2);
+  min-width: 0;
+}
+
+.sidebar-library-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 15px 20px;
+  background: rgba(255, 255, 255, 0.02);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  color: rgb(var(--accent-rgb));
+  font-family: 'Jersey 10', sans-serif;
+  font-size: 1.2rem;
+  letter-spacing: 0.1em;
+}
+
+.sidebar-library .clips-container {
+  padding: 10px;
+}
+
+.sidebar-library .clips-grid {
+  gap: 8px;
+}
+
+.sidebar-library .clip-tile-footer {
+  display: none; /* Hide footer text in sidebar to save space */
+}
+
+/* ── Timeline High-Precision Filmstrip ── */
+.tl-frame-container {
+  display: flex;
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+}
+
+.tl-frame-tile {
+  flex-shrink: 0;
+  width: 80px; /* Must match the tileWidth in the TSX component */
+  height: 100%;
+  background-size: cover;
+  background-position: center;
+  border-right: 1px solid rgba(0, 0, 0, 0.2);
+  transition: opacity 0.3s ease;
+}
+
+.tl-segment--processing .tl-frame-tile {
+  opacity: 0.5;
+  filter: grayscale(100%);
+}
+
