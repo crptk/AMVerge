@@ -1,11 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { GeneralSettings } from "./settings/generalSettings";
-import { ThemeSettings } from "./settings/themeSettings";
-import ClipsContainer from "./components/clipsGrid/ClipsContainer.tsx";
-import PreviewContainer from "./components/previewPanel/PreviewContainer.tsx";
-import { TimelineTrack } from "./components/timeline";
-import { UseTimelineReturn } from "./hooks/useTimeline";
-import { ClipItem } from "./types/domain";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import ClipsContainer from "./components/clipsGrid/ClipsContainer";
+import PreviewContainer from "./components/previewPanel/PreviewContainer";
+import TimelineTrack from "./components/timeline/TimelineTrack";
+import type { UseTimelineReturn } from "./hooks/useTimeline";
+import type { ClipItem } from "./types/domain";
+import type { GeneralSettings } from "./settings/generalSettings";
+import type { ThemeSettings } from "./settings/themeSettings";
 
 type LayoutProps = {
     cols: number;
@@ -13,24 +13,22 @@ type LayoutProps = {
     gridRef: React.RefObject<HTMLDivElement | null>;
     gridPreview: boolean;
     setGridPreview: React.Dispatch<React.SetStateAction<boolean>>;
-    selectedClips: Set<string>;
-    setSelectedClips: React.Dispatch<
-        React.SetStateAction<Set<string>>
-    >;
-    clips: { id: string; src: string; thumbnail: string }[];
+    clips: ClipItem[];
     importToken: string;
-    loading: boolean;
     isEmpty: boolean;
     handleExport: (
         selectedClips: Set<string>,
-        mergeEnabled: boolean,
+        enableMerged: boolean,
         mergeFileName?: string
     ) => Promise<void>;
     sideBarEnabled: boolean;
     videoIsHEVC: boolean | null;
-    userHasHEVC: React.RefObject<boolean>
+    userHasHEVC: React.RefObject<boolean>;
     focusedClip: string | null;
-    setFocusedClip: React.Dispatch<React.SetStateAction<string | null>>
+    setFocusedClip: React.Dispatch<React.SetStateAction<string | null>>;
+    selectedClips: Set<string>;
+    setSelectedClips: (val: Set<string> | ((prev: Set<string>) => Set<string>)) => void;
+    loading: boolean;
     exportDir: string | null;
     onPickExportDir: () => void;
     onExportDirChange: (dir: string) => void;

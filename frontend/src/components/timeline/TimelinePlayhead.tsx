@@ -3,18 +3,20 @@ import React, { memo } from "react";
 type Props = {
   leftPx: number;
   height: number;
+  timecode?: string;
   onPointerDown: (e: React.PointerEvent) => void;
 };
 
 /**
- * The vertical playhead scrubber.
+ * The vertical playhead scrubber — CapCut-style pill handle + thin stem.
  *
  * Visual structure:
- *   ▼  ← head (draggable triangle)
- *   │
- *   │  ← stem (vertical line through track)
+ *   ┌──┐  ← pill handle (draggable)
+ *   │  │
+ *   └──┘
+ *    │   ← stem (vertical line through track)
  */
-function TimelinePlayhead({ leftPx, height, onPointerDown }: Props) {
+function TimelinePlayhead({ leftPx, height, timecode, onPointerDown }: Props) {
   return (
     <div
       className="tl-playhead"
@@ -22,8 +24,10 @@ function TimelinePlayhead({ leftPx, height, onPointerDown }: Props) {
       style={{ left: leftPx }}
       onPointerDown={onPointerDown}
     >
-      {/* Triangle head */}
-      <div className="tl-playhead-head" />
+      {/* Pill-shaped handle */}
+      <div className="tl-playhead-head">
+        {timecode && <span className="tl-playhead-timecode">{timecode}</span>}
+      </div>
 
       {/* Vertical line */}
       <div

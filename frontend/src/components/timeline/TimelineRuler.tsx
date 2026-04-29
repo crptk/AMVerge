@@ -12,7 +12,7 @@ type Props = {
  * Time‐ruler showing tick marks + labels above the track.
  *
  * Adapts spacing dynamically based on zoom level so labels
- * never overlap.
+ * never overlap. At high zoom, shows frame numbers.
  */
 function TimelineRuler({ totalDuration, viewport, secToPx, onPointerDown }: Props) {
   const { pxPerSecond } = viewport.zoom;
@@ -30,12 +30,15 @@ function TimelineRuler({ totalDuration, viewport, secToPx, onPointerDown }: Prop
     return 600;
   }, [pxPerSecond]);
 
+  // High zoom = show frame-level labels
+  const showFrames = tickInterval < 0.1;
+
   // Generate tick positions
   const ticks = useMemo(() => {
     const result: { sec: number; px: number; major: boolean }[] = [];
     const start =
       Math.floor(viewport.scrollOffsetSec / tickInterval) * tickInterval;
-    // We'll render some extra ticks beyond the visible area for smooth scrolling
+    // Render extra ticks beyond visible area for smooth scrolling
     const end = Math.min(
       totalDuration,
       viewport.scrollOffsetSec + 4000 / pxPerSecond
@@ -68,7 +71,7 @@ function TimelineRuler({ totalDuration, viewport, secToPx, onPointerDown }: Prop
             style={{ left: tick.px }}
           >
             <span className="tl-ruler-label">
-              {formatRulerLabel(tick.sec)}
+              {showFrames ? formatFrameLabel(tick.sec) : formatRulerLabel(tick.sec)}
             </span>
           </div>
         ))}
@@ -88,4 +91,12 @@ function formatRulerLabel(sec: number): string {
   const s = sec % 60;
   if (m === 0) return `${s.toFixed(sec % 1 !== 0 ? 1 : 0)}s`;
   return `${m}:${String(Math.floor(s)).padStart(2, "0")}`;
+}
+
+function formatFrameLabel(sec: number): string {
+  const frames = Math.round(sec * 30); // 30fps
+  const wholeSec = Math.floor(sec);
+  const frameInSec = frames - wholeSec * 30;
+  if (wholeSec === 0) return `${frameInSec}f`;
+  return `${wholeSec}s${frameInSec}f`;
 }

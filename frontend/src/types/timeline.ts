@@ -46,6 +46,9 @@ export type DragInfo = {
   /** Segment snapshot at drag start so deltas are relative. */
   originalStart: number;
   originalEnd: number;
+  /** Source-file timestamps at drag start (avoids drift on repeated DRAG_MOVE). */
+  originalSourceStart: number;
+  originalSourceEnd: number;
 };
 
 /** Zoom level for the timeline. */
@@ -61,6 +64,12 @@ export type TimelineViewport = {
   zoom: TimelineZoom;
 };
 
+/** Undo/redo history stack. */
+export type TimelineHistory = {
+  past: TimelineSegment[][];
+  future: TimelineSegment[][];
+};
+
 /** The full state blob managed by useTimeline. */
 export type TimelineState = {
   segments: TimelineSegment[];
@@ -73,4 +82,6 @@ export type TimelineState = {
   viewport: TimelineViewport;
   /** Active drag — null when idle. */
   drag: DragInfo | null;
+  /** Undo/redo history. */
+  history: TimelineHistory;
 };

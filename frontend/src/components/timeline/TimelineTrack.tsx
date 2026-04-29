@@ -46,7 +46,10 @@ export default function TimelineTrack({ timeline, trackHeight = 96 }: Props) {
   } = timeline;
 
   const trackRef = useRef<HTMLDivElement>(null);
+  const wrapperRef = useRef<HTMLDivElement>(null);
   const isDraggingPlayhead = useRef(false);
+  const playheadRafRef = useRef<number | null>(null);
+  const hasAutoFittedRef = useRef(false);
 
   // ── Total width in px ──────────────────────────────────────────────
   const totalWidthPx =
@@ -72,11 +75,35 @@ export default function TimelineTrack({ timeline, trackHeight = 96 }: Props) {
     [pxToSec, zoom, setScroll, state.viewport]
   );
 
+  // ── RAF-throttled playhead move ────────────────────────────────────
   const movePlayheadToClientX = useCallback((clientX: number) => {
     const rect = trackRef.current?.getBoundingClientRect();
     if (!rect) return;
     setPlayhead(pxToSec(clientX - rect.left));
   }, [setPlayhead, pxToSec]);
+
+  const movePlayheadThrottled = useCallback((clientX: number) => {
+    if (playheadRafRef.current) return;
+    playheadRafRef.current = requestAnimationFrame(() => {
+      movePlayheadToClientX(clientX);
+      playheadRafRef.current = null;
+    });
+  }, [movePlayheadToClientX]);
+
+  // ── Auto-follow: scroll viewport to keep playhead visible ─────────
+  useEffect(() => {
+    if (!wrapperRef.current) return;
+    const wrapper = wrapperRef.current;
+    const viewportWidthSec = wrapper.clientWidth / state.viewport.zoom.pxPerSecond;
+    const playheadRelativeSec = state.playheadSec - state.viewport.scrollOffsetSec;
+
+    // Auto-scroll when playhead is past 80% of viewport or before 10%
+    if (playheadRelativeSec > viewportWidthSec * 0.85) {
+      setScroll(state.playheadSec - viewportWidthSec * 0.3);
+    } else if (playheadRelativeSec < viewportWidthSec * 0.1 && state.viewport.scrollOffsetSec > 0) {
+      setScroll(Math.max(0, state.playheadSec - viewportWidthSec * 0.3));
+    }
+  }, [state.playheadSec, state.viewport.zoom.pxPerSecond]);
 
   // ── Click on ruler → move playhead + scrub ──────────────────────
   const handleRulerPointerDown = useCallback(
@@ -84,16 +111,20 @@ export default function TimelineTrack({ timeline, trackHeight = 96 }: Props) {
       e.stopPropagation();
       movePlayheadToClientX(e.clientX);
 
-      const onMove = (ev: PointerEvent) => movePlayheadToClientX(ev.clientX);
+      const onMove = (ev: PointerEvent) => movePlayheadThrottled(ev.clientX);
       const onUp = () => {
         window.removeEventListener("pointermove", onMove);
         window.removeEventListener("pointerup", onUp);
+        if (playheadRafRef.current) {
+          cancelAnimationFrame(playheadRafRef.current);
+          playheadRafRef.current = null;
+        }
       };
 
       window.addEventListener("pointermove", onMove);
       window.addEventListener("pointerup", onUp);
     },
-    [movePlayheadToClientX]
+    [movePlayheadToClientX, movePlayheadThrottled]
   );
 
   // ── Click on empty track → move playhead ──────────────────────────
@@ -145,17 +176,21 @@ export default function TimelineTrack({ timeline, trackHeight = 96 }: Props) {
       e.stopPropagation();
       isDraggingPlayhead.current = true;
 
-      const onMove = (ev: PointerEvent) => movePlayheadToClientX(ev.clientX);
+      const onMove = (ev: PointerEvent) => movePlayheadThrottled(ev.clientX);
       const onUp = () => {
         isDraggingPlayhead.current = false;
         window.removeEventListener("pointermove", onMove);
         window.removeEventListener("pointerup", onUp);
+        if (playheadRafRef.current) {
+          cancelAnimationFrame(playheadRafRef.current);
+          playheadRafRef.current = null;
+        }
       };
 
       window.addEventListener("pointermove", onMove);
       window.addEventListener("pointerup", onUp);
     },
-    [movePlayheadToClientX]
+    [movePlayheadThrottled]
   );
 
   // ── Keyboard shortcuts ─────────────────────────────────────────────
@@ -215,23 +250,20 @@ export default function TimelineTrack({ timeline, trackHeight = 96 }: Props) {
     return () => window.removeEventListener("keydown", onKey);
   }, [splitAtPlayhead, mergeSelected, deleteSelected, selectAll, deselectAll, undo, redo]);
 
-  // ── Auto-zoom to fit & Responsiveness ────────────────────────────
+  // ── Auto-zoom to fit ONLY on first init ────────────────────────────
   useEffect(() => {
-    if (!trackRef.current) return;
-    const parent = trackRef.current.parentElement;
-    if (!parent) return;
-
-    const observer = new ResizeObserver((entries) => {
-      for (const entry of entries) {
-        if (state.totalDuration > 0) {
-          zoomToFit(entry.contentRect.width);
-        }
-      }
-    });
-
-    observer.observe(parent);
-    return () => observer.disconnect();
+    if (state.totalDuration <= 0 || hasAutoFittedRef.current) return;
+    if (!wrapperRef.current) return;
+    hasAutoFittedRef.current = true;
+    zoomToFit(wrapperRef.current.clientWidth);
   }, [state.totalDuration, zoomToFit]);
+
+  // Reset auto-fit flag when timeline is cleared
+  useEffect(() => {
+    if (state.segments.length === 0) {
+      hasAutoFittedRef.current = false;
+    }
+  }, [state.segments.length]);
 
   // ── Render ─────────────────────────────────────────────────────────
 
@@ -368,8 +400,8 @@ export default function TimelineTrack({ timeline, trackHeight = 96 }: Props) {
           <button
             className="tl-btn tl-btn-fit"
             onClick={() => {
-              if (trackRef.current) {
-                zoomToFit(trackRef.current.parentElement?.clientWidth || 0);
+              if (wrapperRef.current) {
+                zoomToFit(wrapperRef.current.clientWidth);
               }
             }}
             title="Fit to screen"
@@ -383,51 +415,55 @@ export default function TimelineTrack({ timeline, trackHeight = 96 }: Props) {
         </div>
       </div>
 
-      {/* ── Ruler ──────────────────────────────────────────────── */}
-      <TimelineRuler
-        totalDuration={state.totalDuration}
-        viewport={state.viewport}
-        secToPx={secToPx}
-        onPointerDown={handleRulerPointerDown}
-      />
-
-      {/* ── Track area ─────────────────────────────────────────── */}
+      {/* ── Ruler + Track area (scrollable together) ─────────────── */}
       <div
         className="tl-track-wrapper"
         id="timeline-track-wrapper"
+        ref={wrapperRef}
         onWheel={handleWheel}
       >
-        <div
-          className="tl-track"
-          id="timeline-track"
-          ref={trackRef}
-          style={{
-            width: totalWidthPx,
-            height: trackHeight,
-          }}
-          onPointerDown={handleTrackPointerDown}
-        >
-          {state.segments.map((seg) => (
-            <TimelineSegmentChip
-              key={seg.id}
-              segment={seg}
-              isSelected={state.selectedIds.has(seg.id)}
-              isDragging={state.drag?.segmentId === seg.id}
-              left={secToPx(seg.start)}
-              width={
-                (seg.end - seg.start) * state.viewport.zoom.pxPerSecond
-              }
-              height={trackHeight}
-              onPointerDown={handleSegmentPointerDown}
-            />
-          ))}
-
-          {/* ── Playhead ──────────────────────────────────────── */}
-          <TimelinePlayhead
-            leftPx={playheadPx}
-            height={trackHeight}
-            onPointerDown={handlePlayheadPointerDown}
+        {/* Ruler inside the scrollable wrapper so it scrolls with track */}
+        <div className="tl-ruler-track-container" style={{ width: totalWidthPx, minWidth: '100%' }}>
+          <TimelineRuler
+            totalDuration={state.totalDuration}
+            viewport={state.viewport}
+            secToPx={secToPx}
+            onPointerDown={handleRulerPointerDown}
           />
+
+          <div
+            className="tl-track"
+            id="timeline-track"
+            ref={trackRef}
+            style={{
+              width: totalWidthPx,
+              height: trackHeight,
+            }}
+            onPointerDown={handleTrackPointerDown}
+          >
+            {state.segments.map((seg) => (
+              <TimelineSegmentChip
+                key={seg.id}
+                segment={seg}
+                isSelected={state.selectedIds.has(seg.id)}
+                isDragging={state.drag?.segmentId === seg.id}
+                left={secToPx(seg.start)}
+                width={
+                  (seg.end - seg.start) * state.viewport.zoom.pxPerSecond
+                }
+                height={trackHeight}
+                onPointerDown={handleSegmentPointerDown}
+              />
+            ))}
+
+            {/* ── Playhead ──────────────────────────────────────── */}
+            <TimelinePlayhead
+              leftPx={playheadPx}
+              height={trackHeight}
+              timecode={formatTimecode(state.playheadSec)}
+              onPointerDown={handlePlayheadPointerDown}
+            />
+          </div>
         </div>
       </div>
 

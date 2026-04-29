@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import type { RefObject } from "react";
 import { invoke } from "@tauri-apps/api/core";
 
@@ -29,6 +29,9 @@ export function useVideoPlayer({
 
     const wasPlayingRef = useRef(false);
     const rafRef = useRef<number | null>(null);
+
+    // Seek generation: incremented on clip change to discard stale seeks
+    const seekGenerationRef = useRef(0);
 
     const [effectiveClip, setEffectiveClip] = useState<string | null>(selectedClip);
     const [isVideoReady, setIsVideoReady] = useState(false);
@@ -134,7 +137,7 @@ export function useVideoPlayer({
         video.currentTime = percentage * duration;
     };
 
-    const togglePlay = () => {
+    const togglePlay = useCallback(() => {
         const video = videoRef.current;
         if (!video) return;
 
@@ -145,22 +148,22 @@ export function useVideoPlayer({
             video.pause();
             setIsPlaying(false);
         }
-    };
+    }, []);
 
-    const toggleMute = () => {
+    const toggleMute = useCallback(() => {
         const video = videoRef.current;
         if (!video) return;
 
         video.muted = !video.muted;
         setIsMuted(video.muted);
-    };
+    }, []);
 
-    const goFullScreen = () => {
+    const goFullScreen = useCallback(() => {
         const video = videoRef.current;
         if (!video) return;
 
         if (video.requestFullscreen) video.requestFullscreen();
-    };
+    }, []);
 
     const handleLoadedMetadata = (video: HTMLVideoElement) => {
         video.style.setProperty("--aspect-ratio", `${video.videoWidth} / ${video.videoHeight}`);
@@ -220,6 +223,9 @@ export function useVideoPlayer({
     useEffect(() => {
         const video = videoRef.current;
         if (!video) return;
+
+        // Bump seek generation so stale externalTime seeks are discarded
+        seekGenerationRef.current++;
 
         // 1. Handle Empty State
         if (!selectedClip) {
@@ -291,6 +297,7 @@ export function useVideoPlayer({
             });
     }, [selectedClip, videoIsHEVC, hasHevcSupport]);
 
+    // Keyboard shortcuts — use stable callbacks
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
             if (
@@ -306,7 +313,11 @@ export function useVideoPlayer({
 
             if (e.code === "Space") {
                 e.preventDefault();
-                togglePlay();
+                if (video.paused) {
+                    video.play();
+                } else {
+                    video.pause();
+                }
             }
 
             if (e.code === "ArrowRight") {
@@ -321,7 +332,7 @@ export function useVideoPlayer({
 
             if (e.code === "KeyF") {
                 e.preventDefault();
-                goFullScreen();
+                if (video.requestFullscreen) video.requestFullscreen();
             }
         };
 
@@ -362,15 +373,24 @@ export function useVideoPlayer({
         };
     }, [isScrubbing, duration]);
 
+    // External time seeking — waits for video to be fully loaded and ready
     useEffect(() => {
-        if (externalTime === undefined || !videoRef.current || !duration) return;
-        
-        // Only seek if the difference is more than 10ms to avoid jitter
-        if (Math.abs(videoRef.current.currentTime - externalTime) > 0.01) {
-            videoRef.current.currentTime = externalTime;
-            setCurrentTime(externalTime);
+        if (externalTime === undefined) return;
+
+        const video = videoRef.current;
+        if (!video) return;
+
+        // Don't seek until the video is actually loaded and has valid duration
+        if (!isVideoReady || !duration || duration <= 0) return;
+
+        // Only seek if the difference is meaningful (>10ms) to avoid jitter
+        if (Math.abs(video.currentTime - externalTime) > 0.01) {
+            // Clamp to valid range
+            const clampedTime = Math.max(0, Math.min(externalTime, duration));
+            video.currentTime = clampedTime;
+            setCurrentTime(clampedTime);
         }
-    }, [externalTime, duration]);
+    }, [externalTime, duration, isVideoReady]);
 
     return {
         videoRef,

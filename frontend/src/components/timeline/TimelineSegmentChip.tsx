@@ -17,17 +17,21 @@ type Props = {
   ) => void;
 };
 
-const HANDLE_WIDTH = 8;
+const HANDLE_WIDTH = 6;
 
 /**
  * A single segment "chip" rendered inside the timeline track.
+ * CapCut-style layout:
  *
- *  ┌┤▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓├┐
- *   │ left handle  body  right handle │
- *
- * The body now shows a filmstrip of evenly-spaced frames from the source
- * video, rendered via a single horizontal sprite sheet.
- * Width is proportional to duration (via parent's secToPx).
+ *  ┌────────────────────────────────────────┐
+ *  │ filename.mp4   00:00:00:22            │  ← header bar
+ *  ├────────────────────────────────────────┤
+ *  │ ┌──┐┌──┐┌──┐┌──┐┌──┐┌──┐┌──┐┌──┐┌──┐ │  ← filmstrip
+ *  │ │  ││  ││  ││  ││  ││  ││  ││  ││  │ │
+ *  │ └──┘└──┘└──┘└──┘└──┘└──┘└──┘└──┘└──┘ │
+ *  ├────────────────────────────────────────┤
+ *  │ · · · · · · · · · · · · · · · · · ·  │  ← progress strip
+ *  └────────────────────────────────────────┘
  */
 function TimelineSegmentChip({
   segment,
@@ -39,12 +43,8 @@ function TimelineSegmentChip({
   onPointerDown,
 }: Props) {
   const duration = segment.end - segment.start;
-  const showLabel = width > 48;
-  const showDuration = width > 100;
-
-  // Build the accent colour (supports per-segment overrides)
-  const accentColor = segment.color ?? "var(--accent)";
-  const accentRgb = segment.color ?? "var(--accent-rgb)";
+  const showLabel = width > 40;
+  const showDuration = width > 90;
 
   // ── Filmstrip sprite sheet ────────────────────────────────────────
   const videoPath = segment.sourceClip?.src;
@@ -58,7 +58,9 @@ function TimelineSegmentChip({
   const filmstrip = useFilmstrip(
     videoPath,
     clipDuration > 0 ? clipDuration : duration,
-    bodyWidth
+    bodyWidth,
+    segment.sourceStart,
+    segment.sourceEnd
   );
 
   // Calculate timeline scaling
@@ -68,8 +70,6 @@ function TimelineSegmentChip({
   const filmstripStyle = useMemo(() => {
     if (!filmstrip.spriteUrl) return undefined;
 
-    // The sprite sheet represents the ENTIRE clipDuration.
-    // We scale the background to fit the full clip width in the timeline.
     const fullClipWidth = clipDuration * pxPerSec;
     const offsetX = -(segment.sourceStart ?? 0) * pxPerSec;
 
@@ -99,6 +99,7 @@ function TimelineSegmentChip({
         "tl-segment",
         isSelected && "tl-segment--selected",
         isDragging && "tl-segment--dragging",
+        segment.isProcessing && "tl-segment--processing",
       ]
         .filter(Boolean)
         .join(" ")}
@@ -108,8 +109,6 @@ function TimelineSegmentChip({
         width: Math.max(width, 4), // never collapse to invisible
         height: height - 8, // 4px top + 4px bottom margin
         top: 4,
-        "--seg-accent": accentColor,
-        "--seg-accent-rgb": accentRgb,
       } as React.CSSProperties}
     >
       {/* Left resize handle */}
@@ -119,27 +118,35 @@ function TimelineSegmentChip({
         onPointerDown={(e) => onPointerDown(e, segment.id, "left")}
       />
 
-      {/* Body */}
+      {/* Main content area */}
       <div
-        className="tl-segment-body"
+        className="tl-segment-content"
         onPointerDown={(e) => onPointerDown(e, segment.id, "body")}
       >
-        {/* Filmstrip background layer */}
-        <div
-          className={`tl-segment-filmstrip ${filmstrip.spriteUrl ? "tl-segment-filmstrip--sprite" : ""}`}
-          style={filmstripStyle ?? fallbackStyle}
-        />
+        {/* Header bar with filename + timecode */}
+        <div className="tl-segment-header">
+          {showLabel && (
+            <span className="tl-segment-label">
+              {segment.label ?? segment.id.slice(0, 8)}
+            </span>
+          )}
+          {showDuration && (
+            <span className="tl-segment-duration">
+              {formatDuration(duration)}
+            </span>
+          )}
+        </div>
 
-        {showLabel && (
-          <span className="tl-segment-label">
-            {segment.label ?? segment.id.slice(0, 8)}
-          </span>
-        )}
-        {showDuration && (
-          <span className="tl-segment-duration">
-            {formatDuration(duration)}
-          </span>
-        )}
+        {/* Filmstrip body */}
+        <div className="tl-segment-body">
+          <div
+            className={`tl-segment-filmstrip ${filmstrip.spriteUrl ? "tl-segment-filmstrip--sprite" : ""} ${filmstrip.loading ? "tl-segment-filmstrip--loading" : ""}`}
+            style={filmstripStyle ?? fallbackStyle}
+          />
+        </div>
+
+        {/* Bottom progress strip */}
+        <div className="tl-segment-progress" />
       </div>
 
       {/* Right resize handle */}

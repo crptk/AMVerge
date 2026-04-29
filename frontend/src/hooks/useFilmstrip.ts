@@ -4,7 +4,7 @@ import { invoke, convertFileSrc } from "@tauri-apps/api/core";
 /**
  * Filmstrip sprite-sheet cache.
  *
- * Key   = "<videoPath>|<frameCount>|<thumbW>x<thumbH>"
+ * Key   = "<videoPath>|<frameCount>|<thumbW>x<thumbH>|<sourceStart>-<sourceEnd>"
  * Value = the Tauri asset URL for the generated sprite JPEG, or "pending"/"error"
  */
 const filmstripCache = new Map<string, string>();
@@ -67,11 +67,15 @@ const MIN_FRAMES = 4;
  * @param videoPath  Absolute path to the source video file.
  * @param duration   Duration of the clip in seconds.
  * @param segmentWidthPx  Current width of the segment chip in pixels (used to calculate frame count).
+ * @param sourceStart  Start time in the source video (for split clips).
+ * @param sourceEnd    End time in the source video (for split clips).
  */
 export default function useFilmstrip(
   videoPath: string | undefined,
   duration: number,
-  segmentWidthPx: number
+  segmentWidthPx: number,
+  sourceStart?: number,
+  sourceEnd?: number
 ): FilmstripResult {
   // Calculate a reasonable frame count based on segment width.
   // Roughly 1 frame per ~80px of width, clamped to sane bounds.
@@ -83,8 +87,12 @@ export default function useFilmstrip(
   const thumbW = DEFAULT_THUMB_W;
   const thumbH = DEFAULT_THUMB_H;
 
+  // Round source times to avoid cache key churn during minor floating point changes
+  const srcStart = sourceStart !== undefined ? Math.round(sourceStart * 100) / 100 : 0;
+  const srcEnd = sourceEnd !== undefined ? Math.round(sourceEnd * 100) / 100 : 0;
+
   const cacheKey = videoPath
-    ? `${videoPath}|${frameCount}|${thumbW}x${thumbH}`
+    ? `${videoPath}|${frameCount}|${thumbW}x${thumbH}|${srcStart}-${srcEnd}`
     : "";
 
   const [spriteUrl, setSpriteUrl] = useState<string | null>(null);
@@ -149,13 +157,20 @@ export default function useFilmstrip(
       const outputDir =
         lastSlash > 0 ? videoPath!.substring(0, lastSlash) : ".";
 
+      // Determine the effective duration and start time for extraction
+      const effectiveStartTime = srcStart > 0 ? srcStart : undefined;
+      const effectiveDuration = (srcEnd > srcStart && srcStart >= 0)
+        ? srcEnd - srcStart
+        : duration;
+
       invoke<string>("generate_filmstrip", {
         videoPath: videoPath!,
         outputDir,
-        duration,
+        duration: effectiveDuration,
         frameCount,
         thumbWidth: thumbW,
         thumbHeight: thumbH,
+        startTime: effectiveStartTime ?? null,
       })
         .then((spritePath) => {
           const url = convertFileSrc(spritePath);
@@ -172,7 +187,7 @@ export default function useFilmstrip(
     }
 
     return unsub;
-  }, [cacheKey, videoPath, duration, frameCount, thumbW, thumbH]);
+  }, [cacheKey, videoPath, duration, frameCount, thumbW, thumbH, srcStart, srcEnd]);
 
   return {
     spriteUrl,

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback } from "react";
+import { useEffect, useRef, useCallback, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import ImportButtons from "../components/ImportButtons";
 import MainLayout from "../MainLayout";
@@ -7,6 +7,7 @@ import { GeneralSettings } from "../settings/generalSettings";
 import { ThemeSettings } from "../settings/themeSettings";
 import { ClipItem } from "../types/domain";
 import useTimeline from "../hooks/useTimeline";
+import type { TimelineSegment } from "../types/timeline";
 
 interface HomePageProps {
   cols: number;
@@ -91,7 +92,13 @@ export default function HomePage({
     selectedClipsRef.current = selectedClips;
   }, [selectedClips]);
 
-  const timeline = useTimeline(useCallback((segments) => {
+  // Track the "version" of external clip selections to avoid re-init loops.
+  // Only incremented on genuine user actions (grid select, import), not
+  // on timeline-feedback writes.
+  const [clipSyncVersion, setClipSyncVersion] = useState(0);
+  const lastSyncedVersionRef = useRef(-1);
+
+  const timeline = useTimeline(useCallback((segments: TimelineSegment[]) => {
     isUpdatingFromTimeline.current = true;
     
     setClips((prevClips) => {
@@ -121,8 +128,8 @@ export default function HomePage({
       ];
     });
 
-    setSelectedClips(new Set(segments.map(s => s.id)));
-  }, [setClips, setSelectedClips])); // Removed selectedClips dependency
+    setSelectedClips(new Set(segments.map((s: TimelineSegment) => s.id)));
+  }, [setClips, setSelectedClips]));
 
   const { state: timelineState, dispatch: dispatchTimeline } = timeline;
   const { segments } = timelineState;
@@ -179,7 +186,7 @@ export default function HomePage({
       groups.get(oid)!.push(s);
     });
 
-    groups.forEach(async (parts, originalId) => {
+    groups.forEach(async (parts, _originalId) => {
       const part1 = parts.find(p => p.splitInfo?.part === 1);
       const part2 = parts.find(p => p.splitInfo?.part === 2);
       
@@ -231,12 +238,20 @@ export default function HomePage({
     });
   }, [segments, dispatchTimeline]);
 
-  // Sync clips from Grid -> Timeline
+  // Bump clipSyncVersion only on genuine user-driven changes.
+  // When timeline writes back (isUpdatingFromTimeline), we skip.
   useEffect(() => {
     if (isUpdatingFromTimeline.current) {
       isUpdatingFromTimeline.current = false;
       return;
     }
+    setClipSyncVersion((v) => v + 1);
+  }, [clips, selectedClips]);
+
+  // Sync clips from Grid -> Timeline (only on genuine version bumps)
+  useEffect(() => {
+    if (clipSyncVersion === lastSyncedVersionRef.current) return;
+    lastSyncedVersionRef.current = clipSyncVersion;
 
     if (clips.length > 0 && selectedClips.size > 0) {
       const selectedClipItems = clips.filter(c => selectedClips.has(c.id));
@@ -264,7 +279,7 @@ export default function HomePage({
     } else {
       timeline.init([], 0);
     }
-  }, [clips, selectedClips, timeline.init]);
+  }, [clipSyncVersion, clips, selectedClips, timeline.init]);
 
   return (
     <>

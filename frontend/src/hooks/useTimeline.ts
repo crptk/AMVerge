@@ -54,7 +54,7 @@ type Action =
 
 // ─── Initial state ──────────────────────────────────────────────────
 
-function makeInitialState(): TimelineState & { history: { past: TimelineSegment[][], future: TimelineSegment[][] } } {
+function makeInitialState(): TimelineState {
   return {
     segments: [],
     totalDuration: 0,
@@ -71,10 +71,10 @@ function makeInitialState(): TimelineState & { history: { past: TimelineSegment[
 
 // ─── Reducer ─────────────────────────────────────────────────────────
 
-function timelineReducer(state: any, action: Action): any {
+function timelineReducer(state: TimelineState, action: Action): TimelineState {
   const { segments, history } = state;
 
-  const record = (newSegments: TimelineSegment[], clearFuture = true) => ({
+  const record = (newSegments: TimelineSegment[], clearFuture = true): TimelineState => ({
     ...state,
     segments: newSegments,
     history: {
@@ -199,7 +199,6 @@ function timelineReducer(state: any, action: Action): any {
         timelineRange: `${s.start}-${s.end}`,
         sourceRange: `${s.sourceStart}-${s.sourceEnd}` 
       })));
-      const firstIdx = state.segments.indexOf(selected[0]);
       const mergedId = genId();
       const merged: TimelineSegment = {
         id: mergedId,
@@ -278,9 +277,21 @@ function timelineReducer(state: any, action: Action): any {
     // ── Delete ───────────────────────────────────────────────────────
     case "DELETE_SELECTED": {
       if (state.selectedIds.size === 0) return state;
-      const newSegments = state.segments.filter((s) => !state.selectedIds.has(s.id));
-      const nextState = record(newSegments);
-      return { ...nextState, selectedIds: new Set() };
+      const remaining = state.segments.filter((s) => !state.selectedIds.has(s.id));
+
+      // Close gaps: shift each segment so it starts where the previous one ends
+      const closed: TimelineSegment[] = [];
+      let cursor = 0;
+      for (const seg of remaining) {
+        const duration = seg.end - seg.start;
+        closed.push({ ...seg, start: cursor, end: cursor + duration });
+        cursor += duration;
+      }
+
+      const nextState = record(closed);
+      // Update total duration to match the new end
+      const newTotal = closed.length > 0 ? closed[closed.length - 1].end + 1 : 0;
+      return { ...nextState, selectedIds: new Set(), totalDuration: newTotal };
     }
 
     // ── Selection ────────────────────────────────────────────────────
@@ -321,7 +332,15 @@ function timelineReducer(state: any, action: Action): any {
 
     case "DRAG_MOVE": {
       if (!state.drag) return state;
-      const { segmentId, edge, startX, originalStart, originalEnd } = state.drag;
+      const {
+        segmentId,
+        edge,
+        startX,
+        originalStart,
+        originalEnd,
+        originalSourceStart,
+        originalSourceEnd,
+      } = state.drag;
 
       const pxPerSec = state.viewport.zoom.pxPerSecond;
       const deltaSec = (action.currentX - startX) / pxPerSec;
@@ -331,37 +350,38 @@ function timelineReducer(state: any, action: Action): any {
 
       let newStart = seg.start;
       let newEnd = seg.end;
+      let newSourceStart = originalSourceStart;
+      let newSourceEnd = originalSourceEnd;
 
       if (edge === "left") {
         newStart = Math.max(0, Math.min(originalStart + deltaSec, originalEnd - MIN_DURATION_SEC));
+        // Source start shifts by the same amount the timeline start shifted
+        newSourceStart = originalSourceStart + (newStart - originalStart);
       } else if (edge === "right") {
         newEnd = Math.max(originalStart + MIN_DURATION_SEC, Math.min(originalEnd + deltaSec, state.totalDuration));
+        // Source end shifts by the same amount the timeline end shifted
+        newSourceEnd = originalSourceEnd + (newEnd - originalEnd);
       } else {
         // Body dragging disabled
         return state;
       }
 
-      const segments = state.segments.map((s) => {
+      const updatedSegments = state.segments.map((s) => {
         if (s.id !== segmentId) return s;
-        
-        // Update source timestamps based on the change in timeline positions
-        const startDiff = newStart - originalStart;
-        const endDiff = newEnd - originalEnd;
-        
-        return { 
-          ...s, 
-          start: newStart, 
+        return {
+          ...s,
+          start: newStart,
           end: newEnd,
-          sourceStart: (s.sourceStart ?? 0) + startDiff,
-          sourceEnd: (s.sourceEnd ?? 0) + endDiff
+          sourceStart: newSourceStart,
+          sourceEnd: newSourceEnd,
         };
       });
 
-      return { ...state, segments };
+      return { ...state, segments: updatedSegments };
     }
 
     case "DRAG_END":
-      // For simplicity, we record a snapshot at the end of every drag interaction
+      // Record a snapshot at the end of every drag interaction
       return {
         ...state,
         drag: null,
@@ -543,6 +563,8 @@ export default function useTimeline(onChange?: (segments: TimelineSegment[]) => 
           startX,
           originalStart: seg.start,
           originalEnd: seg.end,
+          originalSourceStart: seg.sourceStart ?? 0,
+          originalSourceEnd: seg.sourceEnd ?? 0,
         },
       });
     },
