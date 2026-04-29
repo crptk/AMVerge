@@ -14,6 +14,7 @@ export type AppState = {
   videoIsHEVC: boolean | null;
 };
 
+
 export type AppAction =
   | { type: "setFocusedClip"; value: string | null }
   | { type: "setSelectedClips"; value: Set<string> }

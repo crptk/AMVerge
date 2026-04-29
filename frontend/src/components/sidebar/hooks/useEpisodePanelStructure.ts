@@ -1,13 +1,10 @@
 // Derived structure hook for the Episode Panel. Builds lookup maps and ordered episode lists from folders and episodes.
 import { useMemo } from "react";
-import type { EpisodePanelProps } from "../types";
-
-type Episode = EpisodePanelProps["episodes"][number];
-type Folder = EpisodePanelProps["episodeFolders"][number];
+import type { EpisodeEntry, EpisodeFolder } from "../../../types/domain";
 
 type UseEpisodePanelStructureArgs = {
-  episodes: Episode[];
-  episodeFolders: Folder[];
+  episodes: EpisodeEntry[];
+  episodeFolders: EpisodeFolder[];
 };
 
 export default function useEpisodePanelStructure({
@@ -15,7 +12,7 @@ export default function useEpisodePanelStructure({
   episodeFolders,
 }: UseEpisodePanelStructureArgs) {
   const folderById = useMemo(() => {
-    const map = new Map<string, Folder>();
+    const map = new Map<string, EpisodeFolder>();
 
     for (const folder of episodeFolders) {
       map.set(folder.id, folder);
@@ -25,7 +22,7 @@ export default function useEpisodePanelStructure({
   }, [episodeFolders]);
 
   const foldersByParentId = useMemo(() => {
-    const map = new Map<string | null, Folder[]>();
+    const map = new Map<string | null, EpisodeFolder[]>();
 
     for (const folder of episodeFolders) {
       const key = folder.parentId ?? null;
@@ -43,7 +40,7 @@ export default function useEpisodePanelStructure({
   }, [episodes]);
 
   const episodesByFolderId = useMemo(() => {
-    const map = new Map<string, Episode[]>();
+    const map = new Map<string, EpisodeEntry[]>();
 
     for (const episode of episodes) {
       if (!episode.folderId) continue;

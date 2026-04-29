@@ -3,7 +3,9 @@ import HowToUse from "./HowToUse.tsx"
 import React from "react";
 import { FaFolderOpen, FaFileExport, FaVideo, FaLayerGroup, FaFolder, FaRocket } from "react-icons/fa";
 import Dropdown from "../common/Dropdown";
-import { GeneralSettingsStore, useGeneralSettingsStore } from "../../store/settingsStore.ts";
+import { useGeneralSettingsStore } from "../../store/settingsStore.ts";
+import { useAppStateStore } from "../../store/appStore.ts";
+
 const EXPORT_OPTIONS = [
   { value: "mp4", label: "MP4" },
   { value: "mkv", label: "MKV" },
@@ -12,10 +14,7 @@ const EXPORT_OPTIONS = [
   { value: "xml", label: "XML" },
 ];
 type PreviewContainerProps = {
-  focusedClip: string | null;
   focusedClipThumbnail: string | null;
-  selectedClips: Set<string>;
-  videoIsHEVC: boolean | null;
   userHasHEVC: React.RefObject<boolean>;
   importToken: string;
   handleExport: (
@@ -35,6 +34,9 @@ export default function PreviewContainer (props: PreviewContainerProps) {
   const mergeNameInputRef = React.useRef<HTMLInputElement | null>(null);
   const exportFormat = useGeneralSettingsStore(s => s.exportFormat);
 
+  const selectedClips = useAppStateStore(s => s.selectedClips);
+  const focusedClip = useAppStateStore(s => s.focusedClip);
+  const videoIsHEVC = useAppStateStore(s => s.videoIsHEVC);
   const setExportFormat = useGeneralSettingsStore(s => s.setExportFormat);
   React.useEffect(() => {
     if (showMergeNameModal) {
@@ -49,7 +51,7 @@ export default function PreviewContainer (props: PreviewContainerProps) {
     if (mergeEnabled) {
       setShowMergeNameModal(true);
     } else {
-      props.handleExport(props.selectedClips, false);
+      props.handleExport(selectedClips, false);
     }
   };
 
@@ -57,15 +59,15 @@ export default function PreviewContainer (props: PreviewContainerProps) {
     const value = (mergeNameInputRef.current?.value ?? "").trim();
     if (!value) return;
     setShowMergeNameModal(false);
-    props.handleExport(props.selectedClips, true, value);
+    props.handleExport(selectedClips, true, value);
   };
   return (
     <main  className="preview-container" >
       <div className="preview-window">
-        {props.focusedClip ? (
+        {focusedClip ? (
           <VideoPlayer 
-           selectedClip={props.focusedClip}
-           videoIsHEVC={props.videoIsHEVC}
+           selectedClip={focusedClip}
+           videoIsHEVC={videoIsHEVC}
            userHasHEVC={props.userHasHEVC}
            posterPath={props.focusedClipThumbnail}
            importToken={props.importToken}
@@ -89,14 +91,10 @@ export default function PreviewContainer (props: PreviewContainerProps) {
               className="export-format-select"
               options={EXPORT_OPTIONS}
               value={exportFormat}
-              onChange={(val) =>
+              onChange={() =>
                 {
                   setExportFormat(exportFormat); 
                 }
-                // props.setGeneralSettings((prev) => ({
-                //   ...prev,
-                //   exportFormat: val as any,
-                // }))
               }
             />
           </div>

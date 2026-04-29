@@ -17,10 +17,14 @@ export default function GeneralSection({
 
   const episodesPath = useGeneralSettingsStore(s => s.episodesPath);
   const setepisodesPath = useGeneralSettingsStore(s => s.setEpisodesPath);
+  
   const audioPlaybackHover = useGeneralSettingsStore(s => s.audioPlaybackHover);
   const setAudioPlaybackHover = useGeneralSettingsStore(s => s.setAudioPlaybackHover);
+  
   const playbackVolume = useGeneralSettingsStore(s => s.playbackVolume);
   const setPlaybackVolume = useGeneralSettingsStore(s => s.setPlaybackVolume);
+  
+  const resetGeneralSettings = useGeneralSettingsStore(s => s.resetGeneralSettings);
 
   useEffect(() => {
     if (!showFactoryResetConfirm) return;
@@ -55,7 +59,6 @@ export default function GeneralSection({
           onEpisodesPathChanged(resolvedOldPath, selected);
           
           setepisodesPath(selected)
-          // setGeneralSettings((prev) => ({ ...prev, episodesPath: selected }));
         } catch (err) {
           window.alert("Failed to move existing episodes: " + String(err));
         } finally {
@@ -101,10 +104,6 @@ export default function GeneralSection({
                 {
                   setAudioPlaybackHover(e.target.checked);
                 }
-                // setGeneralSettings((prev) => ({
-                //   ...prev,
-                //   audioPlaybackHover: e.target.checked,
-                // }))
               }
             />
             <span className="checkmark"></span>
@@ -128,10 +127,6 @@ export default function GeneralSection({
               {
                 setPlaybackVolume(parseFloat(e.target.value));
               }
-              // setGeneralSettings((prev) => ({
-              //   ...prev,
-              //   playbackVolume: parseFloat(e.target.value),
-              // }))
             }
           />
           <span className="settings-value">
@@ -209,9 +204,10 @@ export default function GeneralSection({
                 type="button"
                 className="episode-modal-btn primary"
                 onClick={() => {
+                  resetGeneralSettings();
                   setShowFactoryResetConfirm(false);
-                  // void onGeneralSettingsReset();
-                }}
+                  }
+                }
               >
                 Reset
               </button>

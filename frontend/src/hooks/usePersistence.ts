@@ -1,19 +1,12 @@
 import { useEffect } from "react";
 import { EpisodeEntry, EpisodeFolder } from "../types/domain";
+import { useAppStateStore } from "../store/appStore";
 
 type UsePersistenceProps = {
   episodePanelStorageKey: string;
   sidebarWidthStorageKey: string;
   exportDirStorageKey: string;
 
-  episodeFolders: EpisodeFolder[];
-  episodes: EpisodeEntry[];
-  selectedFolderId: string | null;
-  selectedEpisodeId: string | null;
-
-  setEpisodeFolders: React.Dispatch<React.SetStateAction<EpisodeFolder[]>>;
-  setEpisodes: React.Dispatch<React.SetStateAction<EpisodeEntry[]>>;
-  setSelectedFolderId: React.Dispatch<React.SetStateAction<string | null>>;
   handleSelectEpisodeFromStorage: (
     episodeId: string | null,
     episodesList?: EpisodeEntry[]
@@ -24,6 +17,17 @@ type UsePersistenceProps = {
 };
 
 export default function usePersistence(props: UsePersistenceProps) {
+  const episodes = useAppStateStore((s) => s.episodes);
+  const setEpisodes = useAppStateStore((s) => s.setEpisodes);
+
+  const selectedEpisodeId = useAppStateStore((s) => s.selectedEpisodeId);
+
+  const episodeFolders = useAppStateStore((s) => s.episodeFolders);
+  const setEpisodeFolders = useAppStateStore((s) => s.setEpisodeFolders);
+
+  const selectedFolderId = useAppStateStore((s) => s.selectedFolderId);
+  const setSelectedFolderId = useAppStateStore((s) => s.setSelectedFolderId);
+  
   // This runs once on startup to load everything
   useEffect(() => {
     try {
@@ -39,7 +43,7 @@ export default function usePersistence(props: UsePersistenceProps) {
       };
 
       if (Array.isArray(parsed.episodeFolders)) {
-        props.setEpisodeFolders(
+        setEpisodeFolders(
           parsed.episodeFolders
             .filter((f) => f && typeof f.id === "string" && typeof f.name === "string")
             .map((f) => ({
@@ -51,10 +55,10 @@ export default function usePersistence(props: UsePersistenceProps) {
         );
       }
 
-      if (Array.isArray(parsed.episodes)) props.setEpisodes(parsed.episodes);
+      if (Array.isArray(parsed.episodes)) setEpisodes(parsed.episodes);
 
       if (typeof parsed.selectedFolderId === "string" || parsed.selectedFolderId === null) {
-        props.setSelectedFolderId(parsed.selectedFolderId ?? null);
+        setSelectedFolderId(parsed.selectedFolderId ?? null);
       }
 
       if (typeof parsed.selectedEpisodeId === "string" || parsed.selectedEpisodeId === null) {
@@ -70,10 +74,10 @@ export default function usePersistence(props: UsePersistenceProps) {
         localStorage.setItem(
           props.episodePanelStorageKey,
           JSON.stringify({
-            episodeFolders: props.episodeFolders,
-            episodes: props.episodes,
-            selectedFolderId: props.selectedFolderId,
-            selectedEpisodeId: props.selectedEpisodeId,
+            episodeFolders: episodeFolders,
+            episodes: episodes,
+            selectedFolderId: selectedFolderId,
+            selectedEpisodeId: selectedEpisodeId,
           })
         );
       } catch {
@@ -83,10 +87,10 @@ export default function usePersistence(props: UsePersistenceProps) {
 
     return () => window.clearTimeout(handle);
   }, [
-    props.episodeFolders,
-    props.episodes,
-    props.selectedFolderId,
-    props.selectedEpisodeId,
+    episodeFolders,
+    episodes,
+    selectedFolderId,
+    selectedEpisodeId,
   ]);
 
   // Automatically updates the width of the sidebar whenever its state is modified 

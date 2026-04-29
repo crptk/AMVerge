@@ -9,32 +9,39 @@ import { LazyClip } from "./LazyClip.tsx"
 import { useStaggeredMountQueue } from "./staggeredMountQueue.ts";
 import useViewportAwareProxyQueue from "./proxyQueue.ts";
 import { ClipContainerProps } from "./types.ts";
+import { useAppStateStore } from "../../store/appStore.ts";
 
 export default function ClipsContainer(props: ClipContainerProps) {
-  // Holds refs to all video elements by clip ID
   const videoRefs = useRef<Record<string, HTMLVideoElement | null>>({});
+  const clips = useAppStateStore(s => s.clips);
 
+  const selectedClips = useAppStateStore(s => s.selectedClips);
+  const setSelectedClips = useAppStateStore(s => s.setSelectedClips);
+  
+  const focusedClip = useAppStateStore(s => s.focusedClip);
+  const setFocusedClip = useAppStateStore(s => s.setFocusedClip);
   // Clean up refs for clips that are no longer present
   useEffect(() => {
-    const validClipIds = new Set(props.clips.map((c) => c.id));
+    const validClipIds = new Set(clips.map((c) => c.id));
     const refs = videoRefs.current;
     for (const key of Object.keys(refs)) {
       if (!validClipIds.has(key)) delete refs[key];
     }
-  }, [props.clips]);
+  }, [clips]);
 
   // Proxy queue: manages HEVC/H.264 proxy generation and prioritization
   const { requestProxySequential, reportProxyDemand } = useViewportAwareProxyQueue();
+  
   // Staggered mount queue: mounts videos one at a time in grid preview
   const { reportStaggerDemand } = useStaggeredMountQueue();
 
   // Calculate number of columns for the grid
   const gridColumns = props.loading
     ? props.cols
-    : Math.max(1, Math.min(props.cols, props.clips.length));
+    : Math.max(1, Math.min(props.cols, clips.length));
 
   // Set max width for clips (wider if only 1-2 clips)
-  const clipMaxWidth = !props.loading && props.clips.length <= 2 ? 520 : 260;
+  const clipMaxWidth = !props.loading && clips.length <= 2 ? 520 : 260;
 
   // Register a video element ref for a given clip
   const registerVideoRef = useCallback((clipId: string, el: HTMLVideoElement | null) => {
@@ -55,15 +62,15 @@ export default function ClipsContainer(props: ClipContainerProps) {
 
       // Shift-click: select a range of clips
       if (isShift) {
-        const anchorIndex = props.focusedClip
-          ? props.clips.findIndex((c) => c.src === props.focusedClip)
+        const anchorIndex = focusedClip
+          ? clips.findIndex((c) => c.src === focusedClip)
           : -1;
         const startIndex = anchorIndex !== -1 ? anchorIndex : index;
         const [start, end] = [startIndex, index].sort((a, b) => a - b);
-        const rangeIds = props.clips.slice(start, end + 1).map((c) => c.id);
+        const rangeIds =clips.slice(start, end + 1).map((c) => c.id);
 
         startTransition(() => {
-          props.setSelectedClips(new Set(rangeIds));
+          setSelectedClips(new Set(rangeIds));
         });
         return;
       }
@@ -71,7 +78,7 @@ export default function ClipsContainer(props: ClipContainerProps) {
       // Ctrl/Cmd-click: toggle selection for this clip
       if (isCtrlOrCmd) {
         startTransition(() => {
-          props.setSelectedClips((prev) => {
+          setSelectedClips((prev) => {
             const next = new Set(prev);
             next.has(clipId) ? next.delete(clipId) : next.add(clipId);
             return next;
@@ -81,24 +88,24 @@ export default function ClipsContainer(props: ClipContainerProps) {
       }
 
       // Single click: focus this clip (no selection change)
-      props.setFocusedClip(clipSrc);
+      setFocusedClip(clipSrc);
     },
-    [props.clips, props.focusedClip, props.setFocusedClip, props.setSelectedClips]
+    [clips, focusedClip, setFocusedClip, setSelectedClips]
   );
 
   // Handles double-click on a clip tile (focus + toggle selection)
   const handleClipDoubleClick = useCallback(
     (clipId: string, clipSrc: string, _index: number, _e: React.MouseEvent<HTMLDivElement>) => {
-      props.setFocusedClip(clipSrc);
+      setFocusedClip(clipSrc);
       startTransition(() => {
-        props.setSelectedClips((prev) => {
+        setSelectedClips((prev) => {
           const next = new Set(prev);
           next.has(clipId) ? next.delete(clipId) : next.add(clipId);
           return next;
         });
       });
     },
-    [props.setFocusedClip, props.setSelectedClips]
+    [setFocusedClip, setSelectedClips]
   );
 
   // Ref for the main container (for scroll-to-top on import)
@@ -125,14 +132,14 @@ export default function ClipsContainer(props: ClipContainerProps) {
             ? Array.from({ length: 12 }).map((_, i) => (
                 <div key={i} className="clip-skeleton" />
               ))
-            : props.clips.map((clip, index) => (
+            : clips.map((clip, index) => (
                 <LazyClip
                   key={clip.id}
                   clip={clip}
                   index={index}
                   importToken={props.importToken}
-                  isExportSelected={(props.selectedClips ?? new Set()).has(clip.id)}
-                  isFocused={props.focusedClip === clip.src}
+                  isExportSelected={(selectedClips ?? new Set()).has(clip.id)}
+                  isFocused={focusedClip === clip.src}
                   gridPreview={props.gridPreview}
                   requestProxySequential={requestProxySequential}
                   reportProxyDemand={reportProxyDemand}
@@ -140,7 +147,6 @@ export default function ClipsContainer(props: ClipContainerProps) {
                   reportStaggerDemand={reportStaggerDemand}
                   onClipClick={handleClipClick}
                   onClipDoubleClick={handleClipDoubleClick}
-                  videoIsHEVC={props.videoIsHEVC}
                   userHasHEVC={props.userHasHEVC}
                   onDownloadClip={props.onDownloadClip}
                   themeSettings={props.themeSettings}

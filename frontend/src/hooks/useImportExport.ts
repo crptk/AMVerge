@@ -4,25 +4,15 @@ import { open, save } from "@tauri-apps/plugin-dialog";
 import { ClipItem, EpisodeEntry } from "../types/domain"
 import { fileNameFromPath, truncateFileName, detectScenes } from "../utils/episodeUtils";
 import { useGeneralSettingsStore } from "../store/settingsStore";
+import { useAppStateStore } from "../store/appStore";
 
 type ImportExportProps = {
   abortedRef: React.RefObject<boolean>;
-  clips: ClipItem[];
-  setFocusedClip: React.Dispatch<React.SetStateAction<string | null>>;
-  setSelectedClips: React.Dispatch<React.SetStateAction<Set<string>>>;
-  setVideoIsHEVC: React.Dispatch<React.SetStateAction<boolean | null>>;
-  setImportedVideoPath: React.Dispatch<React.SetStateAction<string | null>>;
-  setClips: React.Dispatch<React.SetStateAction<ClipItem[]>>;
-  setEpisodes: React.Dispatch<React.SetStateAction<EpisodeEntry[]>>;
-  setSelectedEpisodeId: React.Dispatch<React.SetStateAction<string | null>>;
-  setOpenedEpisodeId: React.Dispatch<React.SetStateAction<string | null>>;
-  selectedFolderId: string | null;
   EXPORT_DIR_STORAGE_KEY: string;
   exportDir: string | null;
   setExportDir: React.Dispatch<React.SetStateAction<string | null>>;
   setProgress: React.Dispatch<React.SetStateAction<number>>;
   setProgressMsg: React.Dispatch<React.SetStateAction<string>>;
-  episodesPath: string | null;
   exportFormat: "mp4" | "mkv" | "mov" | "avi" | "xml";
   onRPCUpdate?: (data: any) => void;
 };
@@ -34,10 +24,26 @@ export default function useImportExport(props: ImportExportProps) {
   const [batchTotal, setBatchTotal] = useState(0);
   const [batchDone, setBatchDone] = useState(0);
   const [batchCurrentFile, setBatchCurrentFile] = useState("");
-  
+
+  // General settings 
   const rpcShowButtons = useGeneralSettingsStore(s => s.rpcShowButtons);
   const rpcShowFileName = useGeneralSettingsStore(s => s.rpcShowFilename);
-  const rpcShowMiniIcons = useGeneralSettingsStore(s => s.rpcShowMiniIcons);
+  const rpcShowMiniIcons = useGeneralSettingsStore(s => s.rpcShowMiniIcons); 
+  const episodesPath = useGeneralSettingsStore(s => s.episodesPath);
+
+  // App states
+  const clips = useAppStateStore((s) => s.clips);
+  const setClips = useAppStateStore((s) => s.setClips);
+
+  const setFocusedClip = useAppStateStore((s) => s.setFocusedClip);
+  const setSelectedClips = useAppStateStore((s) => s.setSelectedClips);
+  const setEpisodes = useAppStateStore((s) => s.setEpisodes);
+  const setSelectedEpisodeId = useAppStateStore((s) => s.setSelectedEpisodeId);
+  const setOpenedEpisodeId = useAppStateStore((s) => s.setOpenedEpisodeId);
+  const setImportedVideoPath = useAppStateStore((s) => s.setImportedVideoPath);
+  const setVideoIsHEVC = useAppStateStore((s) => s.setVideoIsHEVC);
+
+  const selectedFolderId = useAppStateStore((s) => s.selectedFolderId);
 
   const onImportClick = async () => {
     const files = await open({
@@ -74,10 +80,10 @@ export default function useImportExport(props: ImportExportProps) {
       props.setProgress(0);
       props.setProgressMsg("Starting...");
       setLoading(true);
-      props.setSelectedClips(new Set());
-      props.setFocusedClip(null);
-      props.setImportedVideoPath(file);
-      props.setVideoIsHEVC(null);
+      setSelectedClips(new Set());
+      setFocusedClip(null);
+      setImportedVideoPath(file);
+      setVideoIsHEVC(null);
       setImportToken(Date.now().toString());
 
       const rpcButtons = [];
@@ -96,7 +102,7 @@ export default function useImportExport(props: ImportExportProps) {
         buttons: rpcShowButtons,
       });
 
-      const formatted = await detectScenes(file, episodeId, props.episodesPath);
+      const formatted = await detectScenes(file, episodeId, episodesPath);
 
       // A newer import started while we were waiting - discard stale results.
       if (importGenRef.current !== gen) return;
@@ -107,16 +113,16 @@ export default function useImportExport(props: ImportExportProps) {
         id: episodeId,
         displayName: inferredName,
         videoPath: file,
-        folderId: props.selectedFolderId,
+        folderId: selectedFolderId,
         importedAt: Date.now(),
         clips: formatted,
       };
 
-      props.setEpisodes((prev) => [episodeEntry, ...prev]);
-      props.setSelectedEpisodeId(episodeId);
-      props.setOpenedEpisodeId(episodeId);
+      setEpisodes((prev) => [episodeEntry, ...prev]);
+      setSelectedEpisodeId(episodeId);
+      setOpenedEpisodeId(episodeId);
       startTransition(() => {
-        props.setClips(formatted);
+        setClips(formatted);
       });
     } catch (err) {
       if (importGenRef.current !== gen) return;
@@ -136,9 +142,9 @@ export default function useImportExport(props: ImportExportProps) {
       props.setProgress(0);
       props.setProgressMsg("Starting...");
       setLoading(true);
-      props.setSelectedClips(new Set());
-      props.setFocusedClip(null);
-      props.setVideoIsHEVC(null);
+      setSelectedClips(new Set());
+      setFocusedClip(null);
+      setVideoIsHEVC(null);
       setBatchTotal(files.length);
       setBatchDone(0);
       setBatchCurrentFile("");
@@ -157,13 +163,13 @@ export default function useImportExport(props: ImportExportProps) {
         props.setProgressMsg("Starting...");
 
         try {
-          const formatted = await detectScenes(file, episodeId, props.episodesPath);
+          const formatted = await detectScenes(file, episodeId, episodesPath);
 
           if (props.abortedRef.current || importGenRef.current !== gen) {
             // Aborted or superseded mid-flight — clean up this episode's cache
             invoke("delete_episode_cache", {
               episodeCacheId: episodeId,
-              customPath: props.episodesPath,
+              customPath: episodesPath,
             }).catch(() => { });
             break;
           }
@@ -174,25 +180,25 @@ export default function useImportExport(props: ImportExportProps) {
             id: episodeId,
             displayName: inferredName,
             videoPath: file,
-            folderId: props.selectedFolderId,
+            folderId: selectedFolderId,
             importedAt: Date.now(),
             clips: formatted,
           };
 
           completedEpisodes.push(episodeEntry);
-          props.setEpisodes((prev) => [episodeEntry, ...prev]);
+          setEpisodes((prev) => [episodeEntry, ...prev]);
         } catch (err) {
           if (props.abortedRef.current) {
             invoke("delete_episode_cache", {
               episodeCacheId: episodeId,
-              customPath: props.episodesPath,
+              customPath: episodesPath,
             }).catch(() => { });
             break;
           }
           console.error(`Detection failed for ${fileName}:`, err);
           invoke("delete_episode_cache", {
             episodeCacheId: episodeId,
-            customPath: props.episodesPath,
+            customPath: episodesPath,
           }).catch(() => { });
         }
       }
@@ -200,12 +206,12 @@ export default function useImportExport(props: ImportExportProps) {
       // Open the first completed episode
       if (completedEpisodes.length > 0 && importGenRef.current === gen) {
         const first = completedEpisodes[0];
-        props.setSelectedEpisodeId(first.id);
-        props.setOpenedEpisodeId(first.id);
-        props.setImportedVideoPath(first.videoPath);
+        setSelectedEpisodeId(first.id);
+        setOpenedEpisodeId(first.id);
+        setImportedVideoPath(first.videoPath);
         setImportToken(Date.now().toString());
         startTransition(() => {
-          props.setClips(first.clips);
+          setClips(first.clips);
         });
       }
     } finally {
@@ -221,7 +227,7 @@ export default function useImportExport(props: ImportExportProps) {
   const handleExport = async (selectedClips: Set<string>, mergeEnabled: boolean, mergeFileName?: string) => {
     if (selectedClips.size === 0) return;
 
-    const selected = props.clips.filter((c: ClipItem) => selectedClips.has(c.id));
+    const selected = clips.filter((c: ClipItem) => selectedClips.has(c.id));
     if (selected.length === 0) return;
 
     // If no export directory is set, prompt the user to pick one first

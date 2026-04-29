@@ -4,29 +4,9 @@ import type React from "react";
 export type Page = "home" | "menu" | "settings";
 
 export type SidebarProps = {
+  sideBarEnabled: boolean;
   activePage: Page;
   setActivePage: React.Dispatch<React.SetStateAction<Page>>;
-
-  episodeFolders: {
-    id: string;
-    name: string;
-    parentId: string | null;
-    isExpanded: boolean;
-  }[];
-
-  episodes: {
-    id: string;
-    displayName: string;
-    videoPath: string;
-    folderId: string | null;
-    importedAt: number;
-    clips: { id: string; src: string; thumbnail: string; originalName?: string }[];
-  }[];
-
-  selectedEpisodeId: string | null;
-  openedEpisodeId: string | null;
-  selectedFolderId: string | null;
-
   onSelectFolder: (folderId: string | null) => void;
   onToggleFolderExpanded: (folderId: string) => void;
   onCreateFolder: (name: string, parentFolderId: string | null) => void;
@@ -41,7 +21,6 @@ export type SidebarProps = {
   onMoveFolder: (folderId: string, parentFolderId: string | null, beforeFolderId?: string) => void;
   onSortEpisodePanel: (direction: "asc" | "desc") => void;
   onClearEpisodePanelCache: () => void | Promise<void>;
-  sideBarEnabled: boolean;
 };
 
 export type EpisodePanelProps = Omit<SidebarProps, "activePage" | "setActivePage">;

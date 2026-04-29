@@ -6,13 +6,14 @@ import type {
   PanelContextMenuState,
 } from "../types";
 
+import { useAppStateStore } from "../../../store/appStore";
+
 type EpisodePanelContextMenusProps = {
   contextMenu: EpisodeContextMenuState | null;
   folderContextMenu: FolderContextMenuState | null;
   panelContextMenu: PanelContextMenuState | null;
 
   multiSelectedIds: Set<string>;
-  episodeFolders: { id: string; name: string }[];
 
   setContextMenu: React.Dispatch<React.SetStateAction<EpisodeContextMenuState | null>>;
   setFolderContextMenu: React.Dispatch<React.SetStateAction<FolderContextMenuState | null>>;
@@ -33,7 +34,6 @@ export default function EpisodePanelContextMenus({
   folderContextMenu,
   panelContextMenu,
   multiSelectedIds,
-  episodeFolders,
   setContextMenu,
   setFolderContextMenu,
   setPanelContextMenu,
@@ -45,6 +45,7 @@ export default function EpisodePanelContextMenus({
   onDeleteFolder,
   onMoveEpisodeToFolder,
 }: EpisodePanelContextMenusProps) {
+  const episodeFolders = useAppStateStore(s => s.episodeFolders);
   return (
     <>
       {panelContextMenu && (

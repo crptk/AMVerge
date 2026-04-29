@@ -1,3 +1,5 @@
+import { useAppStateStore } from "../store/appStore"
+
 type ImportButtonsProps = {
   cols: number;
   gridSize: number;
@@ -5,16 +7,14 @@ type ImportButtonsProps = {
   onSmaller: () => void;
   setGridPreview: (checked: boolean) => void;
   gridPreview: boolean;
-  selectedClips: Set<string>;
-  setSelectedClips: React.Dispatch<
-    React.SetStateAction<Set<string>>
-  >;
   onImport: () => void;
   loading: boolean;
 };
 
 export default function ImportButtons(props: ImportButtonsProps) {
-  const hasSelection = props.selectedClips.size > 0;
+  const selectedClips = useAppStateStore(s => s.selectedClips);
+  const setSelectedClips = useAppStateStore(s => s.setSelectedClips);
+  const hasSelection = selectedClips.size > 0;
     
   return (
       <main className="clips-import">
@@ -49,13 +49,13 @@ export default function ImportButtons(props: ImportButtonsProps) {
                   disabled={!hasSelection}
                   onChange={(e) => {
                     if (!e.target.checked) {
-                      props.setSelectedClips(new Set())
+                      setSelectedClips(new Set())
                     }
                   }}
                 />
                 <span className="checkmark"></span>
               </label>
-              <span>{props.selectedClips.size} selected</span>    
+              <span>{selectedClips.size} selected</span>    
             </div>
           </div>
           <div className="zoomWrapper">

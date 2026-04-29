@@ -1,15 +1,13 @@
 import type React from "react";
-import type { EpisodePanelProps, PointerDragSource } from "../types";
+import type { PointerDragSource } from "../types";
+import { useAppStateStore } from "../../../store/appStore";
+import type { EpisodeEntry } from "../../../types/domain";
 
-type Episode = EpisodePanelProps["episodes"][number];
-
+type Episode = EpisodeEntry;
 type EpisodeRowProps = {
   episode: Episode;
   folderId: string | null;
   depth?: number;
-
-  openedEpisodeId: string | null;
-  selectedEpisodeId: string | null;
   multiSelectedIds: Set<string>;
   isDropTarget: boolean;
 
@@ -26,8 +24,6 @@ export default function EpisodeRow({
   episode,
   folderId,
   depth = 0,
-  openedEpisodeId,
-  selectedEpisodeId,
   multiSelectedIds,
   isDropTarget,
   beginPointerDrag,
@@ -35,9 +31,11 @@ export default function EpisodeRow({
   openContextMenu,
   onOpenEpisode,
 }: EpisodeRowProps) {
+  const openedEpisodeId = useAppStateStore(s => s.openedEpisodeId);
+  const selectedEpisodeId = useAppStateStore(s => s.selectedEpisodeId);
   const isOpen = openedEpisodeId === episode.id;
   const isSelected = selectedEpisodeId === episode.id;
-  const isMultiSelected = multiSelectedIds.has(episode.id);
+  const isMultiSelected = multiSelectedIds.has(episode.id); 
 
   let rowClass = "episode-panel-row episode-row";
   if (isOpen) rowClass += " is-open";

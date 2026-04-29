@@ -3,6 +3,7 @@ import MainLayout from "../MainLayout";
 import { fileNameFromPath } from "../utils/episodeUtils";
 import { ThemeSettings } from "../settings/themeSettings";
 import { ClipItem } from "../types/domain";
+import { useAppStateStore } from "../store/appStore"
 
 interface HomePageProps {
   cols: number;
@@ -12,12 +13,9 @@ interface HomePageProps {
   snapGridSmaller: () => void;
   setGridPreview: React.Dispatch<React.SetStateAction<boolean>>;
   gridPreview: boolean;
-  selectedClips: Set<string>;
-  setSelectedClips: (val: Set<string> | ((prev: Set<string>) => Set<string>)) => void;
   onImportClick: () => void;
   loading: boolean;
   mainLayoutWrapperRef: React.RefObject<HTMLDivElement | null>;
-  clips: { id: string; src: string; thumbnail: string; originalName?: string }[];
   importToken: string;
   isEmpty: boolean;
   handleExport: (
@@ -26,16 +24,11 @@ interface HomePageProps {
     mergeFileName?: string
   ) => Promise<void>;
   sideBarEnabled: boolean;
-  videoIsHEVC: boolean | null;
   userHasHEVC: React.RefObject<boolean>;
-  focusedClip: string | null;
-  setFocusedClip: React.Dispatch<React.SetStateAction<string | null>>;
   exportDir: string | null;
   onPickExportDir: () => void;
   onExportDirChange: (dir: string) => void;
   defaultMergedName: string;
-  openedEpisodeId: string | null;
-  importedVideoPath: string | null;
   onDownloadClip: (clip: ClipItem) => void;
   themeSettings: ThemeSettings;
 }
@@ -48,29 +41,24 @@ export default function HomePage({
   snapGridSmaller,
   setGridPreview,
   gridPreview,
-  selectedClips,
-  setSelectedClips,
   onImportClick,
   loading,
   mainLayoutWrapperRef,
-  clips,
   importToken,
   isEmpty,
   handleExport,
   sideBarEnabled,
-  videoIsHEVC,
   userHasHEVC,
-  focusedClip,
-  setFocusedClip,
   exportDir,
   onPickExportDir,
   onExportDirChange,
   defaultMergedName,
-  openedEpisodeId,
-  importedVideoPath,
   onDownloadClip,
   themeSettings,
 }: HomePageProps) {
+  const openedEpisodeId = useAppStateStore(s => s.openedEpisodeId);
+  const importedVideoPath = useAppStateStore(s => s.openedEpisodeId);
+
   return (
     <>
       <ImportButtons
@@ -80,8 +68,6 @@ export default function HomePage({
         onSmaller={snapGridSmaller}
         setGridPreview={setGridPreview}
         gridPreview={gridPreview}
-        selectedClips={selectedClips}
-        setSelectedClips={setSelectedClips}
         onImport={onImportClick}
         loading={loading}
       />
@@ -93,21 +79,15 @@ export default function HomePage({
           gridRef={gridRef}
           gridPreview={gridPreview}
           setGridPreview={setGridPreview}
-          clips={clips}
           importToken={importToken}
           isEmpty={isEmpty}
           handleExport={handleExport}
           sideBarEnabled={sideBarEnabled}
-          videoIsHEVC={videoIsHEVC}
           userHasHEVC={userHasHEVC}
-          focusedClip={focusedClip}
-          setFocusedClip={setFocusedClip}
           exportDir={exportDir}
           onPickExportDir={onPickExportDir}
           onExportDirChange={onExportDirChange}
           defaultMergedName={defaultMergedName}
-          selectedClips={selectedClips}
-          setSelectedClips={setSelectedClips}
           loading={loading}
           onDownloadClip={onDownloadClip}
           themeSettings={themeSettings}

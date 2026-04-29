@@ -3,6 +3,7 @@ import { ThemeSettings } from "./settings/themeSettings";
 import ClipsContainer from "./components/clipsGrid/ClipsContainer.tsx";
 import PreviewContainer from "./components/previewPanel/PreviewContainer.tsx";
 import { ClipItem } from "./types/domain";
+import { useAppStateStore } from "./store/appStore.ts";
 
 type LayoutProps = {
     cols: number;
@@ -10,11 +11,6 @@ type LayoutProps = {
     gridRef: React.RefObject<HTMLDivElement | null>;
     gridPreview: boolean;
     setGridPreview: React.Dispatch<React.SetStateAction<boolean>>;
-    selectedClips: Set<string>;
-    setSelectedClips: React.Dispatch<
-        React.SetStateAction<Set<string>>
-    >;
-    clips: { id: string; src: string; thumbnail: string }[];
     importToken: string;
     loading: boolean;
     isEmpty: boolean;
@@ -24,10 +20,7 @@ type LayoutProps = {
         mergeFileName?: string
     ) => Promise<void>;
     sideBarEnabled: boolean;
-    videoIsHEVC: boolean | null;
     userHasHEVC: React.RefObject<boolean>
-    focusedClip: string | null;
-    setFocusedClip: React.Dispatch<React.SetStateAction<string | null>>
     exportDir: string | null;
     onPickExportDir: () => void;
     onExportDirChange: (dir: string) => void;
@@ -38,13 +31,14 @@ type LayoutProps = {
 
 export default function MainLayout(props: LayoutProps) {
     const [leftWidth, setLeftWidth] = useState(65);
-
+    const focusedClip = useAppStateStore(s => s.focusedClip);
+    const clips = useAppStateStore(s => s.clips);
     const focusedClipThumbnail = useMemo(
         () =>
-            props.focusedClip
-                ? props.clips.find((c) => c.src === props.focusedClip)?.thumbnail ?? null
+            focusedClip
+                ? clips.find((c) => c.src === focusedClip)?.thumbnail ?? null
                 : null,
-        [props.focusedClip, props.clips]
+        [focusedClip, clips]
     );
 
     // track active resize listeners so we can clean up on unmount.
@@ -94,16 +88,10 @@ export default function MainLayout(props: LayoutProps) {
                     gridRef={props.gridRef}
                     cols={props.cols}
                     gridPreview={props.gridPreview}
-                    selectedClips={props.selectedClips}
-                    setSelectedClips={props.setSelectedClips}
-                    clips={props.clips}
                     importToken={props.importToken}
                     loading={props.loading}
                     isEmpty={props.isEmpty}
-                    videoIsHEVC={props.videoIsHEVC}
                     userHasHEVC={props.userHasHEVC}
-                    setFocusedClip={props.setFocusedClip}
-                    focusedClip={props.focusedClip}
                     onDownloadClip={props.onDownloadClip}
                     themeSettings={props.themeSettings}
                  />
@@ -122,11 +110,8 @@ export default function MainLayout(props: LayoutProps) {
 
             <div className="right-pane" style={{ width: `${100 - leftWidth}%` }}>
                 <PreviewContainer 
-                    focusedClip={props.focusedClip}
                     focusedClipThumbnail={focusedClipThumbnail}
-                    selectedClips={props.selectedClips}
                     handleExport={props.handleExport}
-                    videoIsHEVC={props.videoIsHEVC}
                     userHasHEVC={props.userHasHEVC}
                     importToken={props.importToken}
                     exportDir={props.exportDir}

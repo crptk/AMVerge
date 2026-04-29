@@ -1,4 +1,3 @@
-import { GeneralSettings } from "../../settings/generalSettings";
 import { ThemeSettings } from "../../settings/themeSettings";
 import { ClipItem } from "../../types/domain";
 
@@ -7,16 +6,10 @@ export type ClipContainerProps = {
   gridRef: React.RefObject<HTMLDivElement | null>;
   cols: number;
   gridPreview: boolean;
-  setSelectedClips: React.Dispatch<React.SetStateAction<Set<string>>>;
-  selectedClips: Set<string>;
-  clips: ClipItem[];
   importToken: string;
   loading: boolean;
   isEmpty: boolean;
-  videoIsHEVC: boolean | null;
   userHasHEVC: React.RefObject<boolean>;
-  setFocusedClip: React.Dispatch<React.SetStateAction<string | null>>;
-  focusedClip: string | null;
   onDownloadClip: (clip: ClipItem) => void;
   themeSettings: ThemeSettings;
 };
@@ -56,7 +49,6 @@ export type LazyClipProps = {
   ) => void;
   registerVideoRef: (clipId: string, el: HTMLVideoElement | null) => void;
   reportStaggerDemand: (key: string, demand: { order: number; onReady: () => void } | null) => void;
-  videoIsHEVC: boolean | null;
   userHasHEVC: React.RefObject<boolean>;
   onDownloadClip: (clip: ClipItem) => void;
   themeSettings: ThemeSettings;

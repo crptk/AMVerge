@@ -2,20 +2,18 @@
 import type React from "react";
 import EpisodeRow from "./EpisodeRow";
 import FolderRow from "./FolderRow";
-import type { EpisodePanelProps, PointerDragSource, PointerDropTarget } from "../types";
+import type { PointerDragSource, PointerDropTarget } from "../types";
+import { useAppStateStore } from "../../../store/appStore";
+import type { EpisodeEntry, EpisodeFolder } from "../../../types/domain";
 
-type Episode = EpisodePanelProps["episodes"][number];
-type Folder = EpisodePanelProps["episodeFolders"][number];
+type Episode = EpisodeEntry;
+type Folder = EpisodeFolder;
 
 type EpisodePanelTreeProps = {
   rootEpisodes: Episode[];
   foldersByParentId: Map<string | null, Folder[]>;
   episodesByFolderId: Map<string, Episode[]>;
   dropTarget: PointerDropTarget | null;
-
-  openedEpisodeId: string | null;
-  selectedEpisodeId: string | null;
-  selectedFolderId: string | null;
   multiSelectedIds: Set<string>;
 
   beginPointerDrag: (
@@ -43,9 +41,6 @@ export default function EpisodePanelTree({
   foldersByParentId,
   episodesByFolderId,
   dropTarget,
-  openedEpisodeId,
-  selectedEpisodeId,
-  selectedFolderId,
   multiSelectedIds,
   beginPointerDrag,
   handleEpisodeClick,
@@ -56,6 +51,8 @@ export default function EpisodePanelTree({
   onSelectFolder,
   onToggleFolderExpanded,
 }: EpisodePanelTreeProps) {
+
+  const selectedFolderId = useAppStateStore(s => s.selectedFolderId);
   const renderEpisodeRow = (
     episode: Episode,
     folderId: string | null,
@@ -65,14 +62,13 @@ export default function EpisodePanelTree({
       dropTarget?.kind === "episode" &&
       dropTarget.episodeId === episode.id;
 
+    
     return (
       <EpisodeRow
         key={episode.id}
         episode={episode}
         folderId={folderId}
         depth={depth}
-        openedEpisodeId={openedEpisodeId}
-        selectedEpisodeId={selectedEpisodeId}
         multiSelectedIds={multiSelectedIds}
         isDropTarget={isDrop}
         beginPointerDrag={beginPointerDrag}
