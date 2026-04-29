@@ -1,11 +1,13 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, State};
 
 use crate::payloads::ProgressPayload;
+use crate::state::EditorImportAbortState;
 use crate::utils::logging::console_log;
 use crate::utils::process::apply_no_window;
 
@@ -50,21 +52,72 @@ fn normalize_editor_media_paths(media_paths: Vec<String>) -> Result<Vec<String>,
 #[tauri::command]
 pub async fn import_media_to_editor(
     app: AppHandle,
+    abort_state: State<'_, EditorImportAbortState>,
     editor_target: EditorTarget,
     media_paths: Vec<String>,
 ) -> Result<String, String> {
+    abort_state.abort_requested.store(false, Ordering::SeqCst);
     let normalized = normalize_editor_media_paths(media_paths)?;
 
     match editor_target {
-        EditorTarget::AfterEffects => import_into_after_effects(&app, &normalized).await,
-        EditorTarget::Premiere => import_into_premiere(&app, &normalized).await,
-        EditorTarget::DavinciResolve => import_into_davinci_resolve(&app, &normalized).await,
+        EditorTarget::AfterEffects => {
+            import_into_after_effects(&app, &normalized, &abort_state.abort_requested).await
+        }
+        EditorTarget::Premiere => {
+            import_into_premiere(&app, &normalized, &abort_state.abort_requested).await
+        }
+        EditorTarget::DavinciResolve => {
+            import_into_davinci_resolve(&app, &normalized, &abort_state.abort_requested).await
+        }
     }
+}
+
+#[cfg(target_os = "windows")]
+#[tauri::command]
+pub fn abort_editor_import(
+    abort_state: State<'_, EditorImportAbortState>,
+) -> Result<String, String> {
+    abort_state.abort_requested.store(true, Ordering::SeqCst);
+    Ok("Auto-import cancellation requested.".to_string())
+}
+
+#[cfg(not(target_os = "windows"))]
+#[tauri::command]
+pub fn abort_editor_import(
+    _abort_state: State<'_, EditorImportAbortState>,
+) -> Result<String, String> {
+    Ok("Auto-import cancellation requested.".to_string())
+}
+
+#[cfg(target_os = "windows")]
+fn is_import_cancel_requested(abort_requested: &AtomicBool) -> bool {
+    abort_requested.load(Ordering::SeqCst)
+}
+
+#[cfg(target_os = "windows")]
+fn import_canceled_error() -> String {
+    "AMVERGE_CANCELED: Auto-import canceled by user.".to_string()
+}
+
+#[cfg(target_os = "windows")]
+async fn sleep_with_cancel(abort_requested: &AtomicBool, duration: Duration) -> Result<(), String> {
+    let mut slept = Duration::ZERO;
+    let tick = Duration::from_millis(100);
+    while slept < duration {
+        if is_import_cancel_requested(abort_requested) {
+            return Err(import_canceled_error());
+        }
+        let wait = (duration - slept).min(tick);
+        tokio::time::sleep(wait).await;
+        slept += wait;
+    }
+    Ok(())
 }
 
 #[cfg(target_os = "windows")]
 async fn run_windows_import_with_retries(
     app: Option<&AppHandle>,
+    abort_requested: &AtomicBool,
     log_scope: &str,
     editor_name: &str,
     max_attempts: u32,
@@ -77,6 +130,10 @@ async fn run_windows_import_with_retries(
     let mut last_err: Option<String> = None;
 
     for attempt in 0..max_attempts {
+        if is_import_cancel_requested(abort_requested) {
+            return Err(import_canceled_error());
+        }
+
         emit_import_progress(
             app,
             99,
@@ -92,7 +149,7 @@ async fn run_windows_import_with_retries(
             } else {
                 2
             };
-            tokio::time::sleep(Duration::from_secs(delay_secs)).await;
+            sleep_with_cancel(abort_requested, Duration::from_secs(delay_secs)).await?;
         }
 
         if launched_this_call {
@@ -109,6 +166,9 @@ async fn run_windows_import_with_retries(
                 return Ok(msg);
             }
             Err(err) => {
+                if is_import_cancel_requested(abort_requested) {
+                    return Err(import_canceled_error());
+                }
                 let summarized = summarize_windows_import_error(&err);
                 if max_attempts > 1 {
                     console_log(
@@ -151,6 +211,9 @@ fn emit_import_progress(app: Option<&AppHandle>, percent: u8, message: &str) {
 
 #[cfg(target_os = "windows")]
 fn summarize_windows_import_error(raw: &str) -> String {
+    if raw.contains("AMVERGE_CANCELED") {
+        return "AMVERGE_CANCELED: Auto-import canceled by user.".to_string();
+    }
     if raw.contains("AMVERGE_NO_WINDOW") {
         return "AMVERGE_NO_WINDOW: Editor window not found yet.".to_string();
     }
@@ -174,6 +237,9 @@ fn summarize_windows_import_error(raw: &str) -> String {
 
 #[cfg(target_os = "windows")]
 fn import_hint_for_error(editor_name: &str, raw: &str) -> String {
+    if raw.contains("AMVERGE_CANCELED") {
+        return "Canceling auto-import...".to_string();
+    }
     if raw.contains("AMVERGE_NO_WINDOW") {
         return format!("{editor_name} is still loading");
     }
@@ -224,11 +290,13 @@ fn spawn_editor_process(
 async fn import_into_after_effects(
     app: &AppHandle,
     media_paths: &[String],
+    abort_requested: &AtomicBool,
 ) -> Result<String, String> {
     #[cfg(not(target_os = "windows"))]
     {
         let _ = app;
         let _ = media_paths;
+        let _ = abort_requested;
         return Err(
             "Auto-import for After Effects is currently implemented for Windows builds only."
                 .to_string(),
@@ -261,6 +329,7 @@ async fn import_into_after_effects(
 
         run_windows_import_with_retries(
             Some(app),
+            abort_requested,
             "NLE|after_effects",
             "After Effects",
             max_attempts,
@@ -274,11 +343,16 @@ async fn import_into_after_effects(
     }
 }
 
-async fn import_into_premiere(app: &AppHandle, media_paths: &[String]) -> Result<String, String> {
+async fn import_into_premiere(
+    app: &AppHandle,
+    media_paths: &[String],
+    abort_requested: &AtomicBool,
+) -> Result<String, String> {
     #[cfg(not(target_os = "windows"))]
     {
         let _ = app;
         let _ = media_paths;
+        let _ = abort_requested;
         return Err(
             "Auto-import for Premiere Pro is currently implemented for Windows builds only."
                 .to_string(),
@@ -307,6 +381,7 @@ async fn import_into_premiere(app: &AppHandle, media_paths: &[String]) -> Result
 
         run_windows_import_with_retries(
             Some(app),
+            abort_requested,
             "NLE|premiere",
             "Premiere Pro",
             max_attempts,
@@ -359,9 +434,13 @@ fn run_editor_ui_import_ps(script_path: &Path, editor_name: &str) -> Result<Stri
 async fn import_into_davinci_resolve(
     app: &AppHandle,
     media_paths: &[String],
+    abort_requested: &AtomicBool,
 ) -> Result<String, String> {
     #[cfg(not(target_os = "windows"))]
-    let _ = app;
+    {
+        let _ = app;
+        let _ = abort_requested;
+    }
 
     #[cfg(target_os = "windows")]
     emit_import_progress(Some(app), 98, "Preparing DaVinci Resolve auto-import...");
@@ -379,11 +458,14 @@ async fn import_into_davinci_resolve(
             if let Some(resolve_exe) = resolve_davinci_executable() {
                 emit_import_progress(Some(app), 98, "Launching DaVinci Resolve...");
                 spawn_editor_process(&resolve_exe, "DaVinci Resolve", "NLE|davinci")?;
+            } else {
+                return Err("DaVinci Resolve executable was not found.".to_string());
             }
         }
 
         return run_windows_import_with_retries(
             Some(app),
+            abort_requested,
             "NLE|davinci",
             "DaVinci Resolve",
             30,

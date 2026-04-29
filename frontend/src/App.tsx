@@ -136,6 +136,9 @@ function App() {
     batchTotal,
     batchDone,
     batchCurrentFile,
+    showLoaderCancel,
+    loaderCancelLabel,
+    handleCancelLoaderTask,
     onImportClick,
     handleImport,
     handleExport,
@@ -457,6 +460,9 @@ function App() {
             batchDone={batchDone}
             batchCurrentFile={batchCurrentFile}
             onAbort={handleAbort}
+            showCancel={showLoaderCancel}
+            cancelLabel={loaderCancelLabel}
+            onCancel={handleCancelLoaderTask}
           />
         ) : null
       }

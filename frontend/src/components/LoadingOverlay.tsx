@@ -5,6 +5,9 @@ interface LoadingOverlayProps {
     batchDone: number;
     batchCurrentFile: string;
     onAbort: () => void;
+    showCancel?: boolean;
+    cancelLabel?: string;
+    onCancel?: () => void;
 }
 
 export default function LoadingOverlay({
@@ -13,7 +16,10 @@ export default function LoadingOverlay({
   batchTotal,
   batchDone,
   batchCurrentFile,
-  onAbort
+  onAbort,
+  showCancel = false,
+  cancelLabel = "Cancel",
+  onCancel
 }: LoadingOverlayProps) {
   return (
     <div className="loading-overlay">
@@ -33,8 +39,15 @@ export default function LoadingOverlay({
               Cutting videos {batchDone + 1}/{batchTotal}...
             </div>
             <div className="batch-file-name">{batchCurrentFile}</div>
-            <button className="abort-button" onClick={onAbort}>
-              Abort
+            <button className="loader-action-button" onClick={onAbort}>
+              Cancel
+            </button>
+          </div>
+        )}
+        {showCancel && (
+          <div className="loader-cancel-row">
+            <button className="loader-action-button" onClick={onCancel}>
+              {cancelLabel}
             </button>
           </div>
         )}

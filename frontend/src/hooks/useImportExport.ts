@@ -36,11 +36,49 @@ export default function useImportExport(props: ImportExportProps) {
   const [batchTotal, setBatchTotal] = useState(0);
   const [batchDone, setBatchDone] = useState(0);
   const [batchCurrentFile, setBatchCurrentFile] = useState("");
+  const [showLoaderCancel, setShowLoaderCancel] = useState(false);
+  const [loaderCancelLabel, setLoaderCancelLabel] = useState("Cancel");
 
   const editorLabel = (target: EditorTarget): string => {
     if (target === "after_effects") return "After Effects";
     if (target === "davinci_resolve") return "DaVinci Resolve";
     return "Premiere Pro";
+  };
+
+  const formatAutoImportFailureMessage = (
+    target: EditorTarget,
+    rawError: unknown
+  ): string => {
+    const details = String(rawError ?? "Unknown error")
+      .replace(/^Error:\s*/i, "")
+      .split("\n")[0]
+      .trim();
+
+    if (/AMVERGE_CANCELED/i.test(details) || /canceled by user/i.test(details)) {
+      return "Export completed. Auto-import canceled.";
+    }
+
+    if (/executable was not found/i.test(details)) {
+      return `Export complete. ${editorLabel(target)} was not detected.`;
+    }
+
+    if (details) {
+      return `Export completed. Auto-import failed: ${details}`;
+    }
+
+    return "Export completed. Auto-import failed (see Console).";
+  };
+
+  const handleCancelLoaderTask = async () => {
+    if (!showLoaderCancel) return;
+
+    try {
+      setLoaderCancelLabel("Canceling...");
+      props.setProgressMsg("Canceling auto-import...");
+      await invoke("abort_editor_import");
+    } catch (err) {
+      console.warn("abort_editor_import failed:", err);
+    }
   };
   const onImportClick = async () => {
     const files = await open({
@@ -241,13 +279,19 @@ export default function useImportExport(props: ImportExportProps) {
       props.setExportDir(dir);
     }
 
+    let overlayHoldMs = 0;
+
     try {
       setLoading(true);
 
       const clipArray = selected.map((c: ClipItem) => c.src);
       const format = props.exportFormat || "mp4";
       if (format === "xml") {
-        window.alert("XML export is not supported by this flow yet. Please use MP4, MKV, MOV, or AVI.");
+        props.setProgress(100);
+        props.setProgressMsg(
+          "Export canceled. XML is not supported in this export flow. Use MP4, MKV, MOV, or AVI."
+        );
+        overlayHoldMs = 1800;
         return;
       }
       let exportedPaths: string[] = [];
@@ -296,6 +340,8 @@ export default function useImportExport(props: ImportExportProps) {
           props.setProgressMsg(
             `Export finished. Preparing ${editorLabel(editorTarget)} auto-import...`
           );
+          setShowLoaderCancel(true);
+          setLoaderCancelLabel("Cancel");
 
           const result = await invoke<string>("import_media_to_editor", {
             editorTarget,
@@ -309,15 +355,16 @@ export default function useImportExport(props: ImportExportProps) {
           console.log(result);
         } catch (err) {
           console.warn("Auto-import failed:", err);
-          const details = String(err ?? "Unknown error")
-            .replace(/^Error:\s*/i, "")
-            .split("\n")[0]
-            .trim();
-          props.setProgressMsg(
-            details
-              ? `Export completed. Auto-import failed: ${details}`
-              : "Export completed. Auto-import failed (see Console)."
-          );
+          props.setProgress(100);
+          const failureMsg = formatAutoImportFailureMessage(editorTarget, err);
+          props.setProgressMsg(failureMsg);
+          if (/not detected/i.test(failureMsg)) {
+            // Keep the integrated loader message visible briefly so the user can read it.
+            overlayHoldMs = 1800;
+          }
+        } finally {
+          setShowLoaderCancel(false);
+          setLoaderCancelLabel("Cancel");
         }
       }
 
@@ -346,6 +393,11 @@ export default function useImportExport(props: ImportExportProps) {
     } catch (err) {
       console.log("Export failed:", err)
     } finally {
+      setShowLoaderCancel(false);
+      setLoaderCancelLabel("Cancel");
+      if (overlayHoldMs > 0) {
+        await new Promise((resolve) => setTimeout(resolve, overlayHoldMs));
+      }
       setLoading(false);
     }
   };
@@ -389,6 +441,9 @@ export default function useImportExport(props: ImportExportProps) {
     batchTotal,
     batchDone,
     batchCurrentFile,
+    showLoaderCancel,
+    loaderCancelLabel,
+    handleCancelLoaderTask,
     onImportClick,
     handleImport,
     handleExport,
