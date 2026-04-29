@@ -164,9 +164,15 @@ export default memo(TimelineSegmentChip);
 // ─── Helpers ─────────────────────────────────────────────────────────
 
 function formatDuration(sec: number): string {
-  if (sec < 1) return `${Math.round(sec * 1000)}ms`;
-  if (sec < 60) return `${sec.toFixed(1)}s`;
-  const m = Math.floor(sec / 60);
-  const s = Math.round(sec % 60);
-  return `${m}:${String(s).padStart(2, "0")}`;
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  const s = Math.floor(sec % 60);
+  const f = Math.floor((sec % 1) * 30); // 30 fps frame index
+
+  return [
+    String(h).padStart(2, "0"),
+    String(m).padStart(2, "0"),
+    String(s).padStart(2, "0"),
+    String(f).padStart(2, "0")
+  ].join(":");
 }

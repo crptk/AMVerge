@@ -55,6 +55,7 @@
 
 .clip-wrapper:hover {
     transform: translateY(-6px) scale(1.04);
+    z-index: 10;
     box-shadow:
         0 10px 30px rgb(var(--accent-rgb) / 0.15),
         0 0 0 1px rgb(var(--accent-rgb) / 0.25);
@@ -63,6 +64,18 @@
 .clip-wrapper.focused {
     outline: 3px solid var(--accent);
     outline-offset: -3px;
+    z-index: 5;
+}
+
+.clip-wrapper.selected {
+    box-shadow: 0 0 0 3px var(--accent), 0 8px 24px rgba(0, 0, 0, 0.4);
+    z-index: 4;
+}
+
+.clip-wrapper.focused.selected {
+    outline: 3px solid white;
+    outline-offset: -6px;
+    box-shadow: 0 0 0 4px var(--accent);
 }
 
 .clip {
@@ -82,20 +95,113 @@
     accent-color: var(--accent);
 }
 
-.clip-export-dot {
+.clip-timeline-toggle {
     position: absolute;
-    top: calc(var(--clip-overlay-inset) + 1px);
+    top: var(--clip-overlay-inset);
     left: var(--clip-overlay-inset);
     z-index: 12;
-    width: 9px;
-    height: 9px;
-    border-radius: 999px;
-    background: #666;
-    box-shadow: 0 0 0 1px rgb(255 255 255 / 0.18);
+    width: 26px;
+    height: 26px;
+    border-radius: 8px;
+    background: rgba(0, 0, 0, 0.4);
+    backdrop-filter: blur(4px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    opacity: 0.6;
 }
 
-.clip-export-dot.ok {
+.clip-wrapper:hover .clip-timeline-toggle,
+.clip-timeline-toggle.active {
+    opacity: 1;
+}
+
+.clip-timeline-toggle:hover {
+    transform: scale(1.1);
+    background: rgba(0, 0, 0, 0.6);
+    border-color: var(--accent);
+}
+
+.clip-timeline-toggle.active {
     background: var(--accent);
+    color: black;
+    border-color: var(--accent);
+    box-shadow: 0 0 10px rgba(var(--accent-rgb), 0.3);
+}
+
+.clip-timeline-toggle.active:hover {
+    background: white;
+    box-shadow: 0 0 15px white;
+}
+
+/* Selection Checkbox (Top-Right) */
+.clip-selection-wrapper {
+    position: absolute;
+    top: var(--clip-overlay-inset);
+    right: var(--clip-overlay-inset);
+    z-index: 15;
+    width: 20px;
+    height: 20px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.clip-selection-checkbox {
+    position: absolute;
+    opacity: 0;
+    cursor: pointer;
+    height: 0;
+    width: 0;
+}
+
+.clip-selection-checkmark {
+    position: absolute;
+    top: 0;
+    left: 0;
+    height: 20px;
+    width: 20px;
+    background-color: rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(4px);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 6px;
+    transition: all 0.2s ease;
+}
+
+.clip-selection-wrapper:hover .clip-selection-checkmark {
+    background-color: rgba(255, 255, 255, 0.2);
+    border-color: rgba(255, 255, 255, 0.4);
+}
+
+.clip-selection-checkbox:checked ~ .clip-selection-checkmark {
+    background-color: var(--accent);
+    border-color: var(--accent);
+}
+
+.clip-selection-checkmark:after {
+    content: "";
+    position: absolute;
+    display: none;
+}
+
+.clip-selection-checkbox:checked ~ .clip-selection-checkmark:after {
+    display: block;
+}
+
+.clip-selection-wrapper .clip-selection-checkmark:after {
+    left: 6px;
+    top: 2px;
+    width: 5px;
+    height: 10px;
+    border: solid black;
+    border-width: 0 2px 2px 0;
+    transform: rotate(45deg);
 }
 
 .clip-skeleton {

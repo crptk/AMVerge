@@ -492,11 +492,10 @@ function formatTimecode(sec: number): string {
   const s = Math.floor(sec % 60);
   const f = Math.floor((sec % 1) * 30); // 30 fps frame index
 
-  const parts: string[] = [];
-  if (h > 0) parts.push(String(h).padStart(2, "0"));
-  parts.push(String(m).padStart(2, "0"));
-  parts.push(String(s).padStart(2, "0"));
-  parts.push(String(f).padStart(2, "0"));
-
-  return parts.join(":");
+  return [
+    String(h).padStart(2, "0"),
+    String(m).padStart(2, "0"),
+    String(s).padStart(2, "0"),
+    String(f).padStart(2, "0")
+  ].join(":");
 }

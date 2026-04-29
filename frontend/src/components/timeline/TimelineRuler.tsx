@@ -85,18 +85,23 @@ export default memo(TimelineRuler);
 // ─── Helpers ─────────────────────────────────────────────────────────
 
 function formatRulerLabel(sec: number): string {
-  if (sec < 0.01) return "0";
-  if (sec < 1) return `${Math.round(sec * 1000)}ms`;
-  const m = Math.floor(sec / 60);
-  const s = sec % 60;
-  if (m === 0) return `${s.toFixed(sec % 1 !== 0 ? 1 : 0)}s`;
-  return `${m}:${String(Math.floor(s)).padStart(2, "0")}`;
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  const s = Math.floor(sec % 60);
+  const f = Math.floor((sec % 1) * 30);
+
+  if (h > 0) {
+    return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}:${String(f).padStart(2, "0")}`;
+  }
+  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}:${String(f).padStart(2, "0")}`;
 }
 
 function formatFrameLabel(sec: number): string {
-  const frames = Math.round(sec * 30); // 30fps
-  const wholeSec = Math.floor(sec);
-  const frameInSec = frames - wholeSec * 30;
-  if (wholeSec === 0) return `${frameInSec}f`;
-  return `${wholeSec}s${frameInSec}f`;
+  // At very high zoom, show the full timecode to ensure precision
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  const s = Math.floor(sec % 60);
+  const f = Math.floor((sec % 1) * 30);
+
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}:${String(f).padStart(2, "0")}`;
 }

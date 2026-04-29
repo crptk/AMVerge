@@ -13,9 +13,17 @@ const EXPORT_OPTIONS = [
   { value: "xml", label: "XML" },
 ];
 type PreviewContainerProps = {
-  focusedClip: string | null;
-  focusedClipThumbnail: string | null;
+  // Program (Timeline)
+  programClip: string | null;
+  programClipThumbnail: string | null;
+  programTime?: number;
+
+  // Source (Grid)
+  sourceClip: string | null;
+  sourceClipThumbnail: string | null;
+
   selectedClips: Set<string>;
+  timelineClipIds: Set<string>;
   videoIsHEVC: boolean | null;
   userHasHEVC: React.RefObject<boolean>;
   importToken: string;
@@ -30,7 +38,6 @@ type PreviewContainerProps = {
   defaultMergedName: string;
   generalSettings: GeneralSettings;
   setGeneralSettings: React.Dispatch<React.SetStateAction<GeneralSettings>>;
-  externalTime?: number;
   onTimeUpdate?: (time: number) => void;
 };
 
@@ -38,6 +45,29 @@ export default function PreviewContainer (props: PreviewContainerProps) {
   const [mergeEnabled, setMergeEnabled] = React.useState(true);
   const [showMergeNameModal, setShowMergeNameModal] = React.useState(false);
   const mergeNameInputRef = React.useRef<HTMLInputElement | null>(null);
+
+  const [activeView, setActiveView] = React.useState<"source" | "program">("source");
+
+  const hasProgram = !!props.programClip;
+  const hasSource = !!props.sourceClip;
+
+  // Auto-switch to program when timeline is scrubbed/active (Only on initial load/presence)
+  React.useEffect(() => {
+    if (hasProgram && !hasSource) {
+      setActiveView("program");
+    } else if (hasSource && !hasProgram) {
+      setActiveView("source");
+    }
+  }, [hasProgram, hasSource]);
+
+  // Auto-switch to SOURCE when a new clip is focused in the grid
+  const lastSourceRef = React.useRef(props.sourceClip);
+  React.useEffect(() => {
+    if (props.sourceClip && props.sourceClip !== lastSourceRef.current) {
+      setActiveView("source");
+    }
+    lastSourceRef.current = props.sourceClip;
+  }, [props.sourceClip]);
 
   React.useEffect(() => {
     if (showMergeNameModal) {
@@ -49,34 +79,77 @@ export default function PreviewContainer (props: PreviewContainerProps) {
   }, [showMergeNameModal]);
 
   const onExportClick = () => {
+    const targetClips = activeView === "program" ? props.timelineClipIds : props.selectedClips;
     if (mergeEnabled) {
       setShowMergeNameModal(true);
     } else {
-      props.handleExport(props.selectedClips, false);
+      props.handleExport(targetClips, false);
     }
   };
 
   const confirmMergeExport = () => {
+    const targetClips = activeView === "program" ? props.timelineClipIds : props.selectedClips;
     const value = (mergeNameInputRef.current?.value ?? "").trim();
     if (!value) return;
     setShowMergeNameModal(false);
-    props.handleExport(props.selectedClips, true, value);
+    props.handleExport(targetClips, true, value);
   };
+
   return (
     <main  className="preview-container" >
-      <div className="preview-window">
-        {props.focusedClip ? (
-          <VideoPlayer 
-           selectedClip={props.focusedClip}
-           videoIsHEVC={props.videoIsHEVC}
-           userHasHEVC={props.userHasHEVC}
-           posterPath={props.focusedClipThumbnail}
-           importToken={props.importToken}
-           externalTime={props.externalTime}
-           onTimeUpdate={props.onTimeUpdate}
-          />
-          ) : (
-            <p>No clip selected</p>
+      <div className="preview-view-switcher">
+        <button 
+          className={`switcher-btn ${activeView === "source" ? "active" : ""} ${!hasSource ? "disabled" : ""}`}
+          onClick={() => hasSource && setActiveView("source")}
+        >
+          SOURCE
+        </button>
+        <button 
+          className={`switcher-btn ${activeView === "program" ? "active" : ""} ${!hasProgram ? "disabled" : ""}`}
+          onClick={() => hasProgram && setActiveView("program")}
+        >
+          PROGRAM
+        </button>
+      </div>
+
+      <div className="preview-windows-layout single">
+        {activeView === "source" && hasSource && (
+          <div className="preview-window-wrapper source" key="source-wrapper">
+            <div className="preview-window">
+              <VideoPlayer 
+                key={`source-player-${props.sourceClip}`}
+                selectedClip={props.sourceClip!}
+                videoIsHEVC={props.videoIsHEVC}
+                userHasHEVC={props.userHasHEVC}
+                posterPath={props.sourceClipThumbnail}
+                importToken={props.importToken}
+                onTimeUpdate={props.onTimeUpdate}
+              />
+            </div>
+          </div>
+        )}
+
+        {activeView === "program" && hasProgram && (
+          <div className="preview-window-wrapper program" key="program-wrapper">
+            <div className="preview-window">
+              <VideoPlayer 
+                key={`program-player-${props.programClip}`}
+                selectedClip={props.programClip!}
+                videoIsHEVC={props.videoIsHEVC}
+                userHasHEVC={props.userHasHEVC}
+                posterPath={props.programClipThumbnail}
+                importToken={props.importToken}
+                externalTime={props.programTime}
+                onTimeUpdate={props.onTimeUpdate}
+              />
+            </div>
+          </div>
+        )}
+
+        {((activeView === "source" && !hasSource) || (activeView === "program" && !hasProgram) || (!hasSource && !hasProgram)) && (
+          <div className="preview-window empty" key="empty-preview">
+            <p>{activeView === "program" ? "Timeline is empty" : "No clip selected"}</p>
+          </div>
         )}
       </div>
       <div className="export-panel">

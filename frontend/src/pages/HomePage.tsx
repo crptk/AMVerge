@@ -92,9 +92,13 @@ export default function HomePage({
     selectedClipsRef.current = selectedClips;
   }, [selectedClips]);
 
+  const [timelineClipIds, setTimelineClipIds] = useState<Set<string>>(new Set());
+  const timelineClipIdsRef = useRef(timelineClipIds);
+  useEffect(() => {
+    timelineClipIdsRef.current = timelineClipIds;
+  }, [timelineClipIds]);
+
   // Track the "version" of external clip selections to avoid re-init loops.
-  // Only incremented on genuine user actions (grid select, import), not
-  // on timeline-feedback writes.
   const [clipSyncVersion, setClipSyncVersion] = useState(0);
   const lastSyncedVersionRef = useRef(-1);
 
@@ -102,11 +106,11 @@ export default function HomePage({
     isUpdatingFromTimeline.current = true;
     
     setClips((prevClips) => {
-      const currentSelected = selectedClipsRef.current;
-      let insertIndex = prevClips.findIndex(c => currentSelected.has(c.id));
+      const currentInTimeline = timelineClipIdsRef.current;
+      let insertIndex = prevClips.findIndex(c => currentInTimeline.has(c.id));
       if (insertIndex === -1) insertIndex = prevClips.length;
 
-      const remainingClips = prevClips.filter(c => !currentSelected.has(c.id));
+      const remainingClips = prevClips.filter(c => !currentInTimeline.has(c.id));
 
       const newClipsFromTimeline = segments.map(seg => {
         const baseClip = seg.sourceClip || prevClips.find(c => c.id === seg.id);
@@ -128,8 +132,8 @@ export default function HomePage({
       ];
     });
 
-    setSelectedClips(new Set(segments.map((s: TimelineSegment) => s.id)));
-  }, [setClips, setSelectedClips]));
+    setTimelineClipIds(new Set(segments.map((s: TimelineSegment) => s.id)));
+  }, [setClips, setTimelineClipIds]));
 
   const { state: timelineState, dispatch: dispatchTimeline } = timeline;
   const { segments } = timelineState;
@@ -246,18 +250,18 @@ export default function HomePage({
       return;
     }
     setClipSyncVersion((v) => v + 1);
-  }, [clips, selectedClips]);
+  }, [clips, timelineClipIds]);
 
-  // Sync clips from Grid -> Timeline (only on genuine version bumps)
+  // Sync clips from timelineClipIds -> Timeline (only on genuine version bumps)
   useEffect(() => {
     if (clipSyncVersion === lastSyncedVersionRef.current) return;
     lastSyncedVersionRef.current = clipSyncVersion;
 
-    if (clips.length > 0 && selectedClips.size > 0) {
-      const selectedClipItems = clips.filter(c => selectedClips.has(c.id));
+    if (clips.length > 0 && timelineClipIds.size > 0) {
+      const timelineItems = clips.filter(c => timelineClipIds.has(c.id));
       
       let currentTrackPos = 0;
-      const segments = selectedClipItems.map((clip, i) => {
+      const segments = timelineItems.map((clip, i) => {
         const duration = (clip.end !== undefined && clip.start !== undefined) 
           ? Math.max(0.1, clip.end - clip.start) 
           : 5;
@@ -279,7 +283,7 @@ export default function HomePage({
     } else {
       timeline.init([], 0);
     }
-  }, [clipSyncVersion, clips, selectedClips, timeline.init]);
+  }, [clipSyncVersion, clips, timelineClipIds, timeline.init]);
 
   return (
     <>
@@ -320,6 +324,8 @@ export default function HomePage({
           defaultMergedName={defaultMergedName}
           selectedClips={selectedClips}
           setSelectedClips={setSelectedClips}
+          timelineClipIds={timelineClipIds}
+          setTimelineClipIds={setTimelineClipIds}
           loading={loading}
           generalSettings={generalSettings}
           setGeneralSettings={setGeneralSettings}

@@ -9,6 +9,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { LazyClipProps } from "./types.ts"
 import { DownloadButton } from "./DownloadButton.tsx";
+import { FaCheck, FaPlus } from "react-icons/fa";
 
 const DOWNLOAD_TONE_SAMPLE_SIZE = 24;
 const DOWNLOAD_TONE_SOURCE_SIZE = 34;
@@ -20,12 +21,15 @@ export const LazyClip = memo(function LazyClip({
   index,
   importToken,
   isExportSelected,
+  isSelected,
   isFocused,
   gridPreview,
   requestProxySequential,
   reportProxyDemand,
   onClipClick,
   onClipDoubleClick,
+  onToggleTimeline,
+  onToggleSelection,
   registerVideoRef,
   reportStaggerDemand,
   videoIsHEVC,
@@ -378,7 +382,7 @@ export const LazyClip = memo(function LazyClip({
   return (
     <div
       ref={wrapperRef}
-      className={`clip-wrapper ${isFocused ? "focused" : ""}`}
+      className={`clip-wrapper ${isFocused ? "focused" : ""} ${isSelected ? "selected" : ""}`}
       onClick={handleClick}
       onDoubleClick={handleDoubleClick}
       // hover toggles isHovered, which controls whether the <video> mounts and whether playback starts.
@@ -395,7 +399,14 @@ export const LazyClip = memo(function LazyClip({
         setIsVideoReady(false);
       }}
     >
-      <span className={`clip-export-dot ${isExportSelected ? "ok" : ""}`} />
+      <button 
+        className={`clip-timeline-toggle ${isExportSelected ? "active" : ""}`}
+        onClick={(e) => onToggleTimeline(clip.id, e)}
+        title={isExportSelected ? "Remove from timeline" : "Add to timeline"}
+      >
+        {isExportSelected ? <FaCheck /> : <FaPlus />}
+      </button>
+
       {isVisible ? (
         <>
           {/* Thumbnail — always rendered when visible, hidden on hover */}

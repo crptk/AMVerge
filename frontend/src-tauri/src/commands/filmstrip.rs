@@ -95,6 +95,8 @@ pub async fn generate_filmstrip(
         "-vf", &filter,
         "-frames:v", "1",
         "-q:v", "6",         // JPEG quality: 2=best, 31=worst. 6 is a good balance for small sprites
+        "-pix_fmt", "yuvj420p", // MJPEG requires yuvj420p for full range support in some versions
+        "-strict", "-2",      // Allow non-standard features
         "-an",               // No audio
         &output_str,
     ]);

@@ -81,7 +81,7 @@ export default function VideoPlayer({
                     onClick={togglePlay}
                 />
 
-                <div id="video-controls" className="controls" data-state="hidden">
+                <div className="controls" data-state="hidden">
                     <button type="button" onClick={togglePlay}>
                         {isPlaying ? <FaPause /> : <FaPlay />}
                     </button>
@@ -96,15 +96,15 @@ export default function VideoPlayer({
                         onMouseDown={handleProgressMouseDown}
                     >
                         <progress value={currentTime} max={duration}>
-                            <span id="progress-bar"></span>
+                            <span className="progress-bar-inner"></span>
                         </progress>
                     </div>
 
-                    <button id="mute" type="button" onClick={toggleMute}>
+                    <button className="mute-btn" type="button" onClick={toggleMute}>
                         {isMuted ? <FaVolumeMute /> : <FaVolumeUp />}
                     </button>
 
-                    <button id="fs" type="button" onClick={goFullScreen}>
+                    <button className="fs-btn" type="button" onClick={goFullScreen}>
                         <FaExpand />
                     </button>
                 </div>

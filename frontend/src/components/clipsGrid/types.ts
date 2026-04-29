@@ -9,6 +9,8 @@ export type ClipContainerProps = {
   gridPreview: boolean;
   setSelectedClips: React.Dispatch<React.SetStateAction<Set<string>>>;
   selectedClips: Set<string>;
+  setTimelineClipIds: React.Dispatch<React.SetStateAction<Set<string>>>;
+  timelineClipIds: Set<string>;
   clips: ClipItem[];
   importToken: string;
   loading: boolean;
@@ -39,6 +41,7 @@ export type LazyClipProps = {
   index: number;
   importToken: string;
   isExportSelected: boolean;
+  isSelected: boolean;
   isFocused: boolean;
   gridPreview: boolean;
   requestProxySequential: (clipPath: string, priority: boolean) => Promise<string>;
@@ -55,6 +58,8 @@ export type LazyClipProps = {
     index: number,
     e: React.MouseEvent<HTMLDivElement>
   ) => void;
+  onToggleTimeline: (clipId: string, e: React.MouseEvent) => void;
+  onToggleSelection: (clipId: string, selected: boolean) => void;
   registerVideoRef: (clipId: string, el: HTMLVideoElement | null) => void;
   reportStaggerDemand: (key: string, demand: { order: number; onReady: () => void } | null) => void;
   videoIsHEVC: boolean | null;

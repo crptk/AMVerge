@@ -28,6 +28,8 @@ type LayoutProps = {
     setFocusedClip: React.Dispatch<React.SetStateAction<string | null>>;
     selectedClips: Set<string>;
     setSelectedClips: (val: Set<string> | ((prev: Set<string>) => Set<string>)) => void;
+    timelineClipIds: Set<string>;
+    setTimelineClipIds: (val: Set<string> | ((prev: Set<string>) => Set<string>)) => void;
     loading: boolean;
     exportDir: string | null;
     onPickExportDir: () => void;
@@ -133,6 +135,8 @@ export default function MainLayout(props: LayoutProps) {
                         gridPreview={props.gridPreview}
                         selectedClips={props.selectedClips}
                         setSelectedClips={props.setSelectedClips}
+                        timelineClipIds={props.timelineClipIds}
+                        setTimelineClipIds={props.setTimelineClipIds}
                         clips={props.clips}
                         importToken={props.importToken}
                         loading={props.loading}
@@ -154,10 +158,13 @@ export default function MainLayout(props: LayoutProps) {
 
                 <div className="right-pane" style={{ width: `${100 - leftWidth}%` }}>
                     <PreviewContainer
-                        focusedClip={activeTimelineSource?.src ?? (props.timelineEnabled ? null : props.focusedClip)}
-                        focusedClipThumbnail={activeTimelineSource?.thumbnail ?? (props.timelineEnabled ? null : focusedClipThumbnail)}
-                        externalTime={activeTimelineSource?.time}
+                        programClip={activeTimelineSource?.src ?? null}
+                        programClipThumbnail={activeTimelineSource?.thumbnail ?? null}
+                        programTime={activeTimelineSource?.time}
+                        sourceClip={props.focusedClip}
+                        sourceClipThumbnail={focusedClipThumbnail}
                         selectedClips={props.selectedClips}
+                        timelineClipIds={props.timelineClipIds}
                         handleExport={props.handleExport}
                         videoIsHEVC={props.videoIsHEVC}
                         userHasHEVC={props.userHasHEVC}
@@ -171,13 +178,22 @@ export default function MainLayout(props: LayoutProps) {
                         onTimeUpdate={(time) => {
                             if (!props.timelineEnabled) return;
                             const { segments, playheadSec } = props.timeline.state;
-                            // Find the segment that is currently active under the playhead
-                            const seg = segments.find(s => playheadSec >= s.start && playheadSec < s.end);
-                            if (seg && seg.sourceClip) {
-                                // Calculate the new global timeline playhead based on the video's local time
-                                const newPlayheadSec = seg.start + (time - (seg.sourceStart ?? 0));
+
+                            // Find the segment that matches the current video source and is close to the playhead
+                            // This is more robust than just checking playheadSec
+                            const seg = segments.find(s => 
+                                s.sourceClip?.src === props.focusedClip || // Check if it's the focused one (Source)
+                                s.sourceClip?.src === activeTimelineSource?.src // Or the active timeline one (Program)
+                            );
+
+                            if (seg) {
+                                // Calculate where the playhead SHOULD be based on this segment's position
+                                // time is the current time in the source file
+                                const offset = time - (seg.sourceStart ?? 0);
+                                const newPlayheadSec = seg.start + offset;
+
                                 // Avoid infinite feedback loop by checking difference
-                                if (Math.abs(playheadSec - newPlayheadSec) > 0.05) {
+                                if (Math.abs(playheadSec - newPlayheadSec) > 0.01) {
                                     props.timeline.setPlayhead(newPlayheadSec);
                                 }
                             }

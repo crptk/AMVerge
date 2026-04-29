@@ -110,14 +110,16 @@ function timelineReducer(state: TimelineState, action: Action): TimelineState {
     }
     // ── Bootstrap ────────────────────────────────────────────────────
     case "INIT": {
+      const initializedSegments = action.segments.map((s) => ({
+        ...s,
+        sourceClips: s.sourceClips, // Preserve the playlist!
+        sourceStart: s.sourceStart ?? s.sourceClip?.start ?? 0,
+        sourceEnd: s.sourceEnd ?? s.sourceClip?.end ?? 0,
+      }));
       return {
         ...makeInitialState(),
-        segments: action.segments.map((s) => ({
-          ...s,
-          sourceClips: s.sourceClips, // Preserve the playlist!
-          sourceStart: s.sourceStart ?? s.sourceClip?.start ?? 0,
-          sourceEnd: s.sourceEnd ?? s.sourceClip?.end ?? 0,
-        })),
+        segments: initializedSegments,
+        selectedIds: new Set(initializedSegments.map(s => s.id)), // Auto-select all
         totalDuration: action.totalDuration,
         viewport: {
           scrollOffsetSec: 0,
@@ -169,7 +171,8 @@ function timelineReducer(state: TimelineState, action: Action): TimelineState {
         s.id === target.id ? [left, right] : [s]
       );
 
-      return record(newSegments);
+      const nextState = record(newSegments);
+      return { ...nextState, selectedIds: new Set() }; // Clear selection
     }
 
     // ── Merge ────────────────────────────────────────────────────────
@@ -226,7 +229,7 @@ function timelineReducer(state: TimelineState, action: Action): TimelineState {
         }
       }
       const nextState = record(newSegments);
-      return { ...nextState, selectedIds: new Set([mergedId]) };
+      return { ...nextState, selectedIds: new Set() }; // Clear selection
     }
 
     case "MERGE_SUCCESS": {
