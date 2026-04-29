@@ -1,0 +1,113 @@
+/* --------
+    MENU
+---------- */
+
+.menu-page {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+    width: 100%;
+}
+
+.menu-header {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    padding-top: 24px;
+    padding-bottom: 8px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.menu-title {
+    text-align: center;
+    margin: 0 0 8px 0;
+}
+
+.menu-nav {
+    display: flex;
+    justify-content: center;
+    gap: 16px;
+    margin-bottom: 0;
+}
+
+.menu-nav-btn {
+    padding: 8px 24px;
+    border-radius: 8px;
+    border: 1px solid rgb(var(--accent-rgb) / 0.9);
+    background: #000;
+    color: #fff;
+    font-size: 1.1rem;
+    font-family: inherit;
+    cursor: pointer;
+    transition: background 0.15s, border 0.15s ease, color 0.15s;
+}
+
+.menu-nav-btn.active {
+    background: rgb(var(--accent-rgb) / 0.18);
+    color: var(--accent);
+    cursor: default;
+    border-color: rgb(var(--accent-rgb) / 0.9);
+    opacity: 1;
+}
+
+.menu-nav-btn:hover {
+    background: var(--accent);
+    color: black;
+    cursor: pointer;
+    border: 1px solid #000000;
+}
+
+.menu-content {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    width: 100%;
+    overflow: hidden;
+}
+
+.menu-section {
+    width: 100%;
+    max-width: 900px;
+    margin: 0 auto;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
+
+/* ----------
+ MENU PANELS
+ -----------*/
+
+ .panel {
+    display: flex;
+    flex-direction: column;
+    border: 1px solid rgb(255 255 255 / 0.15);
+    background: rgb(0 0 0 / 0.25);
+    border-radius: 10px;
+    padding: 12px;
+}
+
+.panel h3 {
+    margin: 0;
+}
+
+.menu-panel {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    height: 100%;
+    margin-bottom: 6px;
+    margin-right: 6px;
+    margin-left: 6px;
+}
+
+.settings-section h3 {
+    margin: 0 0 10px 0;
+    font-weight: 100;
+}

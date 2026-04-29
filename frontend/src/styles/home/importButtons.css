@@ -1,0 +1,191 @@
+/* --------------------
+      TOP BUTTONS
+-------------------- */
+
+.clips-import {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    width: 100%;
+    height: auto;
+    min-height: 2.5rem;
+    padding-top: 6px;
+    margin-bottom: 5px;
+    gap: 8px;
+    align-items: center;
+}
+
+.import-buttons-container {
+    display: flex;
+    flex-direction: row;
+    min-width: 5rem;
+    padding-left: 15px;
+    padding-right: 5px;
+    padding-top: 5px;
+    align-items: center;
+}
+
+.import-buttons-container > button {
+    min-height: 2.2rem;
+    max-height: 2.5rem;
+    min-width: 5rem;
+    margin-right: 5px;
+    margin-bottom: 5px;
+    font-family: 'Jersey 10', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+    font-size: 18px;
+    background: black;
+    color: white;
+    border: 1px solid #555555;
+    border-radius: 8px;
+}
+
+#file-button {
+    transition: border 0.2s ease, 
+                box-shadow 0.2s ease, 
+                color 0.2s ease;
+}
+
+#file-button:hover {
+    cursor: pointer;
+    box-shadow: 0 0 15px rgb(var(--accent-rgb) / 0.4);
+    border: 1px solid var(--accent);
+    color: var(--accent);
+}
+
+.grid-checkboxes { 
+    display: flex;
+    align-items: center;
+    flex: 1;
+    justify-content: space-between;
+    gap: 8px;
+    min-width: 0;
+}
+
+.selectable-checkboxes {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.checkbox-row {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    height: 2.2rem;
+    padding: 2px;
+    margin-right: 5px;
+    white-space: nowrap;
+}
+
+.checkbox-row > span {
+    font-weight: 500;
+    font-size: 1.5rem;
+}
+
+.checkbox-row > p {
+    font-size: 20px;
+    margin: 0;
+    text-align: center;
+}
+
+.custom-checkbox {
+    display: inline-flex;
+    align-items: center;
+    cursor: pointer;
+    margin-right: 5px;
+    width: 25px;
+    height: 25px;
+}
+
+.custom-checkbox input {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.custom-checkbox > .checkmark {
+    width: 100%;
+    height: 100%;
+    border: 1.5px solid white;
+    border-radius: 4px;
+    background: transparent;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s ease;
+}
+
+.custom-checkbox > .checkmark:hover {
+    border: 1.5px solid var(--accent);
+}
+
+.custom-checkbox:has(input:disabled) {
+    cursor: not-allowed;
+}
+
+.custom-checkbox input:disabled + .checkmark {
+    border-color: #555;
+    opacity: 0.4;
+}
+
+.custom-checkbox input:checked + .checkmark::after {
+    content: "";
+    width: 6px;
+    height: 10.5px;
+    border-right: 2px solid var(--accent);
+    border-bottom: 2px solid var(--accent);
+    transform: rotate(45deg) translateY(-1px) translateX(-1px);
+}
+
+.zoomWrapper {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    padding-right: 10px;
+}
+
+.zoomWrapper > form {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 3px;
+}
+
+.zoomWrapper span {
+    color: rgb(146, 146, 146);
+}
+
+.zoomWrapper button {
+    width: 30px;
+    height: 30px;
+    background: black;
+    color: var(--accent);
+    outline: none;
+    border: 1px solid white;
+    border-radius: 5px;
+    font-size: 20px;
+    transition: border 0.1s ease;
+}
+
+.zoomWrapper button:hover {
+    border: 1px solid var(--accent);
+    cursor: pointer;
+}
+
+.info-bar {
+    height: 3%;
+    width: 100%;
+    display: flex;
+    align-items: center;
+    padding-left: 8px;
+}
+
+.info-bar-filename {
+    font-size: 0.75rem;
+    color: var(--text-secondary, rgba(255, 255, 255, 0.5));
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    user-select: text;
+}

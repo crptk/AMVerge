@@ -1,0 +1,123 @@
+/* --------------------
+   SETTINGS
+-------------------- */
+
+
+.settings-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    height: 40px;
+}
+
+.settings-label {
+    font-size: 22px;
+}
+
+.settings-control {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+    /* background: green; */
+    height: 100%;
+}
+
+.settings-control > .image-input {
+    width: 200px;
+}
+
+.settings-control > button {
+    margin: 0;
+}
+.settings-value {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    width: 70px;
+    font-size: 18px;
+    color: rgb(255 255 255 / 0.8);
+}
+
+.settings-control input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    background: transparent;
+    cursor: pointer;
+    width: 120px;
+}
+
+.settings-control input[type="range"]::-webkit-slider-runnable-track {
+    background: rgba(255, 255, 255, 0.1);
+    height: 6px;
+    border-radius: 3px;
+}
+
+.settings-control input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    margin-top: -5px; /* Centers thumb on the track */
+    background-color: var(--accent);
+    height: 16px;
+    width: 16px;
+    border-radius: 50%;
+    box-shadow: 0 0 10px var(--accent);
+}
+
+.settings-control input[type="range"]:focus::-webkit-slider-runnable-track {
+    background: rgba(255, 255, 255, 0.15);
+}
+.settings-path-value {
+    display: flex;
+    align-items: center;
+
+    min-width: 0;
+    max-width: 360px;
+    height: 84%;
+    padding: 0 8px;
+
+    font-size: 0.8rem;
+    font-family: inherit;
+    color: rgba(255, 255, 255, 0.75);
+    background: rgba(255,255,255,0.08);
+    border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 8px;
+    box-sizing: border-box;
+
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.settings-path-value:hover {
+    border-color: rgba(255,255,255,0.35);
+}
+
+.settings-select {
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 8px;
+    color: rgba(255, 255, 255, 0.85);
+    padding: 6px 12px;
+    font-size: 16px;
+    font-family: inherit;
+    cursor: pointer;
+    outline: none;
+    transition: all 0.2s ease;
+}
+
+.settings-select:hover {
+    border-color: rgba(255, 255, 255, 0.35);
+    background: rgba(255, 255, 255, 0.12);
+}
+
+.settings-select:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 8px var(--accent-low-alpha, rgba(255, 255, 255, 0.1));
+}
+
+.settings-select option {
+    background: #1a1a1a;
+    color: white;
+}

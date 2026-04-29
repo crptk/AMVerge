@@ -1,8 +1,8 @@
 import { open } from '@tauri-apps/plugin-shell';
 
-export default function AboutSection() {
+export default function About() {
   return (
-    <section className="settings-section about-section">
+    <section className="panel menu-panel">
       <h3>About AMVerge</h3>
       <div className="about-content" style={{ fontFamily: "Arial, sans-serif" }}>
         <p>
@@ -38,7 +38,10 @@ export default function AboutSection() {
             <strong>Home:</strong> Your main workspace for browsing clips and making selections.
           </li>
           <li>
-            <strong>Menu:</strong> Contains this page, settings, console (for bugs or errors), update logs, and credits to everyone who helped with the project.
+            <strong>Menu:</strong> Contains this page, console (for bugs or errors), update logs, and credits to everyone who helped with the project.
+          </li>
+          <li>
+            <strong>Settings:</strong> Manage your application settings and customize the look of AMVerge.
           </li>
         </ul>
 

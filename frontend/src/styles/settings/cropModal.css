@@ -1,0 +1,304 @@
+.crop-modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.85);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10000;
+    backdrop-filter: blur(8px);
+}
+
+.crop-modal {
+    width: min(800px, 90vw);
+    background: #0a0a0a;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 16px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.8);
+}
+
+.crop-modal-header {
+    padding: 16px 20px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.header-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.header-icon {
+    font-size: 1.2rem;
+    color: var(--accent);
+    margin-top: -2px; /* Nudge up to match font baseline */
+}
+
+.crop-modal-header h3 {
+    margin: 0;
+    font-family: 'Jersey 10', sans-serif;
+    font-size: 1.5rem;
+    letter-spacing: 1px;
+    color: var(--accent);
+    line-height: 1.1;
+    display: flex;
+    align-items: center;
+}
+
+.reset-btn {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: rgba(255, 255, 255, 0.7);
+    padding: 6px 12px;
+    border-radius: 6px;
+    font-family: 'Jersey 10', sans-serif;
+    font-size: 1rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    transition: all 0.2s ease;
+}
+
+.reset-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: white;
+    border-color: rgba(255, 255, 255, 0.3);
+}
+
+.crop-container-wrapper {
+    width: 100%;
+    height: 400px;
+    background: #000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+}
+
+.crop-container {
+    position: relative;
+    max-width: 100%;
+    max-height: 100%;
+}
+
+.custom-react-crop {
+    max-width: 100%;
+    max-height: 400px;
+}
+
+.ReactCrop__drag-handle {
+    background-color: var(--accent) !important;
+    border: 1px solid black !important;
+    width: 10px !important;
+    height: 10px !important;
+}
+
+.ReactCrop__crop-selection {
+    border: 1px solid var(--accent) !important;
+    box-shadow: 0 0 0 9999em rgba(0, 0, 0, 0.5) !important;
+}
+
+.crop-hint {
+    font-family: 'Jersey 10', sans-serif;
+    font-size: 0.9rem;
+    color: var(--accent);
+    opacity: 0.8;
+    margin: 0;
+    text-align: center;
+}
+
+.crop-toolbar {
+    padding: 20px;
+    display: grid;
+    grid-template-columns: auto auto auto;
+    gap: 30px;
+    background: rgba(255, 255, 255, 0.02);
+    border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.toolbar-section {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.toolbar-section label {
+    font-family: 'Jersey 10', sans-serif;
+    font-size: 0.9rem;
+    color: rgba(255, 255, 255, 0.4);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.aspect-buttons, .transform-buttons {
+    display: flex;
+    gap: 6px;
+}
+
+.toolbar-btn {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: white;
+    padding: 8px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-family: 'Jersey 10', sans-serif;
+    font-size: 0.9rem;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 36px;
+    height: 36px;
+}
+
+.toolbar-btn:hover {
+    background: rgba(255, 255, 255, 0.12);
+    border-color: rgba(255, 255, 255, 0.3);
+}
+
+.toolbar-btn.active {
+    background: var(--accent);
+    color: black;
+    border-color: var(--accent);
+}
+
+.custom-res-row {
+    display: flex;
+    gap: 8px;
+    margin-top: 4px;
+}
+
+.res-input-group {
+    display: flex;
+    align-items: center;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 6px;
+    padding: 2px 8px;
+    flex: 1;
+    height: 32px;
+}
+
+.res-input-group span {
+    font-family: 'Jersey 10', sans-serif;
+    font-size: 0.8rem;
+    color: rgba(255, 255, 255, 0.3);
+    margin-right: 6px;
+}
+
+.res-input-group input {
+    background: transparent;
+    border: none;
+    color: white;
+    font-family: 'Jersey 10', sans-serif;
+    font-size: 0.9rem;
+    width: 100%;
+    outline: none;
+}
+
+.res-input-group:focus-within {
+    border-color: var(--accent);
+}
+
+.crop-hint-section {
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+    align-items: flex-end;
+}
+
+.zoom-section input[type="range"] {
+    width: 100%;
+    margin-top: 5px;
+}
+
+.crop-modal-footer {
+    padding: 20px;
+    background: rgba(0, 0, 0, 0.4);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.footer-actions {
+    display: flex;
+    gap: 12px;
+}
+
+.crop-hint {
+    font-family: 'Jersey 10', sans-serif;
+    font-size: 0.9rem;
+    color: var(--accent);
+    opacity: 0.6;
+    margin: 0;
+}
+
+.footer-btn {
+    height: 40px;
+    min-width: 120px;
+    padding: 0 20px;
+    border-radius: 8px;
+    font-family: 'Jersey 10', sans-serif;
+    font-size: 1.1rem;
+    letter-spacing: 1px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    white-space: nowrap;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.footer-btn.cancel {
+    background: transparent;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    color: white;
+}
+
+.footer-btn.cancel:hover {
+    background: rgba(255, 255, 255, 0.05);
+    border-color: rgba(255, 255, 255, 0.4);
+}
+
+.footer-btn.primary {
+    background: transparent;
+    border: 1px solid var(--accent);
+    color: var(--accent);
+    min-width: 160px;
+}
+
+.footer-btn.primary:hover:not(:disabled) {
+    background: var(--accent);
+    color: black;
+    box-shadow: 0 0 20px rgba(var(--accent-rgb), 0.4);
+}
+
+.spinner {
+    width: 16px !important;
+    height: 16px !important;
+    border: 2px solid rgba(255, 255, 255, 0.1) !important;
+    border-top-color: currentColor !important;
+    border-radius: 50% !important;
+    animation: spin 0.8s linear infinite !important;
+    display: inline-block !important;
+}
+
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}

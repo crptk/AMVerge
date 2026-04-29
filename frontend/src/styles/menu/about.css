@@ -1,0 +1,47 @@
+/* --------------------
+   ABOUT
+-------------------- */
+
+.about-content {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 12px;
+    /* background: red; */
+    box-sizing: border-box;
+    scrollbar-width: thin;
+    scrollbar-color: var(--accent) transparent;
+}
+
+.about-content::-webkit-scrollbar {
+    width: 10px;
+    background: transparent;
+}
+
+.about-content::-webkit-scrollbar-thumb {
+    background: var(--accent);
+    border-radius: 8px;
+}
+
+.about-content::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.about-content ul,
+.about-content ol {
+    margin-left: 1.5em;
+    margin-bottom: 1em;
+    
+}
+
+.about-section p {
+    font-weight: normal;
+    font-size: 15px;
+}
+
+.about-section h4 {
+    font-size: 15px;
+    margin: 0;
+}
+

@@ -2,300 +2,485 @@
 
 This folder contains the native desktop layer for AMVerge.
 
-AMVerge uses React/TypeScript for the frontend, Python for the video processing backend, and Tauri/Rust as the bridge between them. The Rust code in `main.rs` is mostly glue code. It receives commands from the frontend, starts the Python backend or FFmpeg tools, sends progress updates back to the UI, and handles native app paths/resources.
+AMVerge uses React/TypeScript for the frontend, Python for the video processing backend, and Tauri/Rust as the bridge between them.
+
+The Rust side has now been refactored into multiple focused modules instead of one large `main.rs`.
 
 ## What this layer does
 
-`main.rs` is the main Tauri entrypoint for the desktop app. It handles:
+The Tauri layer handles:
 
 - starting scene detection
-- aborting scene detection while it is running
-- sending progress events to the frontend
+- aborting scene detection while running
 - exporting selected clips
-- merging selected clips into one video
-- checking if a video uses HEVC/H.265
-- generating browser-friendly preview proxies for clips that do not preview well in the webview
-- cleaning temporary episode/cache folders
-- resolving bundled binaries like `ffmpeg.exe`, `ffprobe.exe`, and the packaged Python backend
+- merging selected clips
+- checking codecs (HEVC / H.265)
+- generating preview proxy videos
+- deleting cache folders
+- moving episode storage folders
+- listing default storage directories
+- saving background images
+- sending progress events to the frontend
+- resolving bundled binaries like FFmpeg / FFprobe / Python backend
 
-The frontend calls these Rust functions through Tauri commands.
+Frontend React code communicates with these Rust functions using Tauri commands.
 
-## Folder structure
+---
+
+# Folder structure
 
 ```txt
 src-tauri/
 ├── bin/
 ├── capabilities/
-├── gen/
 ├── icons/
 ├── src/
-│   ├── lib.rs
-│   └── main.rs
-├── target/
-├── .gitignore
-├── build.rs
-├── Cargo.lock
+│   ├── main.rs
+│   ├── payloads.rs
+│   ├── state.rs
+│   ├── commands/
+│   │   ├── mod.rs
+│   │   ├── scenes.rs
+│   │   ├── export.rs
+│   │   ├── preview.rs
+│   │   ├── cache.rs
+│   │   └── settings.rs
+│   └── utils/
+│       ├── mod.rs
+│       ├── binaries.rs
+│       ├── logging.rs
+│       └── paths.rs
 ├── Cargo.toml
+├── Cargo.lock
+├── build.rs
 └── tauri.conf.json
+````
+
+---
+
+# Core files
+
+## `src/main.rs`
+
+Main Tauri entrypoint.
+
+Responsibilities:
+
+* starts the app
+* registers plugins
+* initializes shared state
+* exposes all frontend commands
+* wires modules together
+
+This file should stay small and mostly act as the app bootstrapper.
+
+---
+
+## `src/payloads.rs`
+
+Contains reusable event payload structs.
+
+Example:
+
+```rust
+ProgressPayload {
+  percent: u8,
+  message: String
+}
 ```
 
-### `src/main.rs`
+Used when Rust emits progress updates to React.
 
-Main native entrypoint for AMVerge.
+---
 
-This file registers the Tauri app, plugins, shared state, and all commands used by the frontend.
+## `src/state.rs`
 
-Main command groups:
+Contains shared app state stored inside Tauri.
 
-#### Scene detection
+Examples:
 
-`detect_scenes(...)`
+### `ActiveSidecar`
 
-Starts the Python backend and passes it the input video path and output cache folder.
+Tracks the running Python backend process so scene detection can be aborted.
 
-In development mode, it runs:
+### `PreviewProxyLocks`
+
+Prevents multiple proxy encodes for the same clip path.
+
+---
+
+# Commands
+
+All frontend callable Rust functions live inside `commands/`.
+
+---
+
+## `commands/scenes.rs`
+
+Handles scene detection.
+
+### `detect_scenes(...)`
+
+Starts Python backend:
+
+Development:
 
 ```txt
 backend/venv/Scripts/python.exe backend/app.py
 ```
 
-In production mode, it runs the bundled backend executable from Tauri resources:
+Production:
 
 ```txt
-bin/backend_script-x86_64-pc-windows-msvc/backend_script.exe
+bin/backend_script/backend_script.exe
 ```
 
-The Python backend writes final JSON to `stdout` and progress messages to `stderr` using this format:
+The backend returns:
+
+* final JSON on stdout
+* progress updates on stderr
+
+Progress format:
 
 ```txt
 PROGRESS|percent|message
 ```
 
-Rust listens for those progress lines and emits this frontend event:
+Rust converts this into frontend event:
 
 ```txt
 scene_progress
 ```
 
-The frontend uses that event to update the loading/progress UI.
+---
 
-#### Abort scene detection
+### `abort_detect_scenes(...)`
 
-`abort_detect_scenes(...)`
+Kills active backend process.
 
-Stops the active Python backend process.
-
-On Windows, this uses `taskkill /F /T /PID <pid>` so it also kills any child FFmpeg processes started by the backend.
-
-#### Exporting clips
-
-`export_clips(...)`
-
-Exports selected clips using FFmpeg.
-
-It supports two modes:
-
-1. **Separate clips**
-   - Exports each selected clip into its own file.
-   - Uses stream copy when the clip is already After Effects friendly.
-   - Falls back to H.264/AAC re-encode when needed.
-
-2. **Merged export**
-   - Creates one combined video from all selected clips.
-   - Uses FFmpeg concat and re-encodes to a broadly compatible MP4.
-
-Exports also emit `scene_progress` events so the frontend can show progress and elapsed time.
-
-#### Codec checks
-
-`check_hevc(...)`
-
-Uses `ffprobe` to check the first video stream codec.
-
-Returns `true` when the video is HEVC/H.265.
-
-This helps the frontend decide when a preview proxy may be needed.
-
-#### Preview proxies
-
-`ensure_preview_proxy(...)`
-
-Creates a `.preview.mp4` beside the original clip.
-
-This is used when a clip does not preview correctly in the Tauri webview, usually because of codec support issues like HEVC.
-
-The proxy is encoded as H.264/AAC MP4 so it works better in the browser/webview preview grid.
-
-This command also uses per-clip async locks so the app does not accidentally start multiple proxy encodes for the same clip at the same time.
-
-#### Preview error logging
-
-`hover_preview_error(...)`
-
-Logs preview errors reported by the frontend.
-
-This is mostly for debugging unsupported preview cases.
-
-#### Cache cleanup
-
-`delete_episode_cache(...)`
-
-Deletes a single episode cache folder.
-
-`clear_episode_panel_cache(...)`
-
-Deletes the full `episodes/` cache folder inside the app data directory.
-
-## Shared state
-
-### `ActiveSidecar`
-
-Tracks the process ID of the currently running Python backend.
-
-Used so `abort_detect_scenes` knows what process tree to kill.
-
-### `PreviewProxyLocks`
-
-Stores one async lock per clip path.
-
-Used to prevent duplicate preview proxy encodes for the same clip.
-
-## Progress events
-
-The Rust layer sends progress to the frontend using the Tauri event:
+On Windows uses:
 
 ```txt
-scene_progress
+taskkill /F /T /PID <pid>
 ```
 
-Payload shape:
+This also kills child FFmpeg processes.
 
-```ts
-{
-  percent: number;
-  message: string;
-}
-```
+---
 
-This event is used for both scene detection and exports.
+## `commands/export.rs`
 
-## Bundled tools
+Handles clip exporting.
 
-The app depends on these binaries:
+### `export_clips(...)`
 
-- `ffmpeg.exe`
-- `ffprobe.exe`
-- packaged Python backend executable
+Supports:
 
-`resolve_bundled_tool(...)` looks for FFmpeg/FFprobe in a few places:
+### Separate clips
 
-1. Tauri resources under `bin/`
-2. the packaged backend `_internal/` folder
-3. local dev folders while running in development mode
+Exports each clip individually.
 
-This makes the same Rust command code work in both development and production builds.
+Uses stream copy when possible.
 
-## Development vs production behavior
+Falls back to re-encode when needed.
 
-### Development
+### Merged export
 
-When running in debug mode, scene detection uses the local Python backend:
+Combines selected clips into one final file.
+
+Uses FFmpeg concat + re-encode.
+
+Also emits progress events.
+
+---
+
+## `commands/preview.rs`
+
+Handles preview compatibility.
+
+### `check_hevc(...)`
+
+Uses `ffprobe` to determine if video codec is HEVC/H.265.
+
+Returns boolean.
+
+Used by frontend to know if browser preview may fail.
+
+---
+
+### `ensure_preview_proxy(...)`
+
+Creates:
 
 ```txt
-backend/app.py
-backend/venv/Scripts/python.exe
+clip.preview.mp4
 ```
 
-This makes backend development easier because changes to Python can be tested without rebuilding the full packaged backend.
+Proxy uses H.264/AAC for better Tauri webview compatibility.
 
-### Production
+Uses internal locks so duplicate proxy generation cannot happen simultaneously.
 
-When running in release mode, scene detection uses the packaged backend executable bundled with the Tauri app.
+---
 
-This lets users run AMVerge without installing Python themselves.
+### `hover_preview_error(...)`
 
-## Logging
+Logs preview failures sent from frontend.
 
-Console logs use this format:
+Useful for debugging user systems/codecs.
+
+---
+
+## `commands/cache.rs`
+
+Handles cache deletion.
+
+### `delete_episode_cache(...)`
+
+Deletes one episode folder.
+
+### `clear_episode_panel_cache(...)`
+
+Deletes the full episodes storage folder.
+
+Supports custom storage directory if user selected one.
+
+---
+
+## `commands/settings.rs`
+
+Handles storage paths + general settings filesystem tasks.
+
+### `get_default_episodes_dir(...)`
+
+Returns default AMVerge storage path:
+
+```txt
+AppData/.../episodes
+```
+
+---
+
+### `move_episodes_to_new_dir(...)`
+
+Moves all existing episode folders from old path to new path.
+
+Used when user changes storage directory inside settings.
+
+Supports:
+
+* same-drive rename/move
+* cross-drive copy + delete fallback
+
+---
+
+### `save_background_image(...)`
+
+Copies selected custom background image into:
+
+```txt
+AppData/.../backgrounds
+```
+
+So frontend can reliably load it later.
+
+---
+
+# Utilities
+
+## `utils/binaries.rs`
+
+Resolves bundled tools.
+
+Finds:
+
+* ffmpeg.exe
+* ffprobe.exe
+* packaged Python backend
+
+Checks multiple locations so both dev + production builds work.
+
+---
+
+## `utils/logging.rs`
+
+Central logging helpers.
+
+Keeps logs clean, readable, and safe to share.
+
+Example format:
 
 ```txt
 AMVERGE|tag|message
 ```
 
-The logs are kept single-line and try to show filenames instead of full local file paths. This makes logs easier to screenshot and safer to share.
+---
 
-## `src/lib.rs`
+## `utils/paths.rs`
 
-This file is currently the default Tauri starter-style entrypoint. If the app is using `main.rs` directly, `lib.rs` is likely unused.
+Contains path helpers.
 
-It can stay for now, but it may be removed or cleaned up later if the project no longer needs it.
+Examples:
 
-## `bin/`
+* sanitize episode IDs
+* normalize paths
+* safe folder joins
+* filesystem helpers
 
-Stores bundled native binaries/resources used by the app.
+---
 
-Common contents include:
+# Frontend storage behavior
 
-- FFmpeg
-- FFprobe
-- packaged Python backend output
+## Selected storage directory
 
-These files are needed so AMVerge can process videos on a user's machine without requiring them to manually install video tools.
-
-## `capabilities/`
-
-Stores Tauri permission/capability files.
-
-This controls what the frontend is allowed to access through Tauri, such as dialogs, filesystem access, shell/plugin access, and other native permissions.
-
-## `icons/`
-
-App icons used by Tauri for the installed desktop app.
-
-## `tauri.conf.json`
-
-Main Tauri configuration file.
-
-This controls app metadata, build settings, bundle settings, resource inclusion, window behavior, updater settings, and security-related config.
-
-## `Cargo.toml` and `Cargo.lock`
-
-Rust dependency and lock files.
-
-`Cargo.toml` declares the Rust/Tauri dependencies.
-
-`Cargo.lock` locks exact dependency versions for reproducible builds.
-
-## `build.rs`
-
-Tauri build script.
-
-This is part of the normal Tauri project setup and helps generate/build the native app correctly.
-
-## `target/`
-
-Rust build output folder.
-
-This is generated by Cargo and should not be edited manually.
-
-## Notes for future cleanup
-
-`main.rs` is intentionally kept as one file right now so the app is easy to understand and drop in.
-
-A future refactor could probably be:
+Saved in frontend localStorage via theme settings:
 
 ```txt
-src/
-├── main.rs
-├── commands/
-│   ├── scene_detection.rs
-│   ├── export.rs
-│   ├── preview_proxy.rs
-│   └── cache.rs
-├── ffmpeg.rs
-├── paths.rs
-├── logging.rs
-└── state.rs
+episodesPath
 ```
 
-That is not required right now. The current structure is fine as long as the app stays understandable and stable.
+This stores where future imports + cache folders should go.
+
+---
+
+## Episode panel state
+
+Saved separately in localStorage:
+
+```txt
+amverge_episode_panel_v1
+```
+
+Stores:
+
+* episode list
+* folders
+* selected episode
+* selected folder
+
+This lets UI restore previous session quickly.
+
+---
+
+# Progress events
+
+Rust sends frontend progress using:
+
+```txt
+scene_progress
+```
+
+Payload:
+
+```ts
+{
+  percent: number,
+  message: string
+}
+```
+
+Used during:
+
+* scene detection
+* exporting
+
+---
+
+# Asset protocol / local files
+
+Tauri serves local files to frontend through:
+
+```ts
+convertFileSrc(...)
+```
+
+Used for:
+
+* thumbnails
+* clip previews
+* proxy previews
+* custom backgrounds
+
+If users choose custom storage folders, asset protocol scope must allow those folders.
+
+---
+
+# Development vs Production
+
+## Development
+
+Uses local Python backend.
+
+Fast iteration.
+
+## Production
+
+Uses packaged backend executable.
+
+No Python install required for users.
+
+---
+
+# Why the refactor helps
+
+Old version:
+
+```txt
+main.rs = everything
+```
+
+New version:
+
+```txt
+main.rs = bootstrap only
+commands = frontend callable logic
+utils = reusable helpers
+state = shared runtime state
+payloads = event structs
+```
+
+Benefits:
+
+* easier debugging
+* easier to scale
+* easier onboarding contributors
+* cleaner code ownership
+* simpler future features
+
+---
+
+# Future possible growth
+
+```txt
+commands/
+├── episodes.rs
+├── diagnostics.rs
+├── updater.rs
+├── metadata.rs
+```
+
+```txt
+utils/
+├── ffmpeg.rs
+├── thumbnails.rs
+├── filesystem.rs
+```
+
+---
+
+# Summary
+
+AMVerge's Rust layer is now a clean modular bridge between:
+
+```txt
+React UI
+↓
+Tauri Commands
+↓
+Rust Logic
+↓
+Python + FFmpeg
+↓
+Filesystem / Native OS
+```
+
+This keeps frontend simple while Rust handles native power efficiently.

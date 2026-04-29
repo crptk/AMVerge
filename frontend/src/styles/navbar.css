@@ -1,0 +1,53 @@
+/* --------------------
+   NAVBAR
+-------------------- */
+.navbar {
+    display: flex;
+    justify-content: space-between;
+}
+
+.navbar svg { 
+    width: 35px;
+    height: 35px;
+    color: white;
+    transition: filter 0.2s ease;
+}
+
+.navbar svg:hover {
+    cursor: pointer;
+    filter: drop-shadow(0 0 12px rgba(255, 255, 255, 0.7));
+}
+
+.navbar > .hevc-check {
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+    align-items: flex-end;
+    margin-right: 8px;
+    margin-top: 8px;
+    gap: 4px;
+}
+
+.navbar h1 {
+    margin: 0;
+    font-size: 35px;
+    font-weight: 10;
+}
+
+.navbar > .left-nav {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 0px;
+}
+
+.navbar span {
+    color: var(--accent);
+}
+
+.hevc-row {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+}

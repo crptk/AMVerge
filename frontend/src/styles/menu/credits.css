@@ -1,0 +1,51 @@
+/* --------
+   CREDITS
+---------- */
+.credits-content {
+    overflow-y: auto;
+}
+.credits-content::-webkit-scrollbar {
+    width: 10px;
+    background: transparent;
+}
+
+.credits-content::-webkit-scrollbar-thumb {
+    background: var(--accent);
+    border-radius: 8px;
+}
+
+.credits-content::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.credits-row {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between; 
+    align-items: center;   
+    margin-bottom: 1px;
+    margin-top: 10px;
+}
+
+.credits-row h4 {
+    margin-bottom: 10px;
+}
+.credits-row h4,
+.credits-row p {
+    margin: 0;
+    padding: 0;
+    font-family: arial;
+}
+
+.credits-row-inner {
+    display: flex;
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: space-between;
+    margin-top: 5px;
+    gap: 5rem;
+}
+
+.credits-row-inner a {
+    color: var(--accent);
+}

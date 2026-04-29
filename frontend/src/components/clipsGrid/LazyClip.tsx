@@ -8,7 +8,12 @@ import { memo, useState, useRef, useEffect, useCallback } from "react"
 import { invoke } from "@tauri-apps/api/core";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { LazyClipProps } from "./types.ts"
+import { DownloadButton } from "./DownloadButton.tsx";
 
+const DOWNLOAD_TONE_SAMPLE_SIZE = 24;
+const DOWNLOAD_TONE_SOURCE_SIZE = 34;
+const DOWNLOAD_TONE_SAMPLE_MARGIN = 6;
+const DOWNLOAD_TONE_THRESHOLD = 158;
 
 export const LazyClip = memo(function LazyClip({
   clip,
@@ -25,12 +30,16 @@ export const LazyClip = memo(function LazyClip({
   reportStaggerDemand,
   videoIsHEVC,
   userHasHEVC,
+  generalSettings,
+  onDownloadClip,
+  themeSettings,
 }: LazyClipProps) {
   // state and refs for tile visibility, hover, video element, and proxy state
   const [isVisible, setIsVisible] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
   const wrapperRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const thumbnailRef = useRef<HTMLImageElement | null>(null);
   const hasReportedErrorRef = useRef(false);
   const hasFirstFrameRef = useRef(false);
   const videoFrameCallbackIdRef = useRef<number | null>(null);
@@ -46,6 +55,7 @@ export const LazyClip = memo(function LazyClip({
   const [isVideoReady, setIsVideoReady] = useState(false);
   // the actual video source (original or proxy)
   const [effectiveSrc, setEffectiveSrc] = useState(clip.src);
+  const [downloadTone, setDownloadTone] = useState<"light" | "dark">("light");
 
   // determine if we need a proxy (HEVC not supported)
   const needsHevcProxy = videoIsHEVC === true && userHasHEVC.current === false;
@@ -259,7 +269,12 @@ export const LazyClip = memo(function LazyClip({
 
     const shouldPlay = showVideo && shouldMountVideo;
     if (shouldPlay) {
-      v.muted = true;
+      // Audio logic: only play audio if hovered AND setting is enabled.
+      // Grid preview (Preview-all) should remain muted unless specifically hovered.
+      const audioEnabled = isHovered && generalSettings.audioPlaybackHover;
+      v.muted = !audioEnabled;
+      v.volume = generalSettings.playbackVolume;
+
       v.autoplay = true;
       v.loop = true;
       try {
@@ -270,13 +285,14 @@ export const LazyClip = memo(function LazyClip({
       v.play().catch(() => {});
     } else {
       v.pause();
+      v.muted = true;
       try {
         v.currentTime = 0;
       } catch {
         // ignore
       }
     }
-  }, [showVideo, shouldMountVideo, effectiveSrc]);
+  }, [showVideo, shouldMountVideo, effectiveSrc, isHovered, generalSettings.audioPlaybackHover, generalSettings.playbackVolume]);
 
   const handleClick = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
@@ -301,6 +317,66 @@ export const LazyClip = memo(function LazyClip({
     },
     [clip.id, registerVideoRef]
   );
+
+  const updateDownloadToneFromThumbnail = useCallback((img: HTMLImageElement | null) => {
+    if (!img || img.naturalWidth === 0 || img.naturalHeight === 0) return;
+
+    try {
+      const canvas = document.createElement("canvas");
+      const ctx = canvas.getContext("2d", { willReadFrequently: true });
+      if (!ctx) return;
+
+      // Sample the icon zone (top-right) to choose dark/light icon color.
+      const targetSize = DOWNLOAD_TONE_SAMPLE_SIZE;
+      const sourceW = Math.min(DOWNLOAD_TONE_SOURCE_SIZE, img.naturalWidth);
+      const sourceH = Math.min(DOWNLOAD_TONE_SOURCE_SIZE, img.naturalHeight);
+      const margin = DOWNLOAD_TONE_SAMPLE_MARGIN;
+
+      const sx = Math.max(0, img.naturalWidth - sourceW - margin);
+      const sy = Math.max(0, margin);
+
+      canvas.width = targetSize;
+      canvas.height = targetSize;
+
+      ctx.drawImage(
+        img,
+        sx,
+        sy,
+        sourceW,
+        sourceH,
+        0,
+        0,
+        targetSize,
+        targetSize
+      );
+
+      const data = ctx.getImageData(0, 0, targetSize, targetSize).data;
+      let luminanceSum = 0;
+      let alphaSum = 0;
+
+      for (let i = 0; i < data.length; i += 4) {
+        const r = data[i];
+        const g = data[i + 1];
+        const b = data[i + 2];
+        const a = data[i + 3] / 255;
+        const luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+        luminanceSum += luminance * a;
+        alphaSum += a;
+      }
+
+      const avgLuminance = alphaSum > 0 ? luminanceSum / alphaSum : 128;
+      setDownloadTone(avgLuminance >= DOWNLOAD_TONE_THRESHOLD ? "dark" : "light");
+    } catch {
+      // Keep previous tone if sampling fails.
+    }
+  }, []);
+
+  useEffect(() => {
+    const img = thumbnailRef.current;
+    if (!img) return;
+    if (!img.complete) return;
+    updateDownloadToneFromThumbnail(img);
+  }, [clip.thumbnail, importToken, updateDownloadToneFromThumbnail]);
 
   return (
     <div
@@ -327,10 +403,14 @@ export const LazyClip = memo(function LazyClip({
         <>
           {/* Thumbnail — always rendered when visible, hidden on hover */}
           <img
+            ref={thumbnailRef}
             className="clip"
             src={`${convertFileSrc(clip.thumbnail)}?v=${importToken}`}
             style={{ opacity: shouldShowThumbnail ? 1 : 0 }}
             draggable={false}
+            onLoad={(e) => {
+              updateDownloadToneFromThumbnail(e.currentTarget);
+            }}
             onDragStart={(e) => {
               e.preventDefault();
               e.stopPropagation();
@@ -341,7 +421,7 @@ export const LazyClip = memo(function LazyClip({
             <video
               className="clip"
               src={`${convertFileSrc(effectiveSrc)}?v=${importToken}`}
-              muted
+              muted={!(isHovered && generalSettings.audioPlaybackHover)}
               loop
               autoPlay
               playsInline
@@ -355,7 +435,9 @@ export const LazyClip = memo(function LazyClip({
               }}
               onLoadedMetadata={(e) => {
                 if (gridPreview || isHovered) {
-                  e.currentTarget.muted = true;
+                  const audioEnabled = isHovered && generalSettings.audioPlaybackHover;
+                  e.currentTarget.muted = !audioEnabled;
+                  e.currentTarget.volume = generalSettings.playbackVolume;
                   e.currentTarget.play().catch(() => {});
                 }
               }}
@@ -409,6 +491,11 @@ export const LazyClip = memo(function LazyClip({
                     setTimeout(() => {
                       const vid = videoRef.current;
                       if (!vid) return;
+                      
+                      const audioEnabled = isHovered && generalSettings.audioPlaybackHover;
+                      vid.muted = !audioEnabled;
+                      vid.volume = generalSettings.playbackVolume;
+                      
                       vid.load();
                       vid.play().catch(() => {});
                     }, 0);
@@ -420,6 +507,9 @@ export const LazyClip = memo(function LazyClip({
                 })();
               }}
             />
+          )}
+          {themeSettings.showDownloadButton && (
+            <DownloadButton tone={downloadTone} onClick={() => onDownloadClip(clip)} />
           )}
         </>
       ) : (

@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 
-export default function useHEVCSupport(userHasHEVC: React.MutableRefObject<boolean>) {
+export default function useHEVCSupport(userHasHEVC: React.RefObject<boolean>) {
   useEffect(() => {
     try {
       const candidates = [

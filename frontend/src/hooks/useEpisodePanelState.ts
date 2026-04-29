@@ -18,6 +18,7 @@ type episodePanelProps = {
   setFocusedClip: React.Dispatch<React.SetStateAction<string | null>>;
   setImportedVideoPath: React.Dispatch<React.SetStateAction<string | null>>;
   setImportToken: React.Dispatch<React.SetStateAction<string>>;
+  episodesPath: string | null;
 };
 
 export default function useEpisodePanelState(props: episodePanelProps) {
@@ -28,24 +29,24 @@ export default function useEpisodePanelState(props: episodePanelProps) {
 		props.setSelectedFolderId(null);
 	};
 
-  const handleOpenEpisode = (episodeId: string) => {
-    const selectedEpisode = props.episodes.find((e) => e.id === episodeId);
-    if (!selectedEpisode) return;
+	const handleOpenEpisode = (episodeId: string) => {
+		const selectedEpisode = props.episodes.find((e) => e.id === episodeId);
+		if (!selectedEpisode) return;
 
 
-    props.setSelectedClips(new Set());
-    props.setFocusedClip(null);
-    props.setSelectedEpisodeId(episodeId);
-    props.setOpenedEpisodeId(episodeId);
-    props.setSelectedFolderId(null);
-    props.setImportedVideoPath(selectedEpisode.videoPath);
-    props.setImportToken(Date.now().toString());
+		props.setSelectedClips(new Set());
+		props.setFocusedClip(null);
+		props.setSelectedEpisodeId(episodeId);
+		props.setOpenedEpisodeId(episodeId);
+		props.setSelectedFolderId(null);
+		props.setImportedVideoPath(selectedEpisode.videoPath);
+		props.setImportToken(Date.now().toString());
 
-    startTransition(() => {
-        props.setClips(selectedEpisode.clips);
-    });
-    console.log(selectedEpisode.clips);
-  };
+		startTransition(() => {
+			props.setClips(selectedEpisode.clips);
+		});
+		console.log(selectedEpisode.clips);
+	};
 
 	const handleSelectFolder = (folderId: string | null) => {
 		props.setSelectedFolderId(folderId);
@@ -239,7 +240,6 @@ export default function useEpisodePanelState(props: episodePanelProps) {
 		);
 	};
 
-    
 	return {
 		handleSelectEpisode,
 		handleOpenEpisode,

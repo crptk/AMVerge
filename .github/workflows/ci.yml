@@ -45,14 +45,14 @@ jobs:
           backend/venv/Scripts/python -m pip install --upgrade pip
           backend/venv/Scripts/python -m pip install pyinstaller av pillow numpy
 
-      - name: Copy ffmpeg binaries for backend build
+      - name: Install FFmpeg
         shell: pwsh
         run: |
+          choco install ffmpeg -y
           New-Item -ItemType Directory -Force backend/bin
-
-          Copy-Item frontend/src-tauri/bin/ffmpeg.exe backend/bin/ffmpeg.exe -Force
-          Copy-Item frontend/src-tauri/bin/ffprobe.exe backend/bin/ffprobe.exe -Force
-
+          Copy-Item "C:\ProgramData\chocolatey\bin\ffmpeg.exe" backend/bin/ffmpeg.exe -Force
+          Copy-Item "C:\ProgramData\chocolatey\bin\ffprobe.exe" backend/bin/ffprobe.exe -Force
+          
       - name: Build Python sidecar
         working-directory: frontend
         run: node scripts/build-sidecar.mjs

@@ -1,7 +1,17 @@
 import VideoPlayer from "./videoPlayer/VideoPlayer.tsx"
-import InfoBox from "./InfoBox.tsx"
+import HowToUse from "./HowToUse.tsx"
 import React from "react";
-import { FaFolderOpen } from "react-icons/fa";
+import { FaFolderOpen, FaFileExport, FaVideo, FaLayerGroup, FaFolder, FaRocket } from "react-icons/fa";
+import { GeneralSettings } from "../../settings/generalSettings";
+import Dropdown from "../common/Dropdown";
+
+const EXPORT_OPTIONS = [
+  { value: "mp4", label: "MP4" },
+  { value: "mkv", label: "MKV" },
+  { value: "mov", label: "MOV" },
+  { value: "avi", label: "AVI" },
+  { value: "xml", label: "XML" },
+];
 type PreviewContainerProps = {
   focusedClip: string | null;
   focusedClipThumbnail: string | null;
@@ -18,6 +28,8 @@ type PreviewContainerProps = {
   onPickExportDir: () => void;
   onExportDirChange: (dir: string) => void;
   defaultMergedName: string;
+  generalSettings: GeneralSettings;
+  setGeneralSettings: React.Dispatch<React.SetStateAction<GeneralSettings>>;
 };
 
 export default function PreviewContainer (props: PreviewContainerProps) {
@@ -63,45 +75,81 @@ export default function PreviewContainer (props: PreviewContainerProps) {
             <p>No clip selected</p>
         )}
       </div>
-      <div className="preview-export">
-        <div className="checkbox-row">
-          <label className="custom-checkbox">
-            <input 
-              type="checkbox"
-              className="checkbox"
-              checked={mergeEnabled}
-              onChange={(e) => setMergeEnabled(e.target.checked)}
+      <div className="export-panel">
+        <div className="export-header">
+          <FaFileExport className="header-icon" />
+          <span className="export-title">EXPORT SETTINGS</span>
+        </div>
+
+        <div className="export-settings-row">
+          <div className="export-setting-group">
+            <label className="export-label">
+              <FaVideo className="label-icon" /> Format
+            </label>
+            <Dropdown
+              className="export-format-select"
+              options={EXPORT_OPTIONS}
+              value={props.generalSettings.exportFormat}
+              onChange={(val) =>
+                props.setGeneralSettings((prev) => ({
+                  ...prev,
+                  exportFormat: val as any,
+                }))
+              }
             />
-            <span className="checkmark"></span>
+          </div>
+
+          <div className="export-setting-group">
+            <label className="export-label">
+              <FaLayerGroup className="label-icon" /> Options
+            </label>
+            <div className="checkbox-row">
+              <label className="custom-checkbox">
+                <input 
+                  type="checkbox"
+                  className="checkbox"
+                  checked={mergeEnabled}
+                  onChange={(e) => setMergeEnabled(e.target.checked)}
+                />
+                <span className="checkmark"></span>
+              </label>
+              <p>Merge clips</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="export-path-section">
+          <label className="export-label">
+            <FaFolder className="label-icon" /> Output Directory
           </label>
-          <p>Merge clips</p>
+          <div className="export-dir-row">
+            <input
+              type="text"
+              className="export-dir-input"
+              placeholder="Select destination..."
+              value={props.exportDir || ""}
+              onChange={(e) => props.onExportDirChange(e.target.value)}
+            />
+            <button
+              className="buttons export-dir-browse"
+              onClick={props.onPickExportDir}
+              title="Browse for output folder"
+            >
+              <FaFolderOpen />
+            </button>
+          </div>
         </div>
-        <div className="export-dir-row">
-          <input
-            type="text"
-            className="export-dir-input"
-            placeholder="Output directory..."
-            value={props.exportDir || ""}
-            onChange={(e) => props.onExportDirChange(e.target.value)}
-          />
-          <button
-            className="buttons export-dir-browse"
-            onClick={props.onPickExportDir}
-            title="Browse for output folder"
-          >
-            <FaFolderOpen />
-          </button>
-        </div>
+
         <button 
-          className="buttons" 
+          className="buttons export-main-button" 
           id="file-button"
           onClick={onExportClick}
         >
-          Export
+          <FaRocket className="btn-icon" /> Export Now
         </button>
       </div>
       
-      <InfoBox/>
+      <HowToUse/>
 
       {showMergeNameModal && (
         <div
