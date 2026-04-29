@@ -4,14 +4,9 @@ import { ClipItem } from "../../types/domain";
 export type ClipContainerProps = {
   gridSize: number;
   gridRef: React.RefObject<HTMLDivElement | null>;
-  cols: number;
-  gridPreview: boolean;
-  importToken: string;
-  loading: boolean;
   isEmpty: boolean;
   userHasHEVC: React.RefObject<boolean>;
   onDownloadClip: (clip: ClipItem) => void;
-  themeSettings: ThemeSettings;
 };
 
 export type DeferredProxy = {
@@ -29,10 +24,8 @@ export type ProxyDemand = {
 export type LazyClipProps = {
   clip: ClipItem;
   index: number;
-  importToken: string;
   isExportSelected: boolean;
   isFocused: boolean;
-  gridPreview: boolean;
   requestProxySequential: (clipPath: string, priority: boolean) => Promise<string>;
   reportProxyDemand: (clipPath: string, demand: { order: number; priority: boolean } | null) => void;
   onClipClick: (
@@ -51,5 +44,4 @@ export type LazyClipProps = {
   reportStaggerDemand: (key: string, demand: { order: number; onReady: () => void } | null) => void;
   userHasHEVC: React.RefObject<boolean>;
   onDownloadClip: (clip: ClipItem) => void;
-  themeSettings: ThemeSettings;
 };

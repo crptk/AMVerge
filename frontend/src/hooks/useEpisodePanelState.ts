@@ -1,40 +1,30 @@
 import { EpisodeEntry, EpisodeFolder } from "../types/domain";
 import { startTransition }  from "react";
 import { useAppStateStore } from "../store/appStore";
+import { useEpisodePanelMetadataStore, useEpisodePanelRuntimeStore } from "../store/episodeStore";
 
-type episodePanelProps = {
-  setImportToken: React.Dispatch<React.SetStateAction<string>>;
-};
+export default function useEpisodePanelState() {
+	const episodes = useEpisodePanelRuntimeStore(s => s.episodes);
+	const setEpisodes = useEpisodePanelRuntimeStore(s => s.setEpisodes);
 
-export default function useEpisodePanelState(props: episodePanelProps) {
-	const focusedClip = useAppStateStore((s) => s.focusedClip);
-	const setFocusedClip = useAppStateStore((s) => s.setFocusedClip);
+	const selectedEpisodeId = useEpisodePanelRuntimeStore(s => s.selectedEpisodeId);
+	const setSelectedEpisodeId = useEpisodePanelRuntimeStore(s => s.setSelectedEpisodeId);
 
-	const selectedClips = useAppStateStore((s) => s.selectedClips);
-	const setSelectedClips = useAppStateStore((s) => s.setSelectedClips);
+	const episodeFolders = useEpisodePanelMetadataStore(s => s.episodeFolders);
+	const setEpisodeFolders = useEpisodePanelMetadataStore(s => s.setEpisodeFolders);
 
-	const clips = useAppStateStore((s) => s.clips);
-	const setClips = useAppStateStore((s) => s.setClips);
+	const openedEpisodeId = useEpisodePanelRuntimeStore(s => s.openedEpisodeId);
+	const setOpenedEpisodeId = useEpisodePanelRuntimeStore(s => s.setOpenedEpisodeId);
 
-	const episodes = useAppStateStore((s) => s.episodes);
-	const setEpisodes = useAppStateStore((s) => s.setEpisodes);
+	const selectedFolderId = useEpisodePanelRuntimeStore(s => s.selectedFolderId);
+	const setSelectedFolderId = useEpisodePanelRuntimeStore(s => s.setSelectedFolderId);
 
-	const selectedEpisodeId = useAppStateStore((s) => s.selectedEpisodeId);
-	const setSelectedEpisodeId = useAppStateStore((s) => s.setSelectedEpisodeId);
+	const setFocusedClip = useAppStateStore(s => s.setFocusedClip);
+	const setSelectedClips = useAppStateStore(s => s.setSelectedClips);
+	const setClips = useAppStateStore(s => s.setClips);
+	const setImportedVideoPath = useAppStateStore(s => s.setImportedVideoPath);
+	const setImportToken = useAppStateStore(s => s.setImportToken)
 
-	const episodeFolders = useAppStateStore((s) => s.episodeFolders);
-	const setEpisodeFolders = useAppStateStore((s) => s.setEpisodeFolders);
-
-	const openedEpisodeId = useAppStateStore((s) => s.openedEpisodeId);
-	const setOpenedEpisodeId = useAppStateStore((s) => s.setOpenedEpisodeId);
-
-	const selectedFolderId = useAppStateStore((s) => s.selectedFolderId);
-	const setSelectedFolderId = useAppStateStore((s) => s.setSelectedFolderId);
-
-	const setImportedVideoPath = useAppStateStore((s) => s.setImportedVideoPath);
-
-
-	
 	// Handlers
 	const handleSelectEpisode = (episodeId: string) => {
 		setSelectedEpisodeId(episodeId);
@@ -52,7 +42,7 @@ export default function useEpisodePanelState(props: episodePanelProps) {
 		setOpenedEpisodeId(episodeId);
 		setSelectedFolderId(null);
 		setImportedVideoPath(selectedEpisode.videoPath);
-		props.setImportToken(Date.now().toString());
+		setImportToken(Date.now().toString());
 
 		startTransition(() => {
 			setClips(selectedEpisode.clips);

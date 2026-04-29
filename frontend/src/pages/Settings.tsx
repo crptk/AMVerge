@@ -2,21 +2,18 @@ import { useState } from "react";
 import GeneralSection from "../components/settings/GeneralSection";
 import AppearanceSection from "../components/settings/AppearanceSection";
 import DiscordRPCSection from "../components/settings/DiscordRPCSection";
-
+import { useAppStateStore } from "../store/appStore";
+import { remapPathRoot } from "../utils/episodeUtils";
 const PAGES = [
   { key: "general", label: "General" },
   { key: "appearance", label: "Appearance" },
   { key: "discord", label: "Discord RPC" },
 ];
 
-type SettingsProps = {
-  onEpisodesPathChanged: (oldPath: string, newPath: string) => void;
-};
 
-export default function Settings({
-  onEpisodesPathChanged,
-}: SettingsProps) {
+export default function Settings() {
   const [activeTab, setActiveTab] = useState("general");
+
 
   return (
     <div className="menu-page">
@@ -40,9 +37,7 @@ export default function Settings({
         <div className="menu-section">
           <div className="tab-content" style={{ flex: 1 }}>
             {activeTab === "general" && (
-              <GeneralSection
-                onEpisodesPathChanged={onEpisodesPathChanged}
-              />
+              <GeneralSection/>
             )}
 
             {activeTab === "appearance" && (

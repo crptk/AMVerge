@@ -12,7 +12,7 @@ import useEpisodePanelMenus from "../hooks/useEpisodePanelMenus";
 import useEpisodePanelStructure from "../hooks/useEpisodePanelStructure";
 
 import type { EpisodePanelProps } from "../types";
-import { useAppStateStore } from "../../../store/appStore";
+import { useEpisodePanelMetadataStore, useEpisodePanelRuntimeStore } from "../../../store/episodeStore";
 
 export default function EpisodePanel(props: EpisodePanelProps) {
   const panelListRef = useRef<HTMLDivElement | null>(null);
@@ -26,11 +26,11 @@ export default function EpisodePanel(props: EpisodePanelProps) {
   const [nextSortDirection, setNextSortDirection] = useState<"asc" | "desc">("asc");
   const [multiSelectedIds, setMultiSelectedIds] = useState<Set<string>>(new Set());
 
-  const episodes = useAppStateStore(s => s.episodes);
-  const episodeFolders = useAppStateStore(s => s.episodeFolders);
+  const episodes = useEpisodePanelRuntimeStore(s => s.episodes);
+  const episodeFolders = useEpisodePanelMetadataStore(s => s.episodeFolders);
 
-  const selectedEpisodeId = useAppStateStore(s => s.selectedEpisodeId);
-  const selectedFolderId = useAppStateStore(s => s.selectedFolderId);
+  const selectedEpisodeId = useEpisodePanelRuntimeStore(s => s.selectedEpisodeId);
+  const selectedFolderId = useEpisodePanelRuntimeStore(s => s.selectedFolderId);
   
   const {
     folderById,
@@ -38,10 +38,7 @@ export default function EpisodePanel(props: EpisodePanelProps) {
     rootEpisodes,
     episodesByFolderId,
     flatEpisodeOrder,
-  } = useEpisodePanelStructure({
-    episodes: episodes,
-    episodeFolders: episodeFolders,
-  });
+  } = useEpisodePanelStructure();
 
   const clearClickGesture = () => {
     clickGestureRef.current = { key: null, ts: 0 };
@@ -130,8 +127,6 @@ export default function EpisodePanel(props: EpisodePanelProps) {
     openRenameFolderModal,
     openClearConfirmModal,
   } = useEpisodePanelMenus({
-    episodes: episodes,
-    episodeFolders: episodeFolders,
     multiSelectedIds,
     setMultiSelectedIds,
     clearClickGesture,

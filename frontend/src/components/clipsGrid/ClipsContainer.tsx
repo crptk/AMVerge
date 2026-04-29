@@ -10,6 +10,7 @@ import { useStaggeredMountQueue } from "./staggeredMountQueue.ts";
 import useViewportAwareProxyQueue from "./proxyQueue.ts";
 import { ClipContainerProps } from "./types.ts";
 import { useAppStateStore } from "../../store/appStore.ts";
+import { useUIStateStore } from "../../store/UIStore.ts";
 
 export default function ClipsContainer(props: ClipContainerProps) {
   const videoRefs = useRef<Record<string, HTMLVideoElement | null>>({});
@@ -20,6 +21,12 @@ export default function ClipsContainer(props: ClipContainerProps) {
   
   const focusedClip = useAppStateStore(s => s.focusedClip);
   const setFocusedClip = useAppStateStore(s => s.setFocusedClip);
+
+  const loading = useAppStateStore(s => s.loading);
+
+  const cols = useUIStateStore(s => s.cols);
+  const importToken = useAppStateStore(s => s.importToken);
+
   // Clean up refs for clips that are no longer present
   useEffect(() => {
     const validClipIds = new Set(clips.map((c) => c.id));
@@ -36,12 +43,12 @@ export default function ClipsContainer(props: ClipContainerProps) {
   const { reportStaggerDemand } = useStaggeredMountQueue();
 
   // Calculate number of columns for the grid
-  const gridColumns = props.loading
-    ? props.cols
-    : Math.max(1, Math.min(props.cols, clips.length));
+  const gridColumns = loading
+    ? cols
+    : Math.max(1, Math.min(cols, clips.length));
 
   // Set max width for clips (wider if only 1-2 clips)
-  const clipMaxWidth = !props.loading && clips.length <= 2 ? 520 : 260;
+  const clipMaxWidth = !loading && clips.length <= 2 ? 520 : 260;
 
   // Register a video element ref for a given clip
   const registerVideoRef = useCallback((clipId: string, el: HTMLVideoElement | null) => {
@@ -113,7 +120,7 @@ export default function ClipsContainer(props: ClipContainerProps) {
 
   useEffect(() => {
     containerRef.current?.scrollTo({ top: 0 });
-  }, [props.importToken]);
+  }, [importToken]);
 
   return (
     <main className="clips-container" ref={containerRef}>
@@ -128,7 +135,7 @@ export default function ClipsContainer(props: ClipContainerProps) {
             ["--clip-max-width" as any]: `${clipMaxWidth}px`,
           }}
         >
-          {props.loading
+          {loading
             ? Array.from({ length: 12 }).map((_, i) => (
                 <div key={i} className="clip-skeleton" />
               ))
@@ -137,10 +144,8 @@ export default function ClipsContainer(props: ClipContainerProps) {
                   key={clip.id}
                   clip={clip}
                   index={index}
-                  importToken={props.importToken}
                   isExportSelected={(selectedClips ?? new Set()).has(clip.id)}
                   isFocused={focusedClip === clip.src}
-                  gridPreview={props.gridPreview}
                   requestProxySequential={requestProxySequential}
                   reportProxyDemand={reportProxyDemand}
                   registerVideoRef={registerVideoRef}
@@ -149,7 +154,6 @@ export default function ClipsContainer(props: ClipContainerProps) {
                   onClipDoubleClick={handleClipDoubleClick}
                   userHasHEVC={props.userHasHEVC}
                   onDownloadClip={props.onDownloadClip}
-                  themeSettings={props.themeSettings}
                 />
               ))}
         </div>

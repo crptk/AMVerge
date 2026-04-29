@@ -4,7 +4,6 @@ import type React from "react";
 export type Page = "home" | "menu" | "settings";
 
 export type SidebarProps = {
-  sideBarEnabled: boolean;
   activePage: Page;
   setActivePage: React.Dispatch<React.SetStateAction<Page>>;
   onSelectFolder: (folderId: string | null) => void;

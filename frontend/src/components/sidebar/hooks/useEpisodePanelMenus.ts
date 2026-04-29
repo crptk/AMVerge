@@ -1,18 +1,16 @@
 // Menu and modal state hook for the Episode Panel. Owns context menus, text modals, confirm modals, and close behavior.
+import { useEpisodePanelMetadataStore, useEpisodePanelRuntimeStore } from "../../../store/episodeStore";
 import { useEffect, useRef, useState } from "react";
 import type React from "react";
 import type {
   ConfirmModalState,
   EpisodeContextMenuState,
-  EpisodePanelProps,
   FolderContextMenuState,
   PanelContextMenuState,
   TextModalState,
 } from "../types";
 
 type UseEpisodePanelMenusArgs = {
-  episodes: EpisodePanelProps["episodes"];
-  episodeFolders: EpisodePanelProps["episodeFolders"];
   multiSelectedIds: Set<string>;
   setMultiSelectedIds: React.Dispatch<React.SetStateAction<Set<string>>>;
   clearClickGesture: () => void;
@@ -26,8 +24,6 @@ type UseEpisodePanelMenusArgs = {
 };
 
 export default function useEpisodePanelMenus({
-  episodes,
-  episodeFolders,
   multiSelectedIds,
   setMultiSelectedIds,
   clearClickGesture,
@@ -43,9 +39,11 @@ export default function useEpisodePanelMenus({
   const [panelContextMenu, setPanelContextMenu] = useState<PanelContextMenuState | null>(null);
   const [textModal, setTextModal] = useState<TextModalState | null>(null);
   const [confirmModal, setConfirmModal] = useState<ConfirmModalState | null>(null);
-
   const textModalInputRef = useRef<HTMLInputElement | null>(null);
 
+  const episodes = useEpisodePanelRuntimeStore(s => s.episodes);
+  const episodeFolders = useEpisodePanelMetadataStore(s => s.episodeFolders);
+  
   useEffect(() => {
     if (!contextMenu && !folderContextMenu && !panelContextMenu && !textModal && !confirmModal) return;
 

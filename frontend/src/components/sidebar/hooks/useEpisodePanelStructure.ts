@@ -1,30 +1,29 @@
 // Derived structure hook for the Episode Panel. Builds lookup maps and ordered episode lists from folders and episodes.
 import { useMemo } from "react";
 import type { EpisodeEntry, EpisodeFolder } from "../../../types/domain";
+import { useEpisodePanelMetadataStore, useEpisodePanelRuntimeStore } from "../../../store/episodeStore";
 
-type UseEpisodePanelStructureArgs = {
-  episodes: EpisodeEntry[];
-  episodeFolders: EpisodeFolder[];
-};
+export default function useEpisodePanelStructure() {
+  const episodes = useEpisodePanelRuntimeStore((s) => s.episodes);
+  const episodeFolders = useEpisodePanelMetadataStore((s) => s.episodeFolders);
 
-export default function useEpisodePanelStructure({
-  episodes,
-  episodeFolders,
-}: UseEpisodePanelStructureArgs) {
+  const safeFolders = Array.isArray(episodeFolders) ? episodeFolders : [];
+  const safeEpisodes = Array.isArray(episodes) ? episodes : [];
+
   const folderById = useMemo(() => {
     const map = new Map<string, EpisodeFolder>();
 
-    for (const folder of episodeFolders) {
+    for (const folder of safeFolders) {
       map.set(folder.id, folder);
     }
 
     return map;
-  }, [episodeFolders]);
+  }, [safeFolders]);
 
   const foldersByParentId = useMemo(() => {
     const map = new Map<string | null, EpisodeFolder[]>();
 
-    for (const folder of episodeFolders) {
+    for (const folder of safeFolders) {
       const key = folder.parentId ?? null;
       const list = map.get(key) ?? [];
 
@@ -33,16 +32,16 @@ export default function useEpisodePanelStructure({
     }
 
     return map;
-  }, [episodeFolders]);
+  }, [safeFolders]);
 
   const rootEpisodes = useMemo(() => {
-    return episodes.filter((episode) => episode.folderId === null);
-  }, [episodes]);
+    return safeEpisodes.filter((episode) => episode.folderId === null);
+  }, [safeEpisodes]);
 
   const episodesByFolderId = useMemo(() => {
     const map = new Map<string, EpisodeEntry[]>();
 
-    for (const episode of episodes) {
+    for (const episode of safeEpisodes) {
       if (!episode.folderId) continue;
 
       const list = map.get(episode.folderId) ?? [];
@@ -51,7 +50,7 @@ export default function useEpisodePanelStructure({
     }
 
     return map;
-  }, [episodes]);
+  }, [safeEpisodes]);
 
   const flatEpisodeOrder = useMemo(() => {
     const order: string[] = [];

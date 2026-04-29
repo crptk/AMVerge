@@ -1,30 +1,30 @@
 import React from "react";
 import Sidebar from "./sidebar/Sidebar";
 import Navbar from "./Navbar";
+import { useUIStateStore } from "../store/UIStore";
 
 export interface AppLayoutProps {
   windowWrapperRef: React.RefObject<HTMLDivElement | null>;
   sidebarProps: React.ComponentProps<typeof Sidebar>;
-  navbarProps: React.ComponentProps<typeof Navbar>;
-  dividerProps: {
-    onPointerDown: (e: React.PointerEvent<HTMLDivElement>) => void;
-    dividerOffsetPx: number;
-    sidebarWidthPx: number;
-  };
+  onPointerDown: (e: React.PointerEvent<HTMLDivElement>) => void;
   children: React.ReactNode;
   loadingOverlay?: React.ReactNode;
   isDragging: boolean;
+  userHasHEVC: boolean;
 }
 
 export default function AppLayout({
   windowWrapperRef,
   sidebarProps,
-  navbarProps,
-  dividerProps,
+  onPointerDown,
   children,
   loadingOverlay,
   isDragging,
+  userHasHEVC
 }: AppLayoutProps) {
+  const sidebarWidthPx = useUIStateStore(s => s.sidebarWidthPx);
+  const dividerOffsetPx = useUIStateStore(s => s.dividerOffsetPx);
+  const sidebarEnabled = useUIStateStore(s => s.sidebarEnabled);
   return (
     <main className="app-root">
       {loadingOverlay}
@@ -37,16 +37,16 @@ export default function AppLayout({
         className="window-wrapper"
         ref={windowWrapperRef}
         style={{
-          ["--amverge-sidebar-width" as any]: `${dividerProps.sidebarWidthPx}px`,
-          ["--amverge-divider-offset" as any]: `${dividerProps.dividerOffsetPx}px`,
+          ["--amverge-sidebar-width" as any]: `${sidebarWidthPx}px`,
+          ["--amverge-divider-offset" as any]: `${dividerOffsetPx}px`,
         }}
       >
-        {sidebarProps.sideBarEnabled && (
+        {sidebarEnabled && (
           <>
             <Sidebar {...sidebarProps} />
             <div
               className="divider sidebar-splitter"
-              onPointerDown={dividerProps.onPointerDown}
+              onPointerDown={onPointerDown}
               role="separator"
               aria-orientation="vertical"
               aria-label="Resize sidebar"
@@ -58,7 +58,7 @@ export default function AppLayout({
           </>
         )}
         <div className="content-wrapper">
-          <Navbar {...navbarProps} />
+          <Navbar userHasHEVC={userHasHEVC}/>
           {children}
         </div>
       </div>

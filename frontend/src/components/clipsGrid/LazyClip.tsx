@@ -9,7 +9,9 @@ import { invoke } from "@tauri-apps/api/core";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { LazyClipProps } from "./types.ts"
 import { DownloadButton } from "./DownloadButton.tsx";
-import { useGeneralSettingsStore } from "../../store/settingsStore.ts";
+import { useGeneralSettingsStore, useThemeSettingsStore } from "../../store/settingsStore.ts";
+import { useUIStateStore } from "../../store/UIStore.ts";
+import { useAppStateStore } from "../../store/appStore.ts";
 
 const DOWNLOAD_TONE_SAMPLE_SIZE = 24;
 const DOWNLOAD_TONE_SOURCE_SIZE = 34;
@@ -19,20 +21,16 @@ const DOWNLOAD_TONE_THRESHOLD = 158;
 export const LazyClip = memo(function LazyClip({
   clip,
   index,
-  importToken,
   isExportSelected,
   isFocused,
-  gridPreview,
   requestProxySequential,
   reportProxyDemand,
   onClipClick,
   onClipDoubleClick,
   registerVideoRef,
   reportStaggerDemand,
-  videoIsHEVC,
   userHasHEVC,
   onDownloadClip,
-  themeSettings,
 }: LazyClipProps) {
   // state and refs for tile visibility, hover, video element, and proxy state
   const [isVisible, setIsVisible] = useState(false);
@@ -57,6 +55,9 @@ export const LazyClip = memo(function LazyClip({
   const [effectiveSrc, setEffectiveSrc] = useState(clip.src);
   const [downloadTone, setDownloadTone] = useState<"light" | "dark">("light");
 
+  const videoIsHEVC = useAppStateStore(s => s.videoIsHEVC);
+  const gridPreview = useUIStateStore(s => s.gridPreview);
+  
   // determine if we need a proxy (HEVC not supported)
   const needsHevcProxy = videoIsHEVC === true && userHasHEVC.current === false;
   const waitingForCodecInfo = videoIsHEVC === null && userHasHEVC.current === false;
@@ -74,6 +75,9 @@ export const LazyClip = memo(function LazyClip({
   const audioPlaybackHover = useGeneralSettingsStore(s => s.audioPlaybackHover);
   const playbackVolume = useGeneralSettingsStore(s => s.playbackVolume);
   
+  const importToken = useAppStateStore(s => s.importToken);
+  const showDownloadButton = useThemeSettingsStore(s => s.showDownloadButton);
+
   // when Preview-all is enabled and we need an HEVC proxy, register demand only while visible.
   // this allows the parent to re-prioritize work when the user scrolls.
   useEffect(() => {
@@ -511,7 +515,7 @@ export const LazyClip = memo(function LazyClip({
               }}
             />
           )}
-          {themeSettings.showDownloadButton && (
+          {showDownloadButton && (
             <DownloadButton tone={downloadTone} onClick={() => onDownloadClip(clip)} />
           )}
         </>

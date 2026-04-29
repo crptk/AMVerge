@@ -1,32 +1,23 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { ThemeSettings } from "./settings/themeSettings";
 import ClipsContainer from "./components/clipsGrid/ClipsContainer.tsx";
 import PreviewContainer from "./components/previewPanel/PreviewContainer.tsx";
 import { ClipItem } from "./types/domain";
 import { useAppStateStore } from "./store/appStore.ts";
 
 type LayoutProps = {
-    cols: number;
     gridSize: number;
     gridRef: React.RefObject<HTMLDivElement | null>;
-    gridPreview: boolean;
-    setGridPreview: React.Dispatch<React.SetStateAction<boolean>>;
-    importToken: string;
-    loading: boolean;
     isEmpty: boolean;
     handleExport: (
         selectedClips: Set<string>,
         mergeEnabled: boolean,
         mergeFileName?: string
     ) => Promise<void>;
-    sideBarEnabled: boolean;
     userHasHEVC: React.RefObject<boolean>
-    exportDir: string | null;
     onPickExportDir: () => void;
     onExportDirChange: (dir: string) => void;
     defaultMergedName: string;
     onDownloadClip: (clip: ClipItem) => void;
-    themeSettings: ThemeSettings;
 };
 
 export default function MainLayout(props: LayoutProps) {
@@ -40,7 +31,6 @@ export default function MainLayout(props: LayoutProps) {
                 : null,
         [focusedClip, clips]
     );
-
     // track active resize listeners so we can clean up on unmount.
     const resizeCleanupRef = useRef<(() => void) | null>(null);
 
@@ -86,14 +76,9 @@ export default function MainLayout(props: LayoutProps) {
                 <ClipsContainer 
                     gridSize={props.gridSize}
                     gridRef={props.gridRef}
-                    cols={props.cols}
-                    gridPreview={props.gridPreview}
-                    importToken={props.importToken}
-                    loading={props.loading}
                     isEmpty={props.isEmpty}
                     userHasHEVC={props.userHasHEVC}
                     onDownloadClip={props.onDownloadClip}
-                    themeSettings={props.themeSettings}
                  />
             </div>
             
@@ -113,8 +98,6 @@ export default function MainLayout(props: LayoutProps) {
                     focusedClipThumbnail={focusedClipThumbnail}
                     handleExport={props.handleExport}
                     userHasHEVC={props.userHasHEVC}
-                    importToken={props.importToken}
-                    exportDir={props.exportDir}
                     onPickExportDir={props.onPickExportDir}
                     onExportDirChange={props.onExportDirChange}
                     defaultMergedName={props.defaultMergedName}

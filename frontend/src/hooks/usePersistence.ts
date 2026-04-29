@@ -1,32 +1,29 @@
 import { useEffect } from "react";
 import { EpisodeEntry, EpisodeFolder } from "../types/domain";
-import { useAppStateStore } from "../store/appStore";
+import { useEpisodePanelMetadataStore, useEpisodePanelRuntimeStore } from "../store/episodeStore";
+import { useUIStateStore } from "../store/UIStore";
 
 type UsePersistenceProps = {
-  episodePanelStorageKey: string;
-  sidebarWidthStorageKey: string;
-  exportDirStorageKey: string;
-
   handleSelectEpisodeFromStorage: (
     episodeId: string | null,
     episodesList?: EpisodeEntry[]
   ) => void;
-
-  sidebarWidthPx: number;
-  exportDir: string | null;
 };
 
 export default function usePersistence(props: UsePersistenceProps) {
-  const episodes = useAppStateStore((s) => s.episodes);
-  const setEpisodes = useAppStateStore((s) => s.setEpisodes);
+  const episodes = useEpisodePanelRuntimeStore((s) => s.episodes);
+  const setEpisodes = useEpisodePanelRuntimeStore((s) => s.setEpisodes);
 
-  const selectedEpisodeId = useAppStateStore((s) => s.selectedEpisodeId);
+  const selectedEpisodeId = useEpisodePanelRuntimeStore((s) => s.selectedEpisodeId);
 
-  const episodeFolders = useAppStateStore((s) => s.episodeFolders);
-  const setEpisodeFolders = useAppStateStore((s) => s.setEpisodeFolders);
+  const episodeFolders = useEpisodePanelMetadataStore((s) => s.episodeFolders);
+  const setEpisodeFolders = useEpisodePanelMetadataStore((s) => s.setEpisodeFolders);
 
-  const selectedFolderId = useAppStateStore((s) => s.selectedFolderId);
-  const setSelectedFolderId = useAppStateStore((s) => s.setSelectedFolderId);
+  const selectedFolderId = useEpisodePanelRuntimeStore((s) => s.selectedFolderId);
+  const setSelectedFolderId = useEpisodePanelRuntimeStore((s) => s.setSelectedFolderId);
+  
+  const sidebarWidthPx = useUIStateStore((s) => s.sidebarWidthPx);
+
   
   // This runs once on startup to load everything
   useEffect(() => {
@@ -96,9 +93,9 @@ export default function usePersistence(props: UsePersistenceProps) {
   // Automatically updates the width of the sidebar whenever its state is modified 
   useEffect(() => {
     try {
-      localStorage.setItem(props.sidebarWidthStorageKey, String(props.sidebarWidthPx));
+      localStorage.setItem(props.sidebarWidthStorageKey, String(sidebarWidthPx));
     } catch {}
-  }, [props.sidebarWidthPx]);
+  }, [sidebarWidthPx]);
 
   // Automatically updates the export Directory whenever its state is modified
   useEffect(() => {

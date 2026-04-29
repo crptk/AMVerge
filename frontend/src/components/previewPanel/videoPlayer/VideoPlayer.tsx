@@ -2,13 +2,13 @@ import type { RefObject } from "react";
 import { FaExpand, FaPause, FaPlay, FaVolumeMute, FaVolumeUp } from "react-icons/fa";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { useVideoPlayer } from "./useVideoPlayer";
+import { useAppStateStore } from "../../../store/appStore";
 
 type VideoPlayerProps = {
     selectedClip: string;
     videoIsHEVC: boolean | null;
     userHasHEVC: RefObject<boolean>;
     posterPath: string | null;
-    importToken: string;
 };
 
 export default function VideoPlayer({
@@ -16,7 +16,6 @@ export default function VideoPlayer({
     videoIsHEVC,
     userHasHEVC,
     posterPath,
-    importToken,
 }: VideoPlayerProps) {
     const {
         videoRef,
@@ -47,6 +46,8 @@ export default function VideoPlayer({
         userHasHEVC,
     });
 
+    const importToken = useAppStateStore(s => s.importToken);
+    
     return (
         <div className="video-wrapper">
             <div className="video-frame">

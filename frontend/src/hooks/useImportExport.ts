@@ -5,15 +5,9 @@ import { ClipItem, EpisodeEntry } from "../types/domain"
 import { fileNameFromPath, truncateFileName, detectScenes } from "../utils/episodeUtils";
 import { useGeneralSettingsStore } from "../store/settingsStore";
 import { useAppStateStore } from "../store/appStore";
-
+import { useEpisodePanelRuntimeStore } from "../store/episodeStore";
 type ImportExportProps = {
   abortedRef: React.RefObject<boolean>;
-  EXPORT_DIR_STORAGE_KEY: string;
-  exportDir: string | null;
-  setExportDir: React.Dispatch<React.SetStateAction<string | null>>;
-  setProgress: React.Dispatch<React.SetStateAction<number>>;
-  setProgressMsg: React.Dispatch<React.SetStateAction<string>>;
-  exportFormat: "mp4" | "mkv" | "mov" | "avi" | "xml";
   onRPCUpdate?: (data: any) => void;
 };
 
@@ -32,19 +26,26 @@ export default function useImportExport(props: ImportExportProps) {
   const episodesPath = useGeneralSettingsStore(s => s.episodesPath);
 
   // App states
-  const clips = useAppStateStore((s) => s.clips);
-  const setClips = useAppStateStore((s) => s.setClips);
+  const clips = useAppStateStore(s => s.clips);
+  const setClips = useAppStateStore(s => s.setClips);
 
-  const setFocusedClip = useAppStateStore((s) => s.setFocusedClip);
-  const setSelectedClips = useAppStateStore((s) => s.setSelectedClips);
-  const setEpisodes = useAppStateStore((s) => s.setEpisodes);
-  const setSelectedEpisodeId = useAppStateStore((s) => s.setSelectedEpisodeId);
-  const setOpenedEpisodeId = useAppStateStore((s) => s.setOpenedEpisodeId);
-  const setImportedVideoPath = useAppStateStore((s) => s.setImportedVideoPath);
-  const setVideoIsHEVC = useAppStateStore((s) => s.setVideoIsHEVC);
+  const setFocusedClip = useAppStateStore(s => s.setFocusedClip);
+  const setSelectedClips = useAppStateStore(s => s.setSelectedClips);
+  const setEpisodes = useEpisodePanelRuntimeStore(s => s.setEpisodes);
+  const setSelectedEpisodeId = useEpisodePanelRuntimeStore(s => s.setSelectedEpisodeId);
+  const setOpenedEpisodeId = useEpisodePanelRuntimeStore(s => s.setOpenedEpisodeId);
+  const setImportedVideoPath = useAppStateStore(s => s.setImportedVideoPath);
+  const setVideoIsHEVC = useAppStateStore(s => s.setVideoIsHEVC);
 
-  const selectedFolderId = useAppStateStore((s) => s.selectedFolderId);
+  const selectedFolderId = useEpisodePanelRuntimeStore(s => s.selectedFolderId);
 
+  const setProgress = useAppStateStore(s => s.setProgress);
+  const setProgressMsg = useAppStateStore(s => s.setProgressMsg);
+
+  const exportFormat = useGeneralSettingsStore(s => s.exportFormat);
+  const exportPath = useGeneralSettingsStore(s => s.exportPath);
+  const setExportPath = useGeneralSettingsStore(s => s.setExportPath);
+  
   const onImportClick = async () => {
     const files = await open({
       multiple: true,
@@ -77,8 +78,8 @@ export default function useImportExport(props: ImportExportProps) {
     const gen = ++importGenRef.current;
 
     try {
-      props.setProgress(0);
-      props.setProgressMsg("Starting...");
+      setProgress(0);
+      setProgressMsg("Starting...");
       setLoading(true);
       setSelectedClips(new Set());
       setFocusedClip(null);
@@ -139,8 +140,8 @@ export default function useImportExport(props: ImportExportProps) {
     const completedEpisodes: EpisodeEntry[] = [];
 
     try {
-      props.setProgress(0);
-      props.setProgressMsg("Starting...");
+      setProgress(0);
+      setProgressMsg("Starting...");
       setLoading(true);
       setSelectedClips(new Set());
       setFocusedClip(null);
@@ -159,8 +160,8 @@ export default function useImportExport(props: ImportExportProps) {
 
         setBatchDone(i);
         setBatchCurrentFile(truncateFileName(fileName));
-        props.setProgress(0);
-        props.setProgressMsg("Starting...");
+        setProgress(0);
+        setProgressMsg("Starting...");
 
         try {
           const formatted = await detectScenes(file, episodeId, episodesPath);
@@ -231,19 +232,19 @@ export default function useImportExport(props: ImportExportProps) {
     if (selected.length === 0) return;
 
     // If no export directory is set, prompt the user to pick one first
-    let dir = props.exportDir;
+    let dir = exportPath;
     if (!dir) {
       const picked = await open({ directory: true, multiple: false });
       if (!picked) return;
       dir = picked as string;
-      props.setExportDir(dir);
+      setExportPath(dir);
     }
 
     try {
       setLoading(true);
 
       const clipArray = selected.map((c: ClipItem) => c.src);
-      const format = props.exportFormat || "mp4";
+      const format = exportFormat || "mp4";
 
       props.onRPCUpdate?.({
         type: "update",
@@ -309,12 +310,12 @@ export default function useImportExport(props: ImportExportProps) {
 
   const handlePickExportDir = async () => {
     const dir = await open({ directory: true, multiple: false });
-    if (dir) props.setExportDir(dir as string);
+    if (dir) setExportPath(dir as string);
   };
 
   const handleDownloadSingleClip = async (clip: ClipItem) => {
     try {
-      const format = props.exportFormat || "mp4";
+      const format = exportFormat || "mp4";
       const fileName = clip.originalName || fileNameFromPath(clip.src);
       const defaultPath = `${fileName}.${format}`;
 

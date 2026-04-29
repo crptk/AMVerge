@@ -1,29 +1,29 @@
 import { useAppStateStore } from "../store/appStore"
+import { useUIStateStore } from "../store/UIStore";
 
 type ImportButtonsProps = {
-  cols: number;
   gridSize: number;
   onBigger: () => void;
   onSmaller: () => void;
-  setGridPreview: (checked: boolean) => void;
-  gridPreview: boolean;
   onImport: () => void;
-  loading: boolean;
 };
 
 export default function ImportButtons(props: ImportButtonsProps) {
+  const gridPreview = useUIStateStore(s => s.gridPreview);
+  const setGridPreview = useUIStateStore(s => s.setGridPreview);
   const selectedClips = useAppStateStore(s => s.selectedClips);
   const setSelectedClips = useAppStateStore(s => s.setSelectedClips);
+  const loading = useAppStateStore(s => s.loading);
   const hasSelection = selectedClips.size > 0;
-    
+  
   return (
       <main className="clips-import">
         <div className="import-buttons-container">
           <button onClick={() => { props.onImport();}}      
-                  disabled={props.loading}
+                  disabled={loading}
                   id="file-button"
           >
-            {props.loading ? "Processing...": "Import Episode"}
+            {loading ? "Processing...": "Import Episode"}
           </button>
         </div>
         <div className="grid-checkboxes">
@@ -33,8 +33,8 @@ export default function ImportButtons(props: ImportButtonsProps) {
                 <input 
                   type="checkbox" 
                   className="checkbox"
-                  checked={props.gridPreview}
-                  onChange={(e) => props.setGridPreview(e.target.checked)}
+                  checked={gridPreview}
+                  onChange={(e) => setGridPreview(e.target.checked)}
                 />
                 <span className="checkmark"></span>
               </label>

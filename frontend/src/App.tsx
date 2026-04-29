@@ -8,44 +8,25 @@ import {
   useThemeSettingsStore
 } from "./store/settingsStore.ts"
 
+import { hydrateEpisodesFromDisk } from "./hooks/hydrateEpisodesFromDisk.ts";
+import { ThemeSettings } from "./store/settingsStore.ts";
 import AppLayout from "./components/AppLayout";
 import HomePage from "./pages/HomePage";
 import Menu from "./pages/Menu";
 import Settings from "./pages/Settings";
-import LoadingOverlay from "./components/LoadingOverlay";
+import LoadingOverlay from "./components/common/LoadingOverlay.tsx";
 import { type Page } from "./components/sidebar/types";
 
-// import useAppState from "./hooks/useAppState";
+import { useUIStateStore } from "./store/UIStore.ts";
 import { useAppStateStore } from "./store/appStore.ts";
+import { useEpisodePanelRuntimeStore } from "./store/episodeStore.ts";
 import useEpisodePanelState from "./hooks/useEpisodePanelState";
 import useImportExport from "./hooks/useImportExport";
 import useDiscordRPC from "./hooks/useDiscordRPC";
 import useHEVCSupport from "./hooks/useHEVCSupport";
 import useDragDropImport from "./hooks/useDragDropImport";
-import usePersistence from "./hooks/usePersistence";
-
-import { remapPathRoot } from "./utils/episodeUtils";
-const EPISODE_PANEL_STORAGE_KEY = "amverge_episode_panel_v1";
-const SIDEBAR_WIDTH_STORAGE_KEY = "amverge_sidebar_width_px_v1";
-const EXPORT_DIR_STORAGE_KEY = "amverge_export_dir_v1";
 
 function App() {
-  // Core app state
-  // const {
-  //   state,
-  //   dispatch,
-  //   setFocusedClip,
-  //   setSelectedClips,
-  //   setClips,
-  //   setEpisodes,
-  //   setSelectedEpisodeId,
-  //   setEpisodeFolders,
-  //   setOpenedEpisodeId,
-  //   setSelectedFolderId,
-  //   setImportedVideoPath,
-  //   setVideoIsHEVC,
-  // } = useAppState();
-
   // Refs
   const gridRef = useRef<HTMLDivElement>(null);
   const windowWrapperRef = useRef<HTMLDivElement | null>(null);
@@ -54,95 +35,46 @@ function App() {
   const abortedRef = useRef(false);
 
   // UI state
-  const [gridPreview, setGridPreview] = useState(false);
-  const [cols, setCols] = useState(6);
   const [isDragging, setIsDragging] = useState(false);
-  const [sideBarEnabled, setSideBarEnabled] = useState(true);
   const [activePage, setActivePage] = useState<Page>("home");
   const generalSettings = useGeneralSettingsStore();
-  const themeSettings = useThemeSettingsStore();
-
 
   // App states
-  const focusedClip = useAppStateStore((s) => s.focusedClip);
-  const setFocusedClip = useAppStateStore((s) => s.setFocusedClip);
+  const clips = useAppStateStore(s => s.clips);
+  const setClips = useAppStateStore(s => s.setClips);
 
-  const selectedClips = useAppStateStore((s) => s.selectedClips);
-  const setSelectedClips = useAppStateStore((s) => s.setSelectedClips);
+  const episodes = useEpisodePanelRuntimeStore(s => s.episodes);
+  const setSelectedEpisodeId = useEpisodePanelRuntimeStore(s => s.setSelectedEpisodeId);
 
-  const clips = useAppStateStore((s) => s.clips);
-  const setClips = useAppStateStore((s) => s.setClips);
+  const cols = useUIStateStore(s => s.cols);
+  const setCols = useUIStateStore(s => s.setCols);
 
-  const episodes = useAppStateStore((s) => s.episodes);
-  const setEpisodes = useAppStateStore((s) => s.setEpisodes);
+  const loading = useAppStateStore(s => s.loading);
+  const importedVideoPath = useAppStateStore(s => s.importedVideoPath);
+  const sidebarEnabled = useUIStateStore(s => s.sidebarEnabled);
+  const importToken = useAppStateStore(s => s.importToken);
+  const episodesPath = useGeneralSettingsStore(s => s.episodesPath);
 
-  const selectedEpisodeId = useAppStateStore((s) => s.selectedEpisodeId);
-  const setSelectedEpisodeId = useAppStateStore((s) => s.setSelectedEpisodeId);
-
-  const episodeFolders = useAppStateStore((s) => s.episodeFolders);
-  const setEpisodeFolders = useAppStateStore((s) => s.setEpisodeFolders);
-
-  const openedEpisodeId = useAppStateStore((s) => s.openedEpisodeId);
-  const setOpenedEpisodeId = useAppStateStore((s) => s.setOpenedEpisodeId);
-
-  const selectedFolderId = useAppStateStore((s) => s.selectedFolderId);
-  const setSelectedFolderId = useAppStateStore((s) => s.setSelectedFolderId);
-
-  const importedVideoPath = useAppStateStore((s) => s.importedVideoPath);
-  const setImportedVideoPath = useAppStateStore((s) => s.setImportedVideoPath);
-
-  const videoIsHEVC = useAppStateStore((s) => s.videoIsHEVC);
-  const setVideoIsHEVC = useAppStateStore((s) => s.setVideoIsHEVC);
-
-  const resetAppState = useAppStateStore((s) => s.resetAppState);
-
+  const setOpenedEpisodeId = useEpisodePanelRuntimeStore(s => s.setOpenedEpisodeId);
+  const setSelectedFolderId = useEpisodePanelRuntimeStore(s => s.setSelectedFolderId);
+  const setVideoIsHEVC = useAppStateStore(s => s.setVideoIsHEVC);
+  const resetAppState = useAppStateStore(s => s.resetAppState);
+  const setDividerOffsetPx = useUIStateStore(s => s.setDividerOffsetPx);
+  const setProgress = useAppStateStore(s => s.setProgress);
+  const setProgressMsg = useAppStateStore(s => s.setProgressMsg);
+  const setExportPath = useGeneralSettingsStore(s => s.setExportPath);
+  const themeSettings = useThemeSettingsStore();
 
   useEffect(() => {
     applyThemeSettings(themeSettings);
   }, [themeSettings]);
 
-  // useEffect(() => {
-  //   saveGeneralSettings(generalSettings);
-  // }, [generalSettings]);
-
-  // const handleResetGeneralSettings = async () => {
-  //   try {
-  //     const resolvedOldPath = await invoke<string>("move_episodes_to_new_dir", {
-  //       oldDir: generalSettings.episodesPath,
-  //       newDir: null,
-  //     });
-
-  //     const defaultEpisodesPath = await invoke<string>("get_default_episodes_dir");
-
-  //     remapEpisodePaths(resolvedOldPath, defaultEpisodesPath);      
-  //     saveGeneralSettings(DEFAULT_GENERAL_SETTINGS);
-  //     setGeneralSettings(DEFAULT_GENERAL_SETTINGS);
-  //   } catch (err) {
-  //     window.alert("Failed to reset episode directory: " + String(err));
-  //   }
-  // };
-
-  const [progress, setProgress] = useState(0);
-  const [progressMsg, setProgressMsg] = useState("Starting...");
-  const [dividerOffsetPx, setDividerOffsetPx] = useState(0);
+  useEffect(() => {
+    void hydrateEpisodesFromDisk(episodesPath);
+  }, [episodesPath]);
 
   // Persisted UI state
-  const [sidebarWidthPx, setSidebarWidthPx] = useState<number>(() => {
-    try {
-      const raw = localStorage.getItem(SIDEBAR_WIDTH_STORAGE_KEY);
-      const parsed = raw ? Number.parseInt(raw, 10) : NaN;
-      if (Number.isFinite(parsed) && parsed > 0) return parsed;
-    } catch {}
-    return 280;
-  });
-
-  const [exportDir, setExportDir] = useState<string | null>(() => {
-    try {
-      return localStorage.getItem(EXPORT_DIR_STORAGE_KEY) || null;
-    } catch {
-      return null;
-    }
-  });
+  const setSidebarWidthPx = useUIStateStore(s => s.setSidebarWidthPx);
 
   // Derived values
   const width = gridRef.current?.offsetWidth || 0;
@@ -153,9 +85,6 @@ function App() {
   const { updateRPC } = useDiscordRPC(generalSettings, activePage);
 
   const {
-    loading,
-    importToken,
-    setImportToken,
     batchTotal,
     batchDone,
     batchCurrentFile,
@@ -166,13 +95,7 @@ function App() {
     handleBatchImport,
     handleDownloadSingleClip,
   } = useImportExport({
-    setProgress,
-    setProgressMsg,
     abortedRef,
-    EXPORT_DIR_STORAGE_KEY,
-    exportDir,
-    setExportDir,
-    exportFormat: generalSettings.exportFormat,
     onRPCUpdate: updateRPC,
   });
 
@@ -189,44 +112,12 @@ function App() {
     handleDeleteEpisode,
     handleCreateFolder,
     handleToggleFolderExpanded,
-  } = useEpisodePanelState({
-    setImportToken,
-  });
-
-  const remapEpisodePaths = (oldRoot: string, newRoot: string) => {
-    setEpisodes((prev) => {
-      const updatedEpisodes = prev.map((episode) => ({
-        ...episode,
-        clips: episode.clips.map((clip) => ({
-          ...clip,
-          src: remapPathRoot(clip.src, oldRoot, newRoot),
-          thumbnail: remapPathRoot(clip.thumbnail, oldRoot, newRoot),
-        })),
-      }));
-
-      return updatedEpisodes;
-    });
-
-    setClips((prev) =>
-      prev.map((clip) => ({
-        ...clip,
-        src: remapPathRoot(clip.src, oldRoot, newRoot),
-        thumbnail: remapPathRoot(clip.thumbnail, oldRoot, newRoot),
-      }))
-    );
-  };
+  } = useEpisodePanelState();
     
   // App-level hooks
   useHEVCSupport(userHasHEVC);
 
-  usePersistence({
-    episodePanelStorageKey: EPISODE_PANEL_STORAGE_KEY,
-    sidebarWidthStorageKey: SIDEBAR_WIDTH_STORAGE_KEY,
-    exportDirStorageKey: EXPORT_DIR_STORAGE_KEY,
-    handleSelectEpisodeFromStorage,
-    sidebarWidthPx,
-    exportDir,
-  });
+  // usePersistence(handleSelectEpisodeFromStorage);
 
   useDragDropImport({
     setIsDragging,
@@ -253,20 +144,20 @@ function App() {
     setClips(episode.clips)
   }
 
-  function handleSelectEpisodeFromStorage(
-    episodeId: string | null,
-    episodesList?: typeof episodes
-  ) {
-    setSelectedEpisodeId(episodeId ?? null )
-    setSelectedFolderId(null)
+  // function handleSelectEpisodeFromStorage(
+  //   episodeId: string | null,
+  //   episodesList?: typeof episodes
+  // ) {
+  //   setSelectedEpisodeId(episodeId ?? null )
+  //   setSelectedFolderId(null)
 
-    if (episodeId && Array.isArray(episodesList)) {
-      const episode = episodesList.find((e) => e.id === episodeId);
-      setClips(episode ? episode.clips: [])
-    } else {
-      setClips([])
-    }
-  }
+  //   if (episodeId && Array.isArray(episodesList)) {
+  //     const episode = episodesList.find((e) => e.id === episodeId);
+  //     setClips(episode ? episode.clips: [])
+  //   } else {
+  //     setClips([])
+  //   }
+  // }
 
   // UI handlers
   function snapGridBigger() {
@@ -278,7 +169,7 @@ function App() {
   }
 
   function startSidebarResize(e: React.PointerEvent<HTMLDivElement>) {
-    if (!sideBarEnabled) return;
+    if (!sidebarEnabled) return;
 
     const wrapper = windowWrapperRef.current;
     if (!wrapper) return;
@@ -296,7 +187,6 @@ function App() {
       const maxWidth = Math.max(minWidth, Math.floor(rect.width * 0.6));
       const proposed = Math.round(ev.clientX - rect.left);
       const clamped = Math.min(maxWidth, Math.max(minWidth, proposed));
-
       setSidebarWidthPx(clamped);
     };
 
@@ -421,7 +311,7 @@ function App() {
       ro.disconnect();
       window.removeEventListener("resize", update);
     };
-  }, [activePage, sideBarEnabled]);
+  }, [activePage, sidebarEnabled]);
 
   return (
     <AppLayout
@@ -430,8 +320,6 @@ function App() {
       loadingOverlay={
         loading ? (
           <LoadingOverlay
-            progress={progress}
-            progressMsg={progressMsg}
             batchTotal={batchTotal}
             batchDone={batchDone}
             batchCurrentFile={batchCurrentFile}
@@ -439,8 +327,8 @@ function App() {
           />
         ) : null
       }
+      onPointerDown={startSidebarResize}
       sidebarProps={{
-        sideBarEnabled,
         activePage,
         setActivePage,
         onSelectFolder: handleSelectFolder,
@@ -458,49 +346,29 @@ function App() {
         onSortEpisodePanel: handleSortEpisodePanel,
         onClearEpisodePanelCache: handleClearEpisodePanelCache,
       }}
-      navbarProps={{
-        setSideBarEnabled,
-        sideBarEnabled,
-        userHasHEVC,
-        videoIsHEVC: videoIsHEVC,
-      }}
-      dividerProps={{
-        onPointerDown: startSidebarResize,
-        dividerOffsetPx,
-        sidebarWidthPx,
-      }}
+      userHasHEVC={userHasHEVC.current}
     >
       <div className="main-content">
         {activePage === "home" ? (
           <HomePage
-            cols={cols}
             gridSize={gridSize}
             snapGridBigger={snapGridBigger}
             snapGridSmaller={snapGridSmaller}
-            setGridPreview={setGridPreview}
-            gridPreview={gridPreview}
             onImportClick={onImportClick}
-            loading={loading}
             mainLayoutWrapperRef={mainLayoutWrapperRef}
             gridRef={gridRef}
-            importToken={importToken}
             isEmpty={isEmpty}
             handleExport={handleExport}
-            sideBarEnabled={sideBarEnabled}
             userHasHEVC={userHasHEVC}
-            exportDir={exportDir}
             onPickExportDir={handlePickExportDir}
-            onExportDirChange={(dir: string) => setExportDir(dir || null)}
+            onExportDirChange={(dir: string) => setExportPath(dir || null)}
             defaultMergedName={(clips[0]?.originalName || "episode") + "_merged"}
             onDownloadClip={handleDownloadSingleClip}
-            themeSettings={themeSettings}
           />
         ) : activePage === "menu" ? (
           <Menu />
         ) : (
-          <Settings
-            onEpisodesPathChanged={remapEpisodePaths}
-          />
+          <Settings/>
         )}
       </div>
     </AppLayout>

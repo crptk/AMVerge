@@ -2,21 +2,17 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useState } from "react";
 import { useGeneralSettingsStore } from "../../store/settingsStore";
-
-type GeneralSectionProps = {
-  onEpisodesPathChanged: (oldPath: string, newPath: string) => void;
-};
-
-export default function GeneralSection({
-  onEpisodesPathChanged,
-}: GeneralSectionProps) {
+import { remapPathRoot } from "../../utils/episodeUtils";
+import { useAppStateStore } from "../../store/appStore";
+import { useEpisodePanelRuntimeStore } from "../../store/episodeStore"
+export default function GeneralSection() {
   const [loading, setLoading] = useState(false);
   const [showFactoryResetConfirm, setShowFactoryResetConfirm] = useState(false);
   const factoryResetConfirmation =
     "This will restore AMVerge to its default settings and move your episode storage folder back to AppData. Any custom settings or storage location changes you made will be reset.";
 
   const episodesPath = useGeneralSettingsStore(s => s.episodesPath);
-  const setepisodesPath = useGeneralSettingsStore(s => s.setEpisodesPath);
+  const setEpisodesPath = useGeneralSettingsStore(s => s.setEpisodesPath);
   
   const audioPlaybackHover = useGeneralSettingsStore(s => s.audioPlaybackHover);
   const setAudioPlaybackHover = useGeneralSettingsStore(s => s.setAudioPlaybackHover);
@@ -25,6 +21,51 @@ export default function GeneralSection({
   const setPlaybackVolume = useGeneralSettingsStore(s => s.setPlaybackVolume);
   
   const resetGeneralSettings = useGeneralSettingsStore(s => s.resetGeneralSettings);
+  
+  const setEpisodes = useEpisodePanelRuntimeStore(s => s.setEpisodes);
+  const setClips = useAppStateStore(s => s.setClips);
+
+  const onEpisodesPathChanged = (oldRoot: string, newRoot: string) => {
+    setEpisodes((prev) => {
+      const updatedEpisodes = prev.map((episode) => ({
+        ...episode,
+        clips: episode.clips.map((clip) => ({
+          ...clip,
+          src: remapPathRoot(clip.src, oldRoot, newRoot),
+          thumbnail: remapPathRoot(clip.thumbnail, oldRoot, newRoot),
+        })),
+      }));
+
+      return updatedEpisodes;
+    });
+
+    setClips((prev) =>
+      prev.map((clip) => ({
+        ...clip,
+        src: remapPathRoot(clip.src, oldRoot, newRoot),
+        thumbnail: remapPathRoot(clip.thumbnail, oldRoot, newRoot),
+      }))
+    );
+  };
+
+  const handleResetGeneralSettings = async () => {
+    try {
+      const resolvedOldPath = await invoke<string>("move_episodes_to_new_dir", {
+        oldDir: episodesPath,
+        newDir: null,
+      });
+
+      const defaultEpisodesPath = await invoke<string>("get_default_episodes_dir");
+
+      onEpisodesPathChanged(resolvedOldPath, defaultEpisodesPath);
+
+      resetGeneralSettings();
+      setEpisodesPath(null);
+      setShowFactoryResetConfirm(false);
+    } catch (err) {
+      window.alert("Failed to reset episode directory: " + String(err));
+    }
+  };
 
   useEffect(() => {
     if (!showFactoryResetConfirm) return;
@@ -58,7 +99,7 @@ export default function GeneralSection({
 
           onEpisodesPathChanged(resolvedOldPath, selected);
           
-          setepisodesPath(selected)
+          setEpisodesPath(selected)
         } catch (err) {
           window.alert("Failed to move existing episodes: " + String(err));
         } finally {
@@ -204,8 +245,7 @@ export default function GeneralSection({
                 type="button"
                 className="episode-modal-btn primary"
                 onClick={() => {
-                  resetGeneralSettings();
-                  setShowFactoryResetConfirm(false);
+                  handleResetGeneralSettings();
                   }
                 }
               >

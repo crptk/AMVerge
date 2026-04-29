@@ -1,6 +1,6 @@
+import { useAppStateStore } from "../../store/appStore";
+
 interface LoadingOverlayProps {
-    progress: number;
-    progressMsg: string;
     batchTotal: number;
     batchDone: number;
     batchCurrentFile: string;
@@ -8,13 +8,13 @@ interface LoadingOverlayProps {
 }
 
 export default function LoadingOverlay({
-  progress,
-  progressMsg,
   batchTotal,
   batchDone,
   batchCurrentFile,
   onAbort
-}: LoadingOverlayProps) {
+}: LoadingOverlayProps) { 
+  const progress = useAppStateStore(s => s.progress);
+  const progressMsg = useAppStateStore(s => s.progressMsg);
   return (
     <div className="loading-overlay">
       <div className="spinner" />

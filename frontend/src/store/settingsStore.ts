@@ -9,6 +9,7 @@ export type ExportFormat = "mp4" | "mkv" | "mov" | "avi" | "xml";
 export type GeneralSettings = {
     episodesPath: string | null;
     exportFormat: "mp4" | "mkv" | "mov" | "avi" | "xml";
+    exportPath: string | null;
     audioPlaybackHover: boolean;
     playbackVolume: number;
     discordRPCEnabled: boolean;
@@ -21,6 +22,7 @@ export type GeneralSettings = {
 export type GeneralSettingsStore = GeneralSettings & {
   setEpisodesPath: (path: string | null) => void;
   setExportFormat: (format: ExportFormat) => void;
+  setExportPath: (path: string | null) => void;
   setAudioPlaybackHover: (enabled: boolean) => void;
   setPlaybackVolume: (volume: number) => void;
   setDiscordRPCEnabled: (enabled: boolean) => void;
@@ -28,12 +30,14 @@ export type GeneralSettingsStore = GeneralSettings & {
   setRpcShowButtons: (enabled: boolean) => void;
   setRpcShowMiniIcons: (enabled: boolean) => void;
   resetGeneralSettings: () => void;
+
 };
 
 export const DEFAULT_GENERAL_SETTINGS: GeneralSettings = {
     episodesPath: null,
     exportFormat: "mp4",
-    audioPlaybackHover: true,
+    exportPath: null,
+    audioPlaybackHover: false,
     playbackVolume: 0.2,
     discordRPCEnabled: true,
     rpcShowFilename: true,
@@ -48,6 +52,7 @@ export const useGeneralSettingsStore = create<GeneralSettingsStore>()(
 
             setEpisodesPath: (path) => set({ episodesPath: path }),
             setExportFormat: (format) => set({ exportFormat: format }),
+            setExportPath: (path) => set({ exportPath: path }),
             setAudioPlaybackHover: (enabled) =>
                 set({ audioPlaybackHover: enabled }),
             setPlaybackVolume: (volume) => set({ playbackVolume: volume }),
@@ -59,7 +64,7 @@ export const useGeneralSettingsStore = create<GeneralSettingsStore>()(
                 set({ rpcShowButtons: enabled }),
             setRpcShowMiniIcons: (enabled) =>
                 set({ rpcShowMiniIcons: enabled }),
-
+            
             resetGeneralSettings: () => set(DEFAULT_GENERAL_SETTINGS),
         }),
         {

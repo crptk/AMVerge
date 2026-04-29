@@ -16,13 +16,11 @@ const EXPORT_OPTIONS = [
 type PreviewContainerProps = {
   focusedClipThumbnail: string | null;
   userHasHEVC: React.RefObject<boolean>;
-  importToken: string;
   handleExport: (
     selectedClips: Set<string>,
     enableMerged: boolean,
     mergeFileName?: string
   ) => Promise<void>;
-  exportDir: string | null;
   onPickExportDir: () => void;
   onExportDirChange: (dir: string) => void;
   defaultMergedName: string;
@@ -38,6 +36,8 @@ export default function PreviewContainer (props: PreviewContainerProps) {
   const focusedClip = useAppStateStore(s => s.focusedClip);
   const videoIsHEVC = useAppStateStore(s => s.videoIsHEVC);
   const setExportFormat = useGeneralSettingsStore(s => s.setExportFormat);
+  const exportPath = useGeneralSettingsStore(s => s.exportPath);
+
   React.useEffect(() => {
     if (showMergeNameModal) {
       requestAnimationFrame(() => {
@@ -70,7 +70,6 @@ export default function PreviewContainer (props: PreviewContainerProps) {
            videoIsHEVC={videoIsHEVC}
            userHasHEVC={props.userHasHEVC}
            posterPath={props.focusedClipThumbnail}
-           importToken={props.importToken}
           />
           ) : (
             <p>No clip selected</p>
@@ -127,7 +126,7 @@ export default function PreviewContainer (props: PreviewContainerProps) {
               type="text"
               className="export-dir-input"
               placeholder="Select destination..."
-              value={props.exportDir || ""}
+              value={exportPath || ""}
               onChange={(e) => props.onExportDirChange(e.target.value)}
             />
             <button

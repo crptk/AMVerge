@@ -3,9 +3,8 @@ import type React from "react";
 import EpisodeRow from "./EpisodeRow";
 import FolderRow from "./FolderRow";
 import type { PointerDragSource, PointerDropTarget } from "../types";
-import { useAppStateStore } from "../../../store/appStore";
 import type { EpisodeEntry, EpisodeFolder } from "../../../types/domain";
-
+import { useEpisodePanelRuntimeStore } from "../../../store/episodeStore";
 type Episode = EpisodeEntry;
 type Folder = EpisodeFolder;
 
@@ -52,7 +51,7 @@ export default function EpisodePanelTree({
   onToggleFolderExpanded,
 }: EpisodePanelTreeProps) {
 
-  const selectedFolderId = useAppStateStore(s => s.selectedFolderId);
+  const selectedFolderId = useEpisodePanelRuntimeStore(s => s.selectedFolderId);
   const renderEpisodeRow = (
     episode: Episode,
     folderId: string | null,
