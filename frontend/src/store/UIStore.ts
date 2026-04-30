@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import type { Page } from "../components/sidebar/types";
 
 export type UIState = {
   cols: number;
@@ -7,10 +8,14 @@ export type UIState = {
   sidebarEnabled: boolean;
   sidebarWidthPx: number;
   dividerOffsetPx: number;
+  isDragging: boolean;
+  activePage: Page;
 };
 
 export type UIStateStore = UIState & {
   setCols: (cols: number | ((prev: number) => number)) => void;
+  incrementCols: () => void;
+  decrementCols: () => void;
   setGridPreview: (
     previewEnabled: boolean | ((prev: boolean) => boolean)
   ) => void;
@@ -21,6 +26,8 @@ export type UIStateStore = UIState & {
   setDividerOffsetPx: (
     dividerOffsetPx: number | ((prev: number) => number)
   ) => void;
+  setIsDragging: (isDragging: boolean) => void;
+  setActivePage: (activePage: Page | ((prev: Page) => Page)) => void;
 };
 
 export const DEFAULT_UI_STATE: UIState = {
@@ -29,6 +36,8 @@ export const DEFAULT_UI_STATE: UIState = {
   sidebarEnabled: true,
   sidebarWidthPx: 280,
   dividerOffsetPx: 0,
+  isDragging: false,
+  activePage: "home",
 };
 
 export const useUIStateStore = create<UIStateStore>()(
@@ -40,6 +49,12 @@ export const useUIStateStore = create<UIStateStore>()(
         set((state) => ({
           cols: typeof cols === "function" ? cols(state.cols) : cols,
         })),
+
+      incrementCols: () =>
+        set((state) => ({ cols: Math.min(12, state.cols + 1) })),
+
+      decrementCols: () =>
+        set((state) => ({ cols: Math.max(1, state.cols - 1) })),
 
     setGridPreview: (previewEnabled) =>
       set((state) => ({
@@ -63,6 +78,11 @@ export const useUIStateStore = create<UIStateStore>()(
               ? dividerOffsetPx(state.dividerOffsetPx)
               : dividerOffsetPx,
       })),
+      setIsDragging: (isDragging) => set({ isDragging }),
+      setActivePage: (activePage) =>
+        set((state) => ({
+          activePage: typeof activePage === "function" ? activePage(state.activePage) : activePage,
+        })),
     }),
     {
       name: "amverge.ui.v1",

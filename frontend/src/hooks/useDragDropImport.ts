@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 
 type UseDragDropImportProps = {
-  setIsDragging: React.Dispatch<React.SetStateAction<boolean>>;
+  setIsDragging: (value: boolean) => void;
   handleImport: (file: string) => void | Promise<void>;
   handleBatchImport: (files: string[]) => void | Promise<void>;
 };

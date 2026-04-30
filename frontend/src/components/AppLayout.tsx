@@ -9,7 +9,6 @@ export interface AppLayoutProps {
   onPointerDown: (e: React.PointerEvent<HTMLDivElement>) => void;
   children: React.ReactNode;
   loadingOverlay?: React.ReactNode;
-  isDragging: boolean;
   userHasHEVC: boolean;
 }
 
@@ -19,12 +18,13 @@ export default function AppLayout({
   onPointerDown,
   children,
   loadingOverlay,
-  isDragging,
   userHasHEVC
 }: AppLayoutProps) {
   const sidebarWidthPx = useUIStateStore(s => s.sidebarWidthPx);
   const dividerOffsetPx = useUIStateStore(s => s.dividerOffsetPx);
   const sidebarEnabled = useUIStateStore(s => s.sidebarEnabled);
+  const isDragging = useUIStateStore(s => s.isDragging);
+  
   return (
     <main className="app-root">
       {loadingOverlay}

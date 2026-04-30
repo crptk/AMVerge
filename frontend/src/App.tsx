@@ -14,7 +14,6 @@ import HomePage from "./pages/HomePage";
 import Menu from "./pages/Menu";
 import Settings from "./pages/Settings";
 import LoadingOverlay from "./components/common/LoadingOverlay.tsx";
-import { type Page } from "./components/sidebar/types";
 
 import { useUIStateStore } from "./store/UIStore.ts";
 import { useAppStateStore } from "./store/appStore.ts";
@@ -34,18 +33,15 @@ function App() {
   const abortedRef = useRef(false);
 
   // states
-  const [isDragging, setIsDragging] = useState(false);
-  const [activePage, setActivePage] = useState<Page>("home");
   const generalSettings = useGeneralSettingsStore();
 
-  const clips = useAppStateStore(s => s.clips);
   const setClips = useAppStateStore(s => s.setClips);
 
-  const episodes = useEpisodePanelRuntimeStore(s => s.episodes);
   const setSelectedEpisodeId = useEpisodePanelRuntimeStore(s => s.setSelectedEpisodeId);
 
-  const cols = useUIStateStore(s => s.cols);
-  const setCols = useUIStateStore(s => s.setCols);
+  const activePage = useUIStateStore(s => s.activePage);
+  const setActivePage = useUIStateStore(s => s.setActivePage);
+  const setIsDragging = useUIStateStore(s => s.setIsDragging);
 
   const loading = useAppStateStore(s => s.loading);
   const importedVideoPath = useAppStateStore(s => s.importedVideoPath);
@@ -82,11 +78,6 @@ function App() {
   // Persisted UI state
   const setSidebarWidthPx = useUIStateStore(s => s.setSidebarWidthPx);
 
-  // Derived values
-  const width = gridRef.current?.offsetWidth || 0;
-  const gridSize = Math.floor(width / cols);
-  const isEmpty = clips.length === 0;
-
   // Import/export
   const { updateRPC } = useDiscordRPC(generalSettings, activePage);
 
@@ -100,6 +91,7 @@ function App() {
     handlePickExportDir,
     handleBatchImport,
     handleDownloadSingleClip,
+    handleAbort
   } = useImportExport({
     abortedRef,
     onRPCUpdate: updateRPC,
@@ -119,7 +111,7 @@ function App() {
     handleCreateFolder,
     handleToggleFolderExpanded,
   } = useEpisodePanelState();
-    
+
   // App-level hooks
   useHEVCSupport(userHasHEVC);
 
@@ -136,12 +128,14 @@ function App() {
     setSelectedEpisodeId(episodeId)
     setSelectedFolderId(null)
 
-    const episode = episodes.find((e) => e.id === episodeId);
+    const eps = useEpisodePanelRuntimeStore.getState().episodes;
+    const episode = eps.find((e) => e.id === episodeId);
     setClips(episode ? episode.clips : []);
   }
 
   function handleOpenEpisode(episodeId: string) {
-    const episode = episodes.find((e) => e.id === episodeId);
+    const eps = useEpisodePanelRuntimeStore.getState().episodes;
+    const episode = eps.find((e) => e.id === episodeId);
     if (!episode) return;
 
     setSelectedEpisodeId(episodeId)
@@ -152,14 +146,6 @@ function App() {
   }
 
   // UI handlers
-  function snapGridBigger() {
-    setCols((c) => Math.max(1, c - 1));
-  }
-
-  function snapGridSmaller() {
-    setCols((c) => Math.min(12, c + 1));
-  }
-
   function startSidebarResize(e: React.PointerEvent<HTMLDivElement>) {
     if (!sidebarEnabled) return;
 
@@ -209,16 +195,6 @@ function App() {
     }
   }
 
-  async function handleAbort() {
-    abortedRef.current = true;
-
-    try {
-      await invoke("abort_detect_scenes");
-    } catch (err) {
-      console.error("abort_detect_scenes failed:", err);
-    }
-  }
-
   // Effects
   useEffect(() => {
     let unlisten: (() => void) | null = null;
@@ -240,7 +216,7 @@ function App() {
     };
   }, []);
 
-  
+
   useEffect(() => {
     if (!importedVideoPath) {
       setVideoIsHEVC(null);
@@ -273,7 +249,7 @@ function App() {
       cancelled = true;
     };
   }, [importedVideoPath, importToken]);
-  
+
   useEffect(() => {
     const update = () => {
       const ww = windowWrapperRef.current;
@@ -311,9 +287,11 @@ function App() {
   useEffect(() => {
     if (openedEpisodeId) return;
     if (!lastOpenedEpisodeId) return;
-    if (episodes.length === 0) return;
 
-    const episode = episodes.find((e) => e.id === lastOpenedEpisodeId);
+    const eps = useEpisodePanelRuntimeStore.getState().episodes;
+    if (eps.length === 0) return;
+
+    const episode = eps.find((e) => e.id === lastOpenedEpisodeId);
     if (!episode) return;
 
     setSelectedEpisodeId(episode.id);
@@ -321,7 +299,6 @@ function App() {
     setSelectedFolderId(null);
     setClips(episode.clips);
   }, [
-    episodes,
     openedEpisodeId,
     lastOpenedEpisodeId,
     setSelectedEpisodeId,
@@ -333,7 +310,6 @@ function App() {
   return (
     <AppLayout
       windowWrapperRef={windowWrapperRef}
-      isDragging={isDragging}
       loadingOverlay={
         loading ? (
           <LoadingOverlay
@@ -368,24 +344,19 @@ function App() {
       <div className="main-content">
         {activePage === "home" ? (
           <HomePage
-            gridSize={gridSize}
-            snapGridBigger={snapGridBigger}
-            snapGridSmaller={snapGridSmaller}
             onImportClick={onImportClick}
             mainLayoutWrapperRef={mainLayoutWrapperRef}
             gridRef={gridRef}
-            isEmpty={isEmpty}
             handleExport={handleExport}
             userHasHEVC={userHasHEVC}
             onPickExportDir={handlePickExportDir}
             onExportDirChange={(dir: string) => setExportPath(dir || null)}
-            defaultMergedName={(clips[0]?.originalName || "episode") + "_merged"}
             onDownloadClip={handleDownloadSingleClip}
           />
         ) : activePage === "menu" ? (
           <Menu />
         ) : (
-          <Settings/>
+          <Settings />
         )}
       </div>
     </AppLayout>

@@ -2,7 +2,6 @@ import { ThemeSettings } from "../../settings/themeSettings";
 import { ClipItem } from "../../types/domain";
 
 export type ClipContainerProps = {
-  gridSize: number;
   gridRef: React.RefObject<HTMLDivElement | null>;
   isEmpty: boolean;
   userHasHEVC: React.RefObject<boolean>;

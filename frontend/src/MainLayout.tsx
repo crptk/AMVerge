@@ -5,7 +5,6 @@ import { ClipItem } from "./types/domain";
 import { useAppStateStore } from "./store/appStore.ts";
 
 type LayoutProps = {
-    gridSize: number;
     gridRef: React.RefObject<HTMLDivElement | null>;
     isEmpty: boolean;
     handleExport: (
@@ -74,7 +73,6 @@ export default function MainLayout(props: LayoutProps) {
         <div className="split-layout">
             <div className="left-pane" style={{ width: `${leftWidth}%`}}>
                 <ClipsContainer 
-                    gridSize={props.gridSize}
                     gridRef={props.gridRef}
                     isEmpty={props.isEmpty}
                     userHasHEVC={props.userHasHEVC}

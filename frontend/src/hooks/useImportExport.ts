@@ -387,6 +387,15 @@ export default function useImportExport(props: ImportExportProps) {
     }
   };
 
+  async function handleAbort() {
+    props.abortedRef.current = true;
+
+    try {
+      await invoke("abort_detect_scenes");
+    } catch (err) {
+      console.error("abort_detect_scenes failed:", err);
+    }
+  }
   return {
     loading,
     importToken,
@@ -400,5 +409,6 @@ export default function useImportExport(props: ImportExportProps) {
     handlePickExportDir,
     handleBatchImport,
     handleDownloadSingleClip,
+    handleAbort
   };
 }
