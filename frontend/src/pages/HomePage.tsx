@@ -2,7 +2,7 @@ import ImportButtons from "../components/ImportButtons";
 import MainLayout from "../MainLayout";
 import { fileNameFromPath } from "../utils/episodeUtils";
 import { ClipItem } from "../types/domain";
-import { useEpisodePanelRuntimeStore} from "../store/episodeStore"
+import { useEpisodePanelRuntimeStore } from "../store/episodeStore"
 import { useAppStateStore } from "../store/appStore"
 
 interface HomePageProps {
@@ -31,7 +31,7 @@ export default function HomePage({
   onDownloadClip,
 }: HomePageProps) {
   const openedEpisodeId = useEpisodePanelRuntimeStore(s => s.openedEpisodeId);
-  const importedVideoPath = useEpisodePanelRuntimeStore(s => s.openedEpisodeId);
+  const importedVideoPath = useAppStateStore(s => s.importedVideoPath);
   const clips = useAppStateStore(s => s.clips);
   const isEmpty = clips.length === 0;
   const defaultMergedName = (clips[0]?.originalName || "episode") + "_merged";
