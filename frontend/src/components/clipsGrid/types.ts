@@ -1,4 +1,3 @@
-import { ThemeSettings } from "../../settings/themeSettings";
 import { ClipItem } from "../../types/domain";
 
 export type ClipContainerProps = {

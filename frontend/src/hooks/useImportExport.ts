@@ -6,6 +6,7 @@ import { fileNameFromPath, truncateFileName, detectScenes } from "../utils/episo
 import { useGeneralSettingsStore } from "../store/settingsStore";
 import { useAppStateStore } from "../store/appStore";
 import { useEpisodePanelRuntimeStore } from "../store/episodeStore";
+import { join } from "@tauri-apps/api/path";
 
 type ImportExportProps = {
   abortedRef: React.RefObject<boolean>;
@@ -114,7 +115,7 @@ export default function useImportExport(props: ImportExportProps) {
         invoke("delete_episode_cache", {
           episodeCacheId: episodeId,
           customPath: episodesPath,
-        }).catch(() => {});
+        }).catch(() => { });
 
         return;
       }
@@ -136,7 +137,7 @@ export default function useImportExport(props: ImportExportProps) {
         invoke("delete_episode_cache", {
           episodeCacheId: episodeId,
           customPath: episodesPath,
-        }).catch(() => {});
+        }).catch(() => { });
 
         return;
       }
@@ -153,7 +154,7 @@ export default function useImportExport(props: ImportExportProps) {
         invoke("delete_episode_cache", {
           episodeCacheId: episodeId,
           customPath: episodesPath,
-        }).catch(() => {});
+        }).catch(() => { });
 
         return;
       }
@@ -163,7 +164,7 @@ export default function useImportExport(props: ImportExportProps) {
       invoke("delete_episode_cache", {
         episodeCacheId: episodeId,
         customPath: episodesPath,
-      }).catch(() => {});
+      }).catch(() => { });
     } finally {
       if (importGenRef.current === gen) {
         setLoading(false);
@@ -209,7 +210,7 @@ export default function useImportExport(props: ImportExportProps) {
             invoke("delete_episode_cache", {
               episodeCacheId: episodeId,
               customPath: episodesPath,
-            }).catch(() => {});
+            }).catch(() => { });
             break;
           }
 
@@ -233,7 +234,7 @@ export default function useImportExport(props: ImportExportProps) {
             invoke("delete_episode_cache", {
               episodeCacheId: episodeId,
               customPath: episodesPath,
-            }).catch(() => {});
+            }).catch(() => { });
             break;
           }
 
@@ -242,7 +243,7 @@ export default function useImportExport(props: ImportExportProps) {
           invoke("delete_episode_cache", {
             episodeCacheId: episodeId,
             customPath: episodesPath,
-          }).catch(() => {});
+          }).catch(() => { });
         }
       }
 
@@ -289,6 +290,7 @@ export default function useImportExport(props: ImportExportProps) {
     try {
       setLoading(true);
 
+      const sep = dir.includes('\\') ? '\\' : '/';
       const clipArray = selected.map((c: ClipItem) => c.src);
       const format = exportFormat || "mp4";
 
@@ -304,7 +306,7 @@ export default function useImportExport(props: ImportExportProps) {
 
       if (mergeEnabled) {
         const baseName = mergeFileName || `${selected[0]?.originalName || "episode"}_merged`;
-        const savePath = `${dir}\\${baseName}.${format}`;
+        const savePath = await join(dir, `${baseName}.${format}`);
 
         await invoke("export_clips", {
           clips: clipArray,
@@ -316,7 +318,7 @@ export default function useImportExport(props: ImportExportProps) {
         const firstFile = firstClipPath.split(/[/\\]/).pop() || `episode_0000.${format}`;
         const firstStem = firstFile.replace(/\.[^/.]+$/, "");
         const defaultBase = firstStem.replace(/_\d{4}$/, "");
-        const savePath = `${dir}\\${defaultBase}_####.${format}`;
+        const savePath = await join(dir, `${defaultBase}_####.${format}`);
 
         await invoke("export_clips", {
           clips: clipArray,

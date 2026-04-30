@@ -1,0 +1,14 @@
+{
+  "bundle": {
+    "targets": ["dmg"],
+    "macOS": {
+      "minimumSystemVersion": "11.0"
+    },
+    "resources": [
+      "bin/backend_script-aarch64-apple-darwin/backend_script",
+      "bin/backend_script-aarch64-apple-darwin/_internal/**/*",
+      "bin/backend_script-aarch64-apple-darwin/_internal/ffmpeg",
+      "bin/backend_script-aarch64-apple-darwin/_internal/ffprobe"
+    ]
+  }
+}

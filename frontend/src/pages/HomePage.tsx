@@ -1,5 +1,5 @@
 import ImportButtons from "../components/ImportButtons";
-import MainLayout from "../MainLayout";
+import MainLayout from "../components/MainLayout";
 import { fileNameFromPath } from "../utils/episodeUtils";
 import { ClipItem } from "../types/domain";
 import { useEpisodePanelRuntimeStore } from "../store/episodeStore"

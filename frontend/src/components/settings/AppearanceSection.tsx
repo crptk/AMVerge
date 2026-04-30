@@ -41,7 +41,7 @@ export default function AppearanceSection() {
     });
 
     if (!selected || typeof selected !== "string") return;
-    
+
     setOriginalPath(selected);
     setImageToCrop(convertFileSrc(selected));
   };
@@ -120,7 +120,7 @@ export default function AppearanceSection() {
           <button
             className="buttons"
             type="button"
-            onClick={() => { setBackgroundImagePath(null); } }
+            onClick={() => { setBackgroundImagePath(null); }}
             disabled={!currentBackgroundImage}
           >
             Clear

@@ -55,12 +55,16 @@ pub async fn detect_scenes(
         root.pop();
 
         let script_path = root.join("backend").join("app.py");
-        let python_path = root.join("backend").join("venv").join("Scripts").join("python.exe");
+        let python_path = if cfg!(windows) {
+            root.join("backend").join("venv").join("Scripts").join("python.exe")
+        } else {
+            root.join("backend").join("venv").join("bin").join("python")
+        };
 
         let python_name = python_path
             .file_name()
             .and_then(|x| x.to_str())
-            .unwrap_or("python.exe");
+            .unwrap_or(if cfg!(windows) { "python.exe" } else { "python" });
         console_log(
             "SCENE|spawn",
             &format!("mode=dev exe={python_name} script=app.py args=[{video_name},{output_dir_base}]"),
@@ -82,18 +86,25 @@ pub async fn detect_scenes(
             .ok_or("Can't get exe directory")?
             .to_path_buf();
 
+        let sidecar_rel = if cfg!(windows) {
+            "bin/backend_script-x86_64-pc-windows-msvc/backend_script.exe"
+        } else if cfg!(all(target_os = "macos", target_arch = "aarch64")) {
+            "bin/backend_script-aarch64-apple-darwin/backend_script"
+        } else if cfg!(target_os = "macos") {
+            "bin/backend_script-x86_64-apple-darwin/backend_script"
+        } else {
+            return Err("detect_scenes: unsupported platform".to_string());
+        };
+
         let backend = app
             .path()
-            .resolve(
-                "bin/backend_script-x86_64-pc-windows-msvc/backend_script.exe",
-                tauri::path::BaseDirectory::Resource,
-            )
+            .resolve(sidecar_rel, tauri::path::BaseDirectory::Resource)
             .map_err(|e| e.to_string())?;
 
         let backend_name = backend
             .file_name()
             .and_then(|x| x.to_str())
-            .unwrap_or("backend_script.exe");
+            .unwrap_or(if cfg!(windows) { "backend_script.exe" } else { "backend_script" });
         console_log(
             "SCENE|spawn",
             &format!("mode=prod exe={backend_name} args=[{video_name},{output_dir_base}]"),
@@ -221,20 +232,32 @@ pub async fn abort_detect_scenes(sidecar_state: State<'_, ActiveSidecar>) -> Res
 
     console_log("ABORT", &format!("killing process tree pid={pid}"));
 
+    #[cfg(windows)]
     let result = tokio::task::spawn_blocking(move || {
         let mut cmd = Command::new("taskkill");
         apply_no_window(&mut cmd);
-        cmd.args(["/F", "/T", "/PID", &pid.to_string()]).output()
+        cmd.args(["/F", "/T", "/PID", &pid.to_string()])
+            .output()
+            .map_err(|e| format!("Failed to run taskkill: {e}"))
     })
     .await
-    .map_err(|e| format!("taskkill task panicked: {e}"))?
-    .map_err(|e| format!("Failed to run taskkill: {e}"))?;
+    .map_err(|e| format!("taskkill task panicked: {e}"))??;
+
+    #[cfg(not(windows))]
+    let result = tokio::task::spawn_blocking(move || {
+        Command::new("kill")
+            .args(["-9", &pid.to_string()])
+            .output()
+            .map_err(|e| format!("Failed to run kill: {e}"))
+    })
+    .await
+    .map_err(|e| format!("kill task panicked: {e}"))??;
 
     if result.status.success() {
         console_log("ABORT", &format!("killed pid={pid} ok"));
     } else {
         let stderr = String::from_utf8_lossy(&result.stderr).trim().to_string();
-        console_log("ABORT", &format!("taskkill pid={pid} failed: {stderr}"));
+        console_log("ABORT", &format!("kill pid={pid} failed: {stderr}"));
     }
 
     Ok(())
