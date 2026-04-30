@@ -8,7 +8,7 @@ import {
   useThemeSettingsStore
 } from "./store/settingsStore.ts"
 
-import { hydrateEpisodesFromDisk } from "./hooks/hydrateEpisodesFromDisk.ts";
+import { hydrateEpisodesFromDisk, migrateOldEpisodePanelStorage } from "./hooks/hydrateEpisodesFromDisk.ts";
 import { ThemeSettings } from "./store/settingsStore.ts";
 import AppLayout from "./components/AppLayout";
 import HomePage from "./pages/HomePage";
@@ -70,6 +70,7 @@ function App() {
   }, [themeSettings]);
 
   useEffect(() => {
+    migrateOldEpisodePanelStorage();
     void hydrateEpisodesFromDisk(episodesPath);
   }, [episodesPath]);
 
