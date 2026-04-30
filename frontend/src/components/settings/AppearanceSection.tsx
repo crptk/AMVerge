@@ -21,8 +21,6 @@ export default function AppearanceSection() {
   const currentBackgroundBlur = useThemeSettingsStore(s => s.backgroundBlur);
   const currentShowDownloadButton = useThemeSettingsStore(s => s.showDownloadButton);
 
-
-
   const resetTheme = useThemeSettingsStore(s => s.resetThemeSettings);
   const setShowDownloadButton = useThemeSettingsStore(s => s.setShowDownloadButton);
   const setBackgroundBlur = useThemeSettingsStore(s => s.setBackgroundBlur);

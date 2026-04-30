@@ -1,7 +1,8 @@
 import type React from "react";
-import type { EpisodePanelProps, PointerDragSource } from "../types";
+import type { PointerDragSource } from "../types";
+import { EpisodeFolder } from "../../../types/domain";
 
-type Folder = EpisodePanelProps["episodeFolders"][number];
+type Folder = EpisodeFolder;
 
 type FolderRowProps = {
   folder: Folder;

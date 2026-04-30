@@ -6,7 +6,7 @@ import type {
   PanelContextMenuState,
 } from "../types";
 
-import { useAppStateStore } from "../../../store/appStore";
+import { useEpisodePanelMetadataStore } from "../../../store/episodeStore";
 
 type EpisodePanelContextMenusProps = {
   contextMenu: EpisodeContextMenuState | null;
@@ -45,7 +45,8 @@ export default function EpisodePanelContextMenus({
   onDeleteFolder,
   onMoveEpisodeToFolder,
 }: EpisodePanelContextMenusProps) {
-  const episodeFolders = useAppStateStore(s => s.episodeFolders);
+  const episodeFolders = useEpisodePanelMetadataStore(s => s.episodeFolders);
+
   return (
     <>
       {panelContextMenu && (
@@ -88,24 +89,6 @@ export default function EpisodePanelContextMenus({
                 }}
               >
                 Delete {multiSelectedIds.size} episodes
-              </button>
-
-              <div className="episode-context-menu-separator" />
-              <div className="episode-context-menu-label">Move to</div>
-
-              <button
-                type="button"
-                className="episode-context-menu-item"
-                onClick={() => {
-                  for (const id of multiSelectedIds) {
-                    onMoveEpisodeToFolder(id, null);
-                  }
-
-                  setMultiSelectedIds(new Set());
-                  setContextMenu(null);
-                }}
-              >
-                Root
               </button>
 
               {episodeFolders.map((folder) => (

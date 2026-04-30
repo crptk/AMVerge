@@ -1,5 +1,7 @@
 // Drag/drop hook for the Episode Panel. Handles pointer dragging, drop target detection, and move commits.
 import { useRef, useState } from "react";
+import { EpisodeEntry, EpisodeFolder } from "../../../types/domain"
+
 import type {
   EpisodePanelProps,
   PointerDragSource,
@@ -7,10 +9,10 @@ import type {
 } from "../types";
 
 type UseEpisodePanelDragDropArgs = {
-  folderById: Map<string, EpisodePanelProps["episodeFolders"][number]>;
-  foldersByParentId: Map<string | null, EpisodePanelProps["episodeFolders"]>;
-  episodesByFolderId: Map<string, EpisodePanelProps["episodes"]>;
-  rootEpisodes: EpisodePanelProps["episodes"];
+  folderById: Map<string, EpisodeFolder>;
+  foldersByParentId: Map<string | null, EpisodeFolder[]>;
+  episodesByFolderId: Map<string, EpisodeEntry[]>;
+  rootEpisodes: EpisodeEntry[];
 
   multiSelectedIds: Set<string>;
   setMultiSelectedIds: React.Dispatch<React.SetStateAction<Set<string>>>;

@@ -1,6 +1,6 @@
 import type React from "react";
 import type { PointerDragSource } from "../types";
-import { useAppStateStore } from "../../../store/appStore";
+import { useEpisodePanelRuntimeStore } from "../../../store/episodeStore";
 import type { EpisodeEntry } from "../../../types/domain";
 
 type Episode = EpisodeEntry;
@@ -31,8 +31,8 @@ export default function EpisodeRow({
   openContextMenu,
   onOpenEpisode,
 }: EpisodeRowProps) {
-  const openedEpisodeId = useAppStateStore(s => s.openedEpisodeId);
-  const selectedEpisodeId = useAppStateStore(s => s.selectedEpisodeId);
+  const openedEpisodeId = useEpisodePanelRuntimeStore(s => s.openedEpisodeId);
+  const selectedEpisodeId = useEpisodePanelRuntimeStore(s => s.selectedEpisodeId);
   const isOpen = openedEpisodeId === episode.id;
   const isSelected = selectedEpisodeId === episode.id;
   const isMultiSelected = multiSelectedIds.has(episode.id); 
@@ -59,7 +59,7 @@ export default function EpisodeRow({
       title={episode.videoPath}
     >
       <span className="episode-panel-episode-name">
-        {episode.displayName}
+        {episode.displayName || episode.id}
       </span>
     </div>
   );

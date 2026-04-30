@@ -59,9 +59,8 @@
 
 .batch-file-name {
     font-size: 0.75rem;
-    color: rgba(255,255,255,0.45);
-    font-family: monospace;
-    max-width: 260px;
+    max-width: rgba(255,255,255,0.45);
+    font-family: monospace;: 260px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -75,6 +74,7 @@
     background: black;
     color: red;
     cursor: pointer;
+    font-family: 'Jersey 10', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
 }
 
 .abort-button:hover {

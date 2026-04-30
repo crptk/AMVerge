@@ -12,7 +12,7 @@ import useEpisodePanelMenus from "../hooks/useEpisodePanelMenus";
 import useEpisodePanelStructure from "../hooks/useEpisodePanelStructure";
 
 import type { EpisodePanelProps } from "../types";
-import { useEpisodePanelMetadataStore, useEpisodePanelRuntimeStore } from "../../../store/episodeStore";
+import { useEpisodePanelRuntimeStore } from "../../../store/episodeStore";
 
 export default function EpisodePanel(props: EpisodePanelProps) {
   const panelListRef = useRef<HTMLDivElement | null>(null);
@@ -26,9 +26,6 @@ export default function EpisodePanel(props: EpisodePanelProps) {
   const [nextSortDirection, setNextSortDirection] = useState<"asc" | "desc">("asc");
   const [multiSelectedIds, setMultiSelectedIds] = useState<Set<string>>(new Set());
 
-  const episodes = useEpisodePanelRuntimeStore(s => s.episodes);
-  const episodeFolders = useEpisodePanelMetadataStore(s => s.episodeFolders);
-
   const selectedEpisodeId = useEpisodePanelRuntimeStore(s => s.selectedEpisodeId);
   const selectedFolderId = useEpisodePanelRuntimeStore(s => s.selectedFolderId);
   
@@ -37,7 +34,7 @@ export default function EpisodePanel(props: EpisodePanelProps) {
     foldersByParentId,
     rootEpisodes,
     episodesByFolderId,
-    flatEpisodeOrder,
+    visibleEpisodeOrder,
   } = useEpisodePanelStructure();
 
   const clearClickGesture = () => {
@@ -91,13 +88,13 @@ export default function EpisodePanel(props: EpisodePanelProps) {
 
     if (e.shiftKey && lastClickedEpisodeRef.current) {
       e.stopPropagation();
-      const startIdx = flatEpisodeOrder.indexOf(lastClickedEpisodeRef.current);
-      const endIdx = flatEpisodeOrder.indexOf(episodeId);
+      const startIdx = visibleEpisodeOrder.indexOf(lastClickedEpisodeRef.current);
+      const endIdx = visibleEpisodeOrder.indexOf(episodeId);
 
       if (startIdx >= 0 && endIdx >= 0) {
         const lo = Math.min(startIdx, endIdx);
         const hi = Math.max(startIdx, endIdx);
-        setMultiSelectedIds(new Set(flatEpisodeOrder.slice(lo, hi + 1)));
+        setMultiSelectedIds(new Set(visibleEpisodeOrder.slice(lo, hi + 1)));
       }
 
       return;

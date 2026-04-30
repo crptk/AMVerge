@@ -4,44 +4,43 @@ import type { EpisodeEntry, EpisodeFolder } from "../../../types/domain";
 import { useEpisodePanelMetadataStore, useEpisodePanelRuntimeStore } from "../../../store/episodeStore";
 
 export default function useEpisodePanelStructure() {
-  const episodes = useEpisodePanelRuntimeStore((s) => s.episodes);
-  const episodeFolders = useEpisodePanelMetadataStore((s) => s.episodeFolders);
+  // gets all the episode and folder data
+  const episodes = useEpisodePanelRuntimeStore(s => s.episodes);
+  const episodeFolders = useEpisodePanelMetadataStore(s => s.episodeFolders);
 
-  const safeFolders = Array.isArray(episodeFolders) ? episodeFolders : [];
-  const safeEpisodes = Array.isArray(episodes) ? episodes : [];
-
+  // returns array of every folder's ID, used to access individual folder data
   const folderById = useMemo(() => {
     const map = new Map<string, EpisodeFolder>();
 
-    for (const folder of safeFolders) {
+    for (const folder of episodeFolders) {
       map.set(folder.id, folder);
     }
 
     return map;
-  }, [safeFolders]);
+  }, [episodeFolders]);
 
+  // stores the children for each folder, used to build the tree structure
   const foldersByParentId = useMemo(() => {
     const map = new Map<string | null, EpisodeFolder[]>();
 
-    for (const folder of safeFolders) {
+    for (const folder of episodeFolders) {
       const key = folder.parentId ?? null;
       const list = map.get(key) ?? [];
 
       list.push(folder);
       map.set(key, list);
     }
-
     return map;
-  }, [safeFolders]);
+  }, [episodeFolders]);
 
   const rootEpisodes = useMemo(() => {
-    return safeEpisodes.filter((episode) => episode.folderId === null);
-  }, [safeEpisodes]);
+    return episodes.filter((episode) => episode.folderId === null);
+  }, [episodes]);
 
   const episodesByFolderId = useMemo(() => {
     const map = new Map<string, EpisodeEntry[]>();
 
-    for (const episode of safeEpisodes) {
+    for (const episode of episodes) {
       if (!episode.folderId) continue;
 
       const list = map.get(episode.folderId) ?? [];
@@ -50,15 +49,17 @@ export default function useEpisodePanelStructure() {
     }
 
     return map;
-  }, [safeEpisodes]);
+  }, [episodes]);
 
-  const flatEpisodeOrder = useMemo(() => {
+  // displays the order of the episodes that are currently displayed in the panel
+  const visibleEpisodeOrder = useMemo(() => {
     const order: string[] = [];
 
     const visitFolder = (parentId: string | null) => {
       const childFolders = foldersByParentId.get(parentId) ?? [];
 
       for (const folder of childFolders) {
+        // skip over folders that are closed since their eps aren't visible
         if (folder.isExpanded) {
           visitFolder(folder.id);
 
@@ -75,7 +76,6 @@ export default function useEpisodePanelStructure() {
     for (const ep of rootEpisodes) {
       order.push(ep.id);
     }
-
     return order;
   }, [foldersByParentId, episodesByFolderId, rootEpisodes]);
 
@@ -84,6 +84,6 @@ export default function useEpisodePanelStructure() {
     foldersByParentId,
     rootEpisodes,
     episodesByFolderId,
-    flatEpisodeOrder,
+    visibleEpisodeOrder,
   };
 }

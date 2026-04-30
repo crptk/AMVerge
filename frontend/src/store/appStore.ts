@@ -1,6 +1,5 @@
-import { ClipItem, EpisodeEntry, EpisodeFolder } from "../types/domain";
+import { ClipItem } from "../types/domain";
 import { create } from "zustand";
-import { persist } from "zustand/middleware";
 
 export type AppState = {
   focusedClip: string | null;

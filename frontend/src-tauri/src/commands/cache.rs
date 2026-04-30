@@ -1,8 +1,6 @@
 use std::path::{Path, PathBuf};
-
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager};
-
 use crate::utils::paths::sanitize_episode_cache_id;
 
 #[tauri::command]
@@ -45,7 +43,7 @@ pub async fn clear_episode_panel_cache(app: AppHandle, custom_path: Option<Strin
     Ok(())
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ClipEntry {
     pub id: String,
@@ -54,12 +52,14 @@ pub struct ClipEntry {
     pub original_name: String,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EpisodeEntry {
     pub id: String,
     pub display_name: String,
+    pub video_path: Option<String>,
     pub folder_id: Option<String>,
+    pub imported_at: Option<i64>,
     pub clips: Vec<ClipEntry>,
 }
 
@@ -91,6 +91,34 @@ fn thumbnail_for_video(path: &Path) -> String {
     }
 
     String::new()
+}
+
+#[tauri::command]
+pub async fn write_episode_metadata(
+    app: AppHandle,
+    custom_path: Option<String>,
+    episode: EpisodeEntry,
+) -> Result<(), String> {
+    let id = sanitize_episode_cache_id(&episode.id)?;
+
+    let episodes_dir = if let Some(p) = custom_path {
+        PathBuf::from(p)
+    } else {
+        app.path()
+            .app_data_dir()
+            .map_err(|e| e.to_string())?
+            .join("episodes")
+    };
+
+    let episode_dir = episodes_dir.join(id);
+    std::fs::create_dir_all(&episode_dir).map_err(|e| e.to_string())?;
+
+    let metadata_path = episode_dir.join("metadata.json");
+    let raw = serde_json::to_string_pretty(&episode).map_err(|e| e.to_string())?;
+
+    std::fs::write(metadata_path, raw).map_err(|e| e.to_string())?;
+
+    Ok(())
 }
 
 #[tauri::command]
@@ -131,6 +159,17 @@ pub async fn scan_episode_panel_cache(
             Err(_) => continue,
         };
 
+        let metadata_path = episode_dir.join("metadata.json");
+
+        if metadata_path.exists() {
+            if let Ok(raw) = std::fs::read_to_string(&metadata_path) {
+                if let Ok(mut episode) = serde_json::from_str::<EpisodeEntry>(&raw) {
+                    episode.id = episode_id.clone();
+                    episodes.push(episode);
+                    continue;
+                }
+            }
+        }
         let mut clips: Vec<ClipEntry> = Vec::new();
 
         let clip_entries = match std::fs::read_dir(&episode_dir) {
@@ -166,10 +205,17 @@ pub async fn scan_episode_panel_cache(
 
         clips.sort_by(|a, b| a.src.cmp(&b.src));
 
+        let display_name = clips
+            .first()
+            .map(|clip| clip.original_name.clone())
+            .unwrap_or_else(|| episode_id.clone());
+
         episodes.push(EpisodeEntry {
             id: episode_id.clone(),
-            display_name: episode_id,
+            display_name,
+            video_path: None,
             folder_id: None,
+            imported_at: None,
             clips,
         });
     }

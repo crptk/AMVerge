@@ -188,7 +188,7 @@ Builds efficient structures from raw props:
 * `foldersByParentId`
 * `episodesByFolderId`
 * `rootEpisodes`
-* `flatEpisodeOrder`
+* `visibleEpisodeOrder`
 
 Used for rendering and selection logic.
 

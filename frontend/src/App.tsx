@@ -9,7 +9,6 @@ import {
 } from "./store/settingsStore.ts"
 
 import { hydrateEpisodesFromDisk, migrateOldEpisodePanelStorage } from "./hooks/hydrateEpisodesFromDisk.ts";
-import { ThemeSettings } from "./store/settingsStore.ts";
 import AppLayout from "./components/AppLayout";
 import HomePage from "./pages/HomePage";
 import Menu from "./pages/Menu";
@@ -19,7 +18,7 @@ import { type Page } from "./components/sidebar/types";
 
 import { useUIStateStore } from "./store/UIStore.ts";
 import { useAppStateStore } from "./store/appStore.ts";
-import { useEpisodePanelRuntimeStore } from "./store/episodeStore.ts";
+import { useEpisodePanelRuntimeStore, clearEpisodePanelStores, useEpisodePanelMetadataStore } from "./store/episodeStore.ts";
 import useEpisodePanelState from "./hooks/useEpisodePanelState";
 import useImportExport from "./hooks/useImportExport";
 import useDiscordRPC from "./hooks/useDiscordRPC";
@@ -27,19 +26,18 @@ import useHEVCSupport from "./hooks/useHEVCSupport";
 import useDragDropImport from "./hooks/useDragDropImport";
 
 function App() {
-  // Refs
+  // refs
   const gridRef = useRef<HTMLDivElement>(null);
   const windowWrapperRef = useRef<HTMLDivElement | null>(null);
   const mainLayoutWrapperRef = useRef<HTMLDivElement | null>(null);
   const userHasHEVC = useRef(false);
   const abortedRef = useRef(false);
 
-  // UI state
+  // states
   const [isDragging, setIsDragging] = useState(false);
   const [activePage, setActivePage] = useState<Page>("home");
   const generalSettings = useGeneralSettingsStore();
 
-  // App states
   const clips = useAppStateStore(s => s.clips);
   const setClips = useAppStateStore(s => s.setClips);
 
@@ -56,9 +54,9 @@ function App() {
   const episodesPath = useGeneralSettingsStore(s => s.episodesPath);
 
   const setOpenedEpisodeId = useEpisodePanelRuntimeStore(s => s.setOpenedEpisodeId);
+  const setLastOpenedEpisodeId = useEpisodePanelMetadataStore(s => s.setLastOpenedEpisodeId);
   const setSelectedFolderId = useEpisodePanelRuntimeStore(s => s.setSelectedFolderId);
   const setVideoIsHEVC = useAppStateStore(s => s.setVideoIsHEVC);
-  const resetAppState = useAppStateStore(s => s.resetAppState);
   const setDividerOffsetPx = useUIStateStore(s => s.setDividerOffsetPx);
   const setProgress = useAppStateStore(s => s.setProgress);
   const setProgressMsg = useAppStateStore(s => s.setProgressMsg);
@@ -70,9 +68,16 @@ function App() {
   }, [themeSettings]);
 
   useEffect(() => {
-    migrateOldEpisodePanelStorage();
-    void hydrateEpisodesFromDisk(episodesPath);
+    const run = async () => {
+      migrateOldEpisodePanelStorage();
+      await hydrateEpisodesFromDisk(episodesPath);
+    };
+
+    void run();
   }, [episodesPath]);
+
+  const openedEpisodeId = useEpisodePanelRuntimeStore(s => s.openedEpisodeId);
+  const lastOpenedEpisodeId = useEpisodePanelMetadataStore(s => s.lastOpenedEpisodeId);
 
   // Persisted UI state
   const setSidebarWidthPx = useUIStateStore(s => s.setSidebarWidthPx);
@@ -141,24 +146,10 @@ function App() {
 
     setSelectedEpisodeId(episodeId)
     setOpenedEpisodeId(episodeId)
+    setLastOpenedEpisodeId(episodeId)
     setSelectedFolderId(null)
     setClips(episode.clips)
   }
-
-  // function handleSelectEpisodeFromStorage(
-  //   episodeId: string | null,
-  //   episodesList?: typeof episodes
-  // ) {
-  //   setSelectedEpisodeId(episodeId ?? null )
-  //   setSelectedFolderId(null)
-
-  //   if (episodeId && Array.isArray(episodesList)) {
-  //     const episode = episodesList.find((e) => e.id === episodeId);
-  //     setClips(episode ? episode.clips: [])
-  //   } else {
-  //     setClips([])
-  //   }
-  // }
 
   // UI handlers
   function snapGridBigger() {
@@ -205,13 +196,16 @@ function App() {
 
   // Backend actions
   async function handleClearEpisodePanelCache() {
-    resetAppState()
     try {
       await invoke("clear_episode_panel_cache", {
-        customPath: generalSettings.episodesPath,
+        customPath: episodesPath,
       });
+
+      clearEpisodePanelStores();
+
+      setClips([]);
     } catch (err) {
-      console.error("clear_episode_panel_cache failed:", err);
+      console.error("Failed to clear episode panel cache:", err);
     }
   }
 
@@ -246,6 +240,7 @@ function App() {
     };
   }, []);
 
+  
   useEffect(() => {
     if (!importedVideoPath) {
       setVideoIsHEVC(null);
@@ -301,11 +296,9 @@ function App() {
     update();
 
     const ro = new ResizeObserver(() => update());
-
     if (mainLayoutWrapperRef.current) {
       ro.observe(mainLayoutWrapperRef.current);
     }
-
     window.addEventListener("resize", update);
 
     return () => {
@@ -313,6 +306,29 @@ function App() {
       window.removeEventListener("resize", update);
     };
   }, [activePage, sidebarEnabled]);
+
+  // load episodes on startup
+  useEffect(() => {
+    if (openedEpisodeId) return;
+    if (!lastOpenedEpisodeId) return;
+    if (episodes.length === 0) return;
+
+    const episode = episodes.find((e) => e.id === lastOpenedEpisodeId);
+    if (!episode) return;
+
+    setSelectedEpisodeId(episode.id);
+    setOpenedEpisodeId(episode.id);
+    setSelectedFolderId(null);
+    setClips(episode.clips);
+  }, [
+    episodes,
+    openedEpisodeId,
+    lastOpenedEpisodeId,
+    setSelectedEpisodeId,
+    setOpenedEpisodeId,
+    setSelectedFolderId,
+    setClips,
+  ]);
 
   return (
     <AppLayout

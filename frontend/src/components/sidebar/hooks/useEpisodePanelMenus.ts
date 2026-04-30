@@ -121,6 +121,7 @@ export default function useEpisodePanelMenus({
       x: e.clientX,
       y: e.clientY,
     });
+    console.log("FolderContextMenu:", folderContextMenu)
   };
 
   const openPanelContextMenu = (e: React.MouseEvent) => {

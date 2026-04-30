@@ -64,6 +64,7 @@ export type EpisodePanelMetadataState = {
   episodeFolders: EpisodeFolder[];
   episodeNamesById: Record<string, string>;
   episodeFolderById: Record<string, string | null>;
+  lastOpenedEpisodeId: string | null;
 };
 
 export type EpisodePanelMetadataStore = EpisodePanelMetadataState & {
@@ -81,12 +82,15 @@ export type EpisodePanelMetadataStore = EpisodePanelMetadataState & {
 
   removeEpisodeMetadata: (episodeId: string) => void;
   resetEpisodePanelMetadata: () => void;
+
+  setLastOpenedEpisodeId: (episodeId: string | null) => void;
 };
 
 export const DEFAULT_EPISODE_PANEL_METADATA_STATE: EpisodePanelMetadataState = {
   episodeFolders: [],
   episodeNamesById: {},
   episodeFolderById: {},
+  lastOpenedEpisodeId: null,
 };
 
 export const useEpisodePanelMetadataStore = create<EpisodePanelMetadataStore>()(
@@ -145,6 +149,8 @@ export const useEpisodePanelMetadataStore = create<EpisodePanelMetadataStore>()(
             episodeFolderById: nextFolders,
           };
         }),
+      
+      setLastOpenedEpisodeId: (episodeId) => set({lastOpenedEpisodeId: episodeId}),
 
       resetEpisodePanelMetadata: () =>
         set({ ...DEFAULT_EPISODE_PANEL_METADATA_STATE }),
@@ -154,3 +160,13 @@ export const useEpisodePanelMetadataStore = create<EpisodePanelMetadataStore>()(
     }
   )
 );
+
+export function clearEpisodePanelStores() {
+  localStorage.removeItem("amverge_episode_panel_v1");
+  localStorage.removeItem("amverge_episode_panel_metadata_v1");
+  localStorage.removeItem("amverge_episode_panel_migrated_v1");
+  localStorage.removeItem("amverge_episode_panel_migrated_v2");
+
+  useEpisodePanelRuntimeStore.getState().resetEpisodePanelRuntime();
+  useEpisodePanelMetadataStore.getState().resetEpisodePanelMetadata();
+}

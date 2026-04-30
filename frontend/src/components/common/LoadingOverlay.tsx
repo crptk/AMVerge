@@ -33,11 +33,11 @@ export default function LoadingOverlay({
               Cutting videos {batchDone + 1}/{batchTotal}...
             </div>
             <div className="batch-file-name">{batchCurrentFile}</div>
-            <button className="abort-button" onClick={onAbort}>
-              Abort
-            </button>
           </div>
         )}
+        <button className="abort-button" onClick={onAbort}>
+          Abort
+        </button>
       </div>
     </div>
   );
