@@ -46,6 +46,10 @@
     gap: 5rem;
 }
 
-.credits-row-inner a {
+.credits-row a {
     color: var(--accent);
+}
+
+#looking-to-contribute {
+    margin-top: 25px;
 }

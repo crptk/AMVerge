@@ -24,18 +24,19 @@ export default function Credits() {
                 <div className="credits-row">
                     <h4>Contributors</h4>
                     <div className="credits-row-inner">
-                        <p>Looking to contribute? Feel free to do so 
-                            {" "}
-                            <a
-                            href="#"
-                            onClick={e => {
-                                e.preventDefault();
-                                open("https://github.com/crptk/AMVerge");
-                            }}
-                            > here</a>
-                            .
-                        </p>
+                        <p>ligatima</p>
                     </div>
+                    <p id="looking-to-contribute">Looking to contribute? Feel free to do so 
+                        {" "}
+                        <a
+                        href="#"
+                        onClick={e => {
+                            e.preventDefault();
+                            open("https://github.com/crptk/AMVerge");
+                        }}
+                        > here</a>
+                        .
+                    </p>
                 </div>
             </div>
         </div>
