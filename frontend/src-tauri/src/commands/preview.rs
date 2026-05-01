@@ -129,7 +129,7 @@ pub async fn ensure_preview_proxy(
 
     let stem = input_path
         .file_stem()
-        .and_then(|s| s.to_str())
+        .map(|s| s.to_string_lossy().to_string())
         .ok_or("Invalid clip filename")?;
 
     let proxy_path = parent.join(format!("{stem}.preview.mp4"));
@@ -153,9 +153,9 @@ pub async fn ensure_preview_proxy(
         cmd.args([
             "-y",
             "-i",
-            input
-                .to_str()
-                .ok_or_else(|| "Invalid input path".to_string())?,
+        ]);
+        cmd.arg(&input);
+        cmd.args([
             "-c:v",
             "libx264",
             "-vf",
@@ -171,12 +171,11 @@ pub async fn ensure_preview_proxy(
             "-an", // No audio for preview proxy to speed up extraction
             "-movflags",
             "+faststart",
-            output
-                .to_str()
-                .ok_or_else(|| "Invalid output path".to_string())?,
-        ])
-        .output()
-        .map_err(|e| format!("Failed to run ffmpeg: {e}"))
+        ]);
+        cmd.arg(&output);
+        
+        cmd.output()
+            .map_err(|e| format!("Failed to run ffmpeg: {e}"))
     })
     .await
     .map_err(|e| format!("ffmpeg task panicked: {e}"))??;

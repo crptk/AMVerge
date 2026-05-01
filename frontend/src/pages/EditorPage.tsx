@@ -4,7 +4,7 @@ import TimelineTrack from "../components/timeline/TimelineTrack";
 import type { UseTimelineReturn } from "../hooks/useTimeline";
 import type { ClipItem } from "../types/domain";
 import { fileNameFromPath } from "../utils/episodeUtils";
-import { FaRocket, FaChevronLeft, FaClock } from "react-icons/fa";
+import { FaRocket, FaChevronLeft, FaClock, FaDiscord } from "react-icons/fa";
 import "../styles/home/editor.css";
 
 type EditorPageProps = {
@@ -38,12 +38,33 @@ export default function EditorPage({
 }: EditorPageProps) {
   const { state: timelineState } = timeline;
 
-  // 1. Derive the active segment — find which segment the playhead is over.
-  //    We memo on segments + a coarsened playhead (for segment lookup only).
   const activeSegment = useMemo(() => {
     const { segments, playheadSec } = timelineState;
-    const seg = segments.find(s => playheadSec >= s.start - 0.005 && playheadSec < s.end + 0.005);
+    // 1. Try a strict match first (exactly inside the segment)
+    let seg = segments.find(s => playheadSec >= s.start && playheadSec < s.end);
+    
+    // 2. Fallback to a loose match (small tolerance for scrubbing/rounding)
+    if (!seg) {
+      seg = segments.find(s => playheadSec >= s.start - 0.01 && playheadSec < s.end + 0.01);
+    }
+    
     if (!seg || !seg.sourceClip) return null;
+
+    let sourceStart = seg.sourceStart ?? 0;
+
+    // HEALING: If the source is a Precut/Split file (local generated clip) 
+    // but has a large offset that doesn't match the clip metadata, reset it.
+    const src = seg.sourceClip?.src || "";
+    const isSplitFile = 
+        src.includes("Precut") || 
+        src.includes("split") || 
+        src.includes("_part") || 
+        src.includes("\\episodes\\") ||
+        src.includes("/episodes/");
+    
+    if (isSplitFile && sourceStart > 0.001) { 
+        sourceStart = 0;
+    }
 
     return {
       id: seg.id,
@@ -51,11 +72,10 @@ export default function EditorPage({
       src: seg.sourceClip.src,
       thumbnail: seg.sourceClip.thumbnail,
       start: seg.start,
-      sourceStart: seg.sourceStart ?? 0
+      sourceStart: sourceStart
     };
   }, [timelineState.segments, timelineState.playheadSec]);
 
-  // 2. Track the LAST valid segment to prevent unmounting in gaps
   const lastSegmentRef = useRef(activeSegment);
   if (activeSegment) {
     lastSegmentRef.current = activeSegment;
@@ -65,20 +85,17 @@ export default function EditorPage({
     ? (activeSegment || lastSegmentRef.current)
     : null;
 
-  // 3. Derive the precise source time — recalculates on EVERY playhead change
-  //    This is the key fix: sourceTime must update every frame, not just on segment change.
   const sourceTime = useMemo(() => {
     if (!effectiveSegment) return 0;
     const offset = Math.max(0, timelineState.playheadSec - effectiveSegment.start);
-    return effectiveSegment.sourceStart + offset;
-  }, [timelineState.playheadSec, effectiveSegment?.id, effectiveSegment?.start, effectiveSegment?.sourceStart]);
+    const time = effectiveSegment.sourceStart + offset;
+    return time;
+  }, [timelineState.playheadSec, timelineState.isDraggingPlayhead, effectiveSegment?.id, effectiveSegment?.start, effectiveSegment?.sourceStart]);
 
   const onExportClick = () => {
-    console.log("[EditorPage] Export requested for:", Array.from(timelineClipIds));
     handleExport(timelineClipIds, true, defaultMergedName);
   };
 
-  // 4. Keyboard Shortcuts — use a ref for playheadSec to keep effect stable
   const playheadRef = useRef(timelineState.playheadSec);
   playheadRef.current = timelineState.playheadSec;
 
@@ -92,39 +109,96 @@ export default function EditorPage({
             return;
         }
 
+        if (e.repeat) return;
+
         if (e.code === "Space") {
             e.preventDefault();
             timeline.togglePlayback();
         }
 
-        if (e.code === "ArrowRight") {
+        const FRAME_TIME = 1/30;
+
+        if (e.code === "ArrowRight" || e.code === "Period") {
             e.preventDefault();
-            timeline.setPlayhead(playheadRef.current + (1/30));
+            // Use Shift for 10-frame jumps, or Ctrl+Period for users without arrows
+            const step = e.shiftKey ? FRAME_TIME * 10 : FRAME_TIME;
+            timeline.setPlayhead(playheadRef.current + step);
         }
 
-        if (e.code === "ArrowLeft") {
+        if (e.code === "ArrowLeft" || e.code === "Comma") {
             e.preventDefault();
-            timeline.setPlayhead(playheadRef.current - (1/30));
+            // Use Shift for 10-frame jumps, or Ctrl+Comma for users without arrows
+            const step = e.shiftKey ? FRAME_TIME * 10 : FRAME_TIME;
+            timeline.setPlayhead(playheadRef.current - step);
+        }
+
+        if (e.code === "KeyS") {
+            e.preventDefault();
+            timeline.splitAtPlayhead();
+        }
+
+        if (e.code === "KeyM") {
+            e.preventDefault();
+            timeline.mergeSelected();
+        }
+
+        if (e.code === "Delete" || e.code === "Backspace") {
+            // Only trigger if we aren't typing in an input
+            timeline.deleteSelected();
+        }
+
+        if (e.code === "Escape") {
+            timeline.deselectAll();
+        }
+
+        if (e.ctrlKey && e.code === "KeyA") {
+            e.preventDefault();
+            timeline.selectAll();
+        }
+
+        if (e.ctrlKey && e.code === "KeyZ") {
+            e.preventDefault();
+            timeline.undo();
+        }
+
+        if (e.ctrlKey && (e.code === "KeyY" || (e.shiftKey && e.code === "KeyZ"))) {
+            e.preventDefault();
+            timeline.redo();
         }
     };
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [timeline.togglePlayback, timeline.setPlayhead]);
+  }, [
+    timeline.togglePlayback, 
+    timeline.setPlayhead, 
+    timeline.splitAtPlayhead, 
+    timeline.mergeSelected, 
+    timeline.deleteSelected,
+    timeline.deselectAll,
+    timeline.selectAll,
+    timeline.undo,
+    timeline.redo
+  ]);
 
-  const handleTimeUpdate = useCallback((time: number) => {
-    if (!effectiveSegment) return;
-    const { segments } = timelineState;
-    const seg = segments.find(s => s.id === effectiveSegment.id);
-    if (seg) {
-        const offset = time - (seg.sourceStart ?? 0);
-        const newPlayheadSec = seg.start + offset;
+  /**
+   * Synchronizes the timeline playhead when the video naturally plays forward.
+   * This ensures the playhead follows the video frame-accurately.
+   */
+  const handleTimeUpdate = useCallback((time: number, isEnded?: boolean) => {
+    if (effectiveSegment) {
+        const offset = time - (effectiveSegment.sourceStart ?? 0);
+        let newPlayheadSec = effectiveSegment.start + offset;
         
+        if (isEnded && timelineState.isPlaying) {
+            newPlayheadSec = effectiveSegment.end + 0.01;
+        }
+
         if (Math.abs(playheadRef.current - newPlayheadSec) > 0.01) {
             timeline.setPlayhead(newPlayheadSec);
         }
     }
-  }, [effectiveSegment?.id, timelineState.segments, timeline.setPlayhead]);
+  }, [effectiveSegment, timelineState.isPlaying, timeline.setPlayhead]);
 
   const [timelineHeight, setTimelineHeight] = React.useState(() => {
     const saved = localStorage.getItem("amverge_editor_timeline_height");
@@ -169,10 +243,13 @@ export default function EditorPage({
         <div className="editor-title">
           <span className="editor-filename">
             {importedVideoPath ? fileNameFromPath(importedVideoPath) : "Untitled Project"}
+            <span className="beta-badge">Beta</span>
           </span>
-          <div className="editor-status-badge">
-            <FaClock />
-            <span>{formatTimecode(timelineState.playheadSec)}</span>
+          <div className="discord-contact">
+             <FaClock style={{ opacity: 0.6 }} />
+             <span style={{ marginRight: '8px' }}>{formatTimecode(timelineState.playheadSec)}</span>
+             <FaDiscord style={{ opacity: 0.6 }} />
+             <span>Found a bug? Contact us on Discord</span>
           </div>
         </div>
         <div className="editor-header-actions">

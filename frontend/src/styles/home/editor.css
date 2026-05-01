@@ -167,8 +167,7 @@
   opacity: 0.3;
 }
 
-.editor-preview-empty p {
-  font-family: 'Jersey 10', sans-serif;
-  font-size: 1.5rem;
+.discord-contact:hover {
+    opacity: 0.8;
 }
 

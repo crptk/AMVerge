@@ -186,7 +186,12 @@ export function useVideoPlayer({
         if (isVideoReady) {
             // If playing or scrubbing, sync to timeline
             if (!video.paused || isScrubbing) {
-                if (onTimeUpdate) onTimeUpdate(video.currentTime);
+                if (onTimeUpdate) {
+                    if (import.meta.env.DEV && !video.paused) {
+                        console.log("[VideoPlayer] Syncing to Timeline ->", video.currentTime.toFixed(3));
+                    }
+                    onTimeUpdate(video.currentTime);
+                }
             }
         }
     };
@@ -378,16 +383,12 @@ export function useVideoPlayer({
         // Don't seek until the video is actually loaded and has valid duration
         if (!isVideoReady || !duration || duration <= 0) return;
 
-        // 1. If the video is playing naturally, don't let externalTime (from timeline feedback) 
-        // jerk the playhead back unless it's a significant jump (e.g. user scrubbed the timeline).
         const diff = Math.abs(video.currentTime - externalTime);
         const isSignificantJump = diff > 0.1;
         
-        if (isPlaying && !isSignificantJump) {
-            return;
-        }
+        // Skip small corrections during playback to avoid jitter
+        if (isPlaying && !isSignificantJump) return;
 
-        // 2. Only seek if the difference is meaningful to avoid jitter
         if (diff > 0.01) {
             // Clamp to valid range
             const clampedTime = Math.max(0, Math.min(externalTime, duration));

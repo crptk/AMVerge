@@ -771,7 +771,10 @@ pub async fn fast_split(
         "-y",
         "-i", &input_path,
         "-t", &split_time.to_string(),
-        "-c", "copy",
+        "-c:v", "libx264",
+        "-crf", "17",
+        "-preset", "veryfast",
+        "-c:a", "aac",
         "-avoid_negative_ts", "make_zero",
         &output_path1
     ]).output().map_err(|e| format!("Part 1 failed: {e}"))?;
@@ -787,7 +790,10 @@ pub async fn fast_split(
         "-y",
         "-ss", &split_time.to_string(),
         "-i", &input_path,
-        "-c", "copy",
+        "-c:v", "libx264",
+        "-crf", "17",
+        "-preset", "veryfast",
+        "-c:a", "aac",
         "-avoid_negative_ts", "make_zero",
         &output_path2
     ]).output().map_err(|e| format!("Part 2 failed: {e}"))?;

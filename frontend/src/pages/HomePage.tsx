@@ -166,35 +166,38 @@ export default function HomePage({
     const mergingSegments = segments.filter(s => s.isProcessing && !s.splitInfo && !processingIdsRef.current.has(s.id));
     if (mergingSegments.length === 0) return;
 
-    mergingSegments.forEach(async (merging) => {
+    mergingSegments.forEach((merging) => {
       processingIdsRef.current.add(merging.id);
-      try {
-        if (!merging.sourceClips || merging.sourceClips.length === 0) {
-          throw new Error("No source clips found for merge");
+      
+      (async () => {
+        try {
+          if (!merging.sourceClips || merging.sourceClips.length === 0) {
+            throw new Error("No source clips found for merge");
+          }
+
+          const clipsToMerge = merging.sourceClips.map(c => c.src);
+          const outputName = `merged_${merging.id}.mp4`;
+          
+          const firstClipPath = merging.sourceClip?.src || clipsToMerge[0];
+          const lastSlash = Math.max(firstClipPath.lastIndexOf('\\'), firstClipPath.lastIndexOf('/'));
+          const cacheDir = firstClipPath.substring(0, lastSlash);
+          const outputPath = `${cacheDir}/${outputName}`;
+
+          console.log(`[HomePage] Merging ${clipsToMerge.length} clips into: ${outputName}`);
+
+          const newSrc = await invoke<string>("fast_merge", {
+            clips: clipsToMerge,
+            outputPath
+          });
+
+          dispatchTimeline({ type: "MERGE_SUCCESS", id: merging.id, newSrc });
+        } catch (err) {
+          console.error("[HomePage] Backend merge failed:", err);
+          dispatchTimeline({ type: "MERGE_ERROR", id: merging.id });
+        } finally {
+          processingIdsRef.current.delete(merging.id);
         }
-
-        const clipsToMerge = merging.sourceClips.map(c => c.src);
-        const outputName = `merged_${merging.id}.mp4`;
-        
-        const firstClipPath = merging.sourceClip?.src || clipsToMerge[0];
-        const lastSlash = Math.max(firstClipPath.lastIndexOf('\\'), firstClipPath.lastIndexOf('/'));
-        const cacheDir = firstClipPath.substring(0, lastSlash);
-        const outputPath = `${cacheDir}/${outputName}`;
-
-        console.log(`[HomePage] Merging ${clipsToMerge.length} clips into: ${outputName}`);
-
-        const newSrc = await invoke<string>("fast_merge", {
-          clips: clipsToMerge,
-          outputPath
-        });
-
-        dispatchTimeline({ type: "MERGE_SUCCESS", id: merging.id, newSrc });
-      } catch (err) {
-        console.error("[HomePage] Backend merge failed:", err);
-        dispatchTimeline({ type: "MERGE_ERROR", id: merging.id });
-      } finally {
-        processingIdsRef.current.delete(merging.id);
-      }
+      })();
     });
   }, [segments, dispatchTimeline]);
 
@@ -211,7 +214,7 @@ export default function HomePage({
       groups.get(oid)!.push(s);
     });
 
-    groups.forEach(async (parts, _originalId) => {
+    groups.forEach((parts, _originalId) => {
       const part1 = parts.find(p => p.splitInfo?.part === 1);
       const part2 = parts.find(p => p.splitInfo?.part === 2);
       
@@ -220,46 +223,48 @@ export default function HomePage({
       processingIdsRef.current.add(part1.id);
       processingIdsRef.current.add(part2.id);
 
-      try {
-        const info = part1.splitInfo!;
-        const inputPath = info.inputPath;
-        const splitTime = info.splitTime;
-        
-        const lastSlash = Math.max(inputPath.lastIndexOf('\\'), inputPath.lastIndexOf('/'));
-        const cacheDir = inputPath.substring(0, lastSlash);
-        const fileName = inputPath.substring(lastSlash + 1);
-        const stem = fileName.substring(0, fileName.lastIndexOf('.'));
-        const ext = fileName.substring(fileName.lastIndexOf('.'));
+      (async () => {
+        try {
+          const info = part1.splitInfo!;
+          const inputPath = info.inputPath;
+          const splitTime = info.splitTime;
+          
+          const lastSlash = Math.max(inputPath.lastIndexOf('\\'), inputPath.lastIndexOf('/'));
+          const cacheDir = inputPath.substring(0, lastSlash);
+          const fileName = inputPath.substring(lastSlash + 1);
+          const stem = fileName.substring(0, fileName.lastIndexOf('.'));
+          const ext = fileName.substring(fileName.lastIndexOf('.'));
 
-        const out1 = `${cacheDir}/${stem}_part1_${part1.id}${ext}`;
-        const out2 = `${cacheDir}/${stem}_part2_${part2.id}${ext}`;
-        const thumb2 = `${cacheDir}/${stem}_part2_${part2.id}.jpg`;
+          const out1 = `${cacheDir}/${stem}_part1_${part1.id}${ext}`;
+          const out2 = `${cacheDir}/${stem}_part2_${part2.id}${ext}`;
+          const thumb2 = `${cacheDir}/${stem}_part2_${part2.id}.jpg`;
 
-        console.log(`[HomePage] Splitting clip at ${splitTime}s: ${fileName}`);
+          console.log(`[HomePage] Splitting clip at ${splitTime}s: ${fileName}`);
 
-        await invoke("fast_split", {
-          inputPath,
-          splitTime,
-          outputPath1: out1,
-          outputPath2: out2,
-          thumbPath2: thumb2
-        });
+          await invoke("fast_split", {
+            inputPath,
+            splitTime,
+            outputPath1: out1,
+            outputPath2: out2,
+            thumbPath2: thumb2
+          });
 
-        const originalDuration = (part1.sourceEnd ?? 0) - (part1.sourceStart ?? 0);
-        const dur1 = splitTime;
-        const dur2 = originalDuration - splitTime;
+          const originalDuration = (part1.sourceEnd ?? 0) - (part1.sourceStart ?? 0);
+          const dur1 = splitTime;
+          const dur2 = originalDuration - splitTime;
 
-        dispatchTimeline({ type: "SPLIT_SUCCESS", id: part1.id, part: 1, newSrc: out1, newDuration: dur1 });
-        dispatchTimeline({ type: "SPLIT_SUCCESS", id: part2.id, part: 2, newSrc: out2, newThumb: thumb2, newDuration: dur2 });
+          dispatchTimeline({ type: "SPLIT_SUCCESS", id: part1.id, part: 1, newSrc: out1, newDuration: dur1 });
+          dispatchTimeline({ type: "SPLIT_SUCCESS", id: part2.id, part: 2, newSrc: out2, newThumb: thumb2, newDuration: dur2 });
 
-      } catch (err) {
-        console.error("[HomePage] Backend split failed:", err);
-        dispatchTimeline({ type: "SPLIT_ERROR", id: part1.id });
-        dispatchTimeline({ type: "SPLIT_ERROR", id: part2.id });
-      } finally {
-        processingIdsRef.current.delete(part1.id);
-        processingIdsRef.current.delete(part2.id);
-      }
+        } catch (err) {
+          console.error("[HomePage] Backend split failed:", err);
+          dispatchTimeline({ type: "SPLIT_ERROR", id: part1.id });
+          dispatchTimeline({ type: "SPLIT_ERROR", id: part2.id });
+        } finally {
+          processingIdsRef.current.delete(part1.id);
+          processingIdsRef.current.delete(part2.id);
+        }
+      })();
     });
   }, [segments, dispatchTimeline]);
 
@@ -268,7 +273,7 @@ export default function HomePage({
 
   // Handle manual additions from sidebar in Editor Mode
   useEffect(() => {
-    if (activeMode !== "editor") {
+    if (activeMode !== "editor" || isUpdatingFromTimeline.current) {
       prevTimelineClipIdsRef.current = timelineClipIds;
       return;
     }
@@ -381,6 +386,7 @@ export default function HomePage({
               <rect x="6" y="4" width="2" height="16" />
             </svg>
             EDITOR
+            <span className="beta-badge" style={{ fontSize: '0.6rem', padding: '1px 4px', marginLeft: '4px' }}>BETA</span>
           </button>
         )}
       </div>

@@ -39,55 +39,37 @@ export function useEditorVideoPlayer({
             return;
         }
 
-        // HEVC Proxy check
         invoke<string>("ensure_preview_proxy", { clipPath: selectedClip })
             .then((proxyPath) => {
                 if (proxyPath) setEffectiveClip(proxyPath);
             })
             .catch(() => {
-                setEffectiveClip(selectedClip); // Fallback to original
+                setEffectiveClip(selectedClip);
             });
     }, [selectedClip, videoIsHEVC, hasHevcSupport]);
 
-    // 2. Synchronize externalTime -> video.currentTime
     useEffect(() => {
         if (externalTime === undefined || !videoRef.current) return;
         
         const video = videoRef.current;
-        if (video.readyState < 2) return;
+        if (!video || video.readyState < 1) return;
 
         const targetTime = Math.min(externalTime, video.duration || Infinity);
         const diff = Math.abs(video.currentTime - targetTime);
         
-        // IF PLAYING: Only jump if the drift is large (> 0.2s).
-        // This allows natural playback to continue without jitter, but
-        // still handles jumps between segments or manual playhead jumps.
         if (isPlaying && diff < 0.2) return;
 
         if (diff > 0.005) {
-            if (isDragging) {
-                if (scrubTimeoutRef.current) {
-                    window.clearTimeout(scrubTimeoutRef.current);
-                }
-                
-                scrubTimeoutRef.current = window.setTimeout(() => {
-                    video.currentTime = targetTime;
-                    scrubTimeoutRef.current = null;
-                }, 30);
-            } else {
-                video.currentTime = targetTime;
-            }
+            video.currentTime = targetTime;
         }
     }, [externalTime, isPlaying, isDragging]);
 
-    // Cleanup timeout
     useEffect(() => {
         return () => {
             if (scrubTimeoutRef.current) window.clearTimeout(scrubTimeoutRef.current);
         };
     }, []);
 
-    // 3. Synchronize isPlaying -> video.play()/pause()
     useEffect(() => {
         const video = videoRef.current;
         if (!video) return;
@@ -105,10 +87,10 @@ export function useEditorVideoPlayer({
         setIsVideoReady(true);
     };
 
-    // 4. Smooth 60fps Playhead Polling — reports back to timeline
     const onTimeUpdateRef = useRef(onTimeUpdate);
     onTimeUpdateRef.current = onTimeUpdate;
 
+    // High-precision playhead polling for the timeline
     useEffect(() => {
         if (!isPlaying || !videoRef.current) return;
 
@@ -126,10 +108,20 @@ export function useEditorVideoPlayer({
         return () => cancelAnimationFrame(rafId);
     }, [isPlaying]);
 
-    const handleTimeUpdate = () => {
+    const handleVideoError = (e: React.SyntheticEvent<HTMLVideoElement, Event>) => {
+        const video = e.currentTarget;
+        console.error("[useEditorVideoPlayer] Video load error:", {
+            error: video.error,
+            src: video.src,
+            effectiveClip
+        });
+        setIsVideoReady(false);
+    };
+
+    const handleTimeUpdate = (isEnded?: boolean) => {
         const video = videoRef.current;
-        if (video && onTimeUpdateRef.current && !video.paused) {
-            onTimeUpdateRef.current(video.currentTime);
+        if (video && onTimeUpdateRef.current && (!video.paused || isEnded)) {
+            onTimeUpdateRef.current(video.currentTime, isEnded);
         }
     };
 
@@ -137,6 +129,7 @@ export function useEditorVideoPlayer({
         videoRef,
         effectiveClip,
         handleLoadedMetadata,
+        handleVideoError,
         handleTimeUpdate,
     };
 }

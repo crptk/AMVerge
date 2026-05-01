@@ -8,9 +8,9 @@ import type {
 
 // ─── Helpers ─────────────────────────────────────────────────────────
 
-let _nextId = 1;
+let _nextId = 0;
 function genId(): string {
-  return `seg_${Date.now()}_${_nextId++}`;
+  return `seg_${crypto.randomUUID()}_${_nextId++}`;
 }
 
 /** Clamp a value between min and max. */
@@ -32,7 +32,7 @@ type Action =
   | { type: "SET_PLAYHEAD"; sec: number }
   | { type: "SET_IS_PLAYING"; isPlaying: boolean }
   | { type: "TOGGLE_PLAYBACK" }
-  | { type: "SPLIT_AT_PLAYHEAD" }
+  | { type: "SPLIT_AT_PLAYHEAD"; leftId: string; rightId: string }
   | { type: "MERGE_SELECTED" }
   | { type: "MERGE_SUCCESS"; id: string; newSrc: string }
   | { type: "MERGE_ERROR"; id: string }
@@ -117,6 +117,8 @@ function timelineReducer(state: TimelineState, action: Action): TimelineState {
     }
     case "ADD_SEGMENT": {
       const { clip } = action;
+      if (segments.some(s => s.sourceClip?.id === clip.id)) return state;
+      
       const duration = (clip.end !== undefined && clip.start !== undefined) 
         ? Math.max(0.1, clip.end - clip.start) 
         : 5;
@@ -124,8 +126,10 @@ function timelineReducer(state: TimelineState, action: Action): TimelineState {
       const lastSeg = segments.length > 0 ? segments[segments.length - 1] : null;
       const start = lastSeg ? lastSeg.end : 0;
       
+      const id = clip.id || genId();
+
       const newSeg: TimelineSegment = {
-        id: clip.id || genId(),
+        id,
         start,
         end: start + duration,
         label: clip.originalName || "New Clip",
@@ -145,18 +149,29 @@ function timelineReducer(state: TimelineState, action: Action): TimelineState {
         }
       };
     }
-    // ── Bootstrap ────────────────────────────────────────────────────
     case "INIT": {
-      const initializedSegments = action.segments.map((s) => ({
-        ...s,
-        sourceClips: s.sourceClips, // Preserve the playlist!
-        sourceStart: s.sourceStart ?? s.sourceClip?.start ?? 0,
-        sourceEnd: s.sourceEnd ?? s.sourceClip?.end ?? 0,
-      }));
+      const initializedSegments = action.segments.map((s) => {
+        let sStart = s.sourceStart ?? s.sourceClip?.start ?? 0;
+        let sEnd = s.sourceEnd ?? s.sourceClip?.end ?? 0;
+
+        const isSplitFile = s.sourceClip?.src?.includes("Precut") || s.sourceClip?.src?.includes("split");
+        if (isSplitFile && sStart > 0 && s.sourceClip?.start === 0) {
+            sStart = 0;
+            sEnd = s.end - s.start;
+        }
+
+        return {
+          ...s,
+          sourceClips: s.sourceClips,
+          sourceStart: sStart,
+          sourceEnd: sEnd,
+        };
+      });
+
       return {
         ...makeInitialState(),
         segments: initializedSegments,
-        selectedIds: new Set(initializedSegments.map(s => s.id)), // Auto-select all
+        selectedIds: new Set(initializedSegments.map(s => s.id)), 
         totalDuration: action.totalDuration,
         viewport: {
           scrollOffsetSec: 0,
@@ -165,7 +180,6 @@ function timelineReducer(state: TimelineState, action: Action): TimelineState {
       };
     }
 
-    // ── Playhead ─────────────────────────────────────────────────────
     case "SET_PLAYHEAD": {
       return {
         ...state,
@@ -179,7 +193,6 @@ function timelineReducer(state: TimelineState, action: Action): TimelineState {
         return { ...state, isPlaying: !state.isPlaying };
     }
 
-    // ── Split ────────────────────────────────────────────────────────
     case "SPLIT_AT_PLAYHEAD": {
       const t = state.playheadSec;
       const target = state.segments.find(
@@ -193,7 +206,7 @@ function timelineReducer(state: TimelineState, action: Action): TimelineState {
 
       const left: TimelineSegment = {
         ...target,
-        id: genId(),
+        id: action.leftId,
         end: t,
         sourceEnd: splitSourcePos,
         label: "Splitting...",
@@ -202,7 +215,7 @@ function timelineReducer(state: TimelineState, action: Action): TimelineState {
       };
       const right: TimelineSegment = {
         ...target,
-        id: genId(),
+        id: action.rightId,
         start: t,
         sourceStart: splitSourcePos,
         label: "Splitting...",
@@ -210,15 +223,19 @@ function timelineReducer(state: TimelineState, action: Action): TimelineState {
         splitInfo: { originalId: target.id, part: 2, splitTime: durationLeft, inputPath }
       };
 
-      const newSegments = state.segments.flatMap((s) =>
-        s.id === target.id ? [left, right] : [s]
-      );
+      let replaced = false;
+      const newSegments = state.segments.flatMap((s) => {
+        if (s.id === target.id && !replaced) {
+          replaced = true;
+          return [left, right];
+        }
+        return [s];
+      });
 
       const nextState = record(newSegments);
       return { ...nextState, selectedIds: new Set() }; // Clear selection
     }
 
-    // ── Merge ────────────────────────────────────────────────────────
     case "MERGE_SELECTED": {
       if (state.selectedIds.size < 2) return state;
 
@@ -282,7 +299,9 @@ function timelineReducer(state: TimelineState, action: Action): TimelineState {
           ...s, 
           isProcessing: false, 
           label: "Merged",
-          sourceClip: s.sourceClip ? { ...s.sourceClip, src: action.newSrc, srcList: [] } : undefined 
+          sourceClip: s.sourceClip ? { ...s.sourceClip, src: action.newSrc, srcList: [] } : undefined,
+          sourceStart: 0,
+          sourceEnd: s.end - s.start
         } : s)
       };
     }
@@ -308,6 +327,8 @@ function timelineReducer(state: TimelineState, action: Action): TimelineState {
             start: 0,
             end: action.newDuration
           } : undefined,
+          sourceStart: 0,
+          sourceEnd: action.newDuration,
           splitInfo: undefined
         } : s)
       };
@@ -320,7 +341,6 @@ function timelineReducer(state: TimelineState, action: Action): TimelineState {
       };
     }
 
-    // ── Delete ───────────────────────────────────────────────────────
     case "DELETE_SELECTED": {
       if (state.selectedIds.size === 0) return state;
       const remaining = state.segments.filter((s) => !state.selectedIds.has(s.id));
@@ -539,6 +559,7 @@ export default function useTimeline(onChange?: (segments: TimelineSegment[]) => 
   const [state, dispatch] = useReducer(timelineReducer, undefined, makeInitialState);
   const lastSelectRef = useRef<string | null>(null);
   const isInitRef = useRef(false);
+  const isUpdatingFromTimeline = useRef(false);
 
   // Notify parent of segment changes
   const prevSegments = useRef(state.segments);
@@ -548,7 +569,9 @@ export default function useTimeline(onChange?: (segments: TimelineSegment[]) => 
       if (isInitRef.current) {
         isInitRef.current = false; // skip notifying parent for programmatic init
       } else if (onChange) {
+        isUpdatingFromTimeline.current = true;
         onChange(state.segments);
+        isUpdatingFromTimeline.current = false;
       }
     }
   }, [state.segments, onChange]);
@@ -587,7 +610,7 @@ export default function useTimeline(onChange?: (segments: TimelineSegment[]) => 
   );
 
   const splitAtPlayhead = useCallback(
-    () => dispatch({ type: "SPLIT_AT_PLAYHEAD" }),
+    () => dispatch({ type: "SPLIT_AT_PLAYHEAD", leftId: genId(), rightId: genId() }),
     []
   );
 

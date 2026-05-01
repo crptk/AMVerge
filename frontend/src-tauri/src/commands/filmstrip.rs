@@ -74,9 +74,8 @@ pub async fn generate_filmstrip(
     // fps=N/duration extracts N frames evenly across the whole video.
     // scale=WxH resizes each frame.
     // tile=Nx1 stitches them into one horizontal image.
-    let fps_val = frame_count as f64 / duration;
     let filter = format!(
-        "fps={fps_val:.6},scale={thumb_width}:{thumb_height}:flags=fast_bilinear,tile={frame_count}x1"
+        "thumbnail={frame_count},scale={thumb_width}:{thumb_height},tile={frame_count}x1"
     );
 
     // Build args — optionally prepend -ss for start time and -t for duration

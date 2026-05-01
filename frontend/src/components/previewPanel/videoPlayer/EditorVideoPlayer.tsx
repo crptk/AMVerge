@@ -27,6 +27,7 @@ export default function EditorVideoPlayer({
         videoRef,
         effectiveClip,
         handleLoadedMetadata,
+        handleVideoError,
         handleTimeUpdate,
     } = useEditorVideoPlayer({
         selectedClip,
@@ -52,10 +53,12 @@ export default function EditorVideoPlayer({
                     width: '100%', 
                     height: '100%', 
                     objectFit: 'contain',
-                    opacity: 1 // Always show video now that we have fast proxies
+                    opacity: 1 
                 }}
                 onLoadedMetadata={(e) => handleLoadedMetadata(e.currentTarget)}
-                onTimeUpdate={handleTimeUpdate}
+                onTimeUpdate={() => handleTimeUpdate(false)}
+                onEnded={() => handleTimeUpdate(true)}
+                onError={handleVideoError}
             />
         </div>
     );

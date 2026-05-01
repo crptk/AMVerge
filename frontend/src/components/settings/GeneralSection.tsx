@@ -87,7 +87,7 @@ export default function GeneralSection({
       </p>
 
       <div className="settings-row">
-        <label className="settings-label">Video Editor</label>
+        <label className="settings-label">Video Editor <span className="beta-badge">BETA</span></label>
         <div className="settings-control">
           <label className="custom-checkbox">
             <input

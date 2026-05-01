@@ -78,7 +78,8 @@ export default function TimelineTrack({ timeline, trackHeight = 96 }: Props) {
   const movePlayheadToClientX = useCallback((clientX: number) => {
     const rect = trackRef.current?.getBoundingClientRect();
     if (!rect) return;
-    setPlayhead(pxToSec(clientX - rect.left));
+    const sec = pxToSec(clientX - rect.left);
+    setPlayhead(sec);
   }, [setPlayhead, pxToSec]);
 
   const movePlayheadThrottled = useCallback((clientX: number) => {
@@ -198,62 +199,16 @@ export default function TimelineTrack({ timeline, trackHeight = 96 }: Props) {
     [movePlayheadThrottled, timeline.setIsDraggingPlayhead]
   );
 
-  // ── Keyboard shortcuts ─────────────────────────────────────────────
+  // Shortcuts are handled by EditorPage.tsx to avoid double-firing
+  /*
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      // Only handle when the timeline area is likely focused
-      if (
-        e.target instanceof HTMLInputElement ||
-        e.target instanceof HTMLTextAreaElement
-      )
-        return;
-
-      switch (e.key) {
-        case "s":
-        case "S":
-          if (!e.ctrlKey && !e.metaKey) splitAtPlayhead();
-          break;
-        case "m":
-        case "M":
-          if (!e.ctrlKey && !e.metaKey) mergeSelected();
-          break;
-        case "Delete":
-        case "Backspace":
-          deleteSelected();
-          break;
-        case "a":
-          if (e.ctrlKey || e.metaKey) {
-            e.preventDefault();
-            selectAll();
-          }
-          break;
-        case "Escape":
-          deselectAll();
-          break;
-        case "z":
-        case "Z":
-          if (e.ctrlKey || e.metaKey) {
-            e.preventDefault();
-            if (e.shiftKey) {
-              redo();
-            } else {
-              undo();
-            }
-          }
-          break;
-        case "y":
-        case "Y":
-          if (e.ctrlKey || e.metaKey) {
-            e.preventDefault();
-            redo();
-          }
-          break;
-      }
+        // ...
     };
-
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [splitAtPlayhead, mergeSelected, deleteSelected, selectAll, deselectAll, undo, redo]);
+  }, [...]);
+  */
 
   // ── Auto-zoom to fit ONLY on first init ────────────────────────────
   useEffect(() => {
