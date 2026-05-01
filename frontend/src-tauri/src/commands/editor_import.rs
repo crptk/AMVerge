@@ -1093,6 +1093,8 @@ fn build_editor_ui_import_ps(
 
     let template = r#"$ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Windows.Forms | Out-Null
+Add-Type -AssemblyName UIAutomationClient | Out-Null
+Add-Type -AssemblyName UIAutomationTypes | Out-Null
 Add-Type @'
 using System;
 using System.Text;
@@ -1315,6 +1317,100 @@ function Set-EditorForeground([IntPtr]$hwnd, [int]$targetProcessId) {{
     return (Test-IsForegroundProcess $targetProcessId)
 }}
 
+function Set-DialogFileName($dialog, [string]$value) {{
+    if ([string]::IsNullOrWhiteSpace($value)) {{
+        return $false
+    }}
+
+    try {{
+        $root = [System.Windows.Automation.AutomationElement]::FromHandle($dialog.Handle)
+        if (-not $root) {{
+            return $false
+        }}
+
+        $condition = New-Object System.Windows.Automation.PropertyCondition -ArgumentList @(
+            [System.Windows.Automation.AutomationElement]::ControlTypeProperty,
+            [System.Windows.Automation.ControlType]::Edit
+        )
+        $edits = $root.FindAll([System.Windows.Automation.TreeScope]::Descendants, $condition)
+        if (-not $edits -or $edits.Count -eq 0) {{
+            return $false
+        }}
+
+        $target = $null
+        $bestScore = [double]::NegativeInfinity
+        for ($i = 0; $i -lt $edits.Count; $i++) {{
+            $edit = $edits.Item($i)
+            if (-not $edit) {{
+                continue
+            }}
+
+            $score = 0.0
+            try {{
+                $name = ([string]$edit.Current.Name).ToLowerInvariant()
+                if ($name -match 'file\s*name|nom.*fichier|filename') {{
+                    $score += 1000
+                }}
+            }} catch {{
+            }}
+
+            try {{
+                $automationId = ([string]$edit.Current.AutomationId).ToLowerInvariant()
+                if ($automationId -match 'file|name') {{
+                    $score += 400
+                }}
+            }} catch {{
+            }}
+
+            try {{
+                $rect = $edit.Current.BoundingRectangle
+                $score += [double]$rect.Bottom
+                if ($rect.Width -gt 120) {{
+                    $score += 100
+                }}
+            }} catch {{
+            }}
+
+            if ($score -gt $bestScore) {{
+                $bestScore = $score
+                $target = $edit
+            }}
+        }}
+
+        if (-not $target) {{
+            return $false
+        }}
+
+        $valuePattern = $target.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern)
+        if (-not $valuePattern) {{
+            return $false
+        }}
+        $valuePattern.SetValue($value)
+        return $true
+    }} catch {{
+    }}
+
+    return $false
+}}
+
+function Submit-DialogValue($dialog, [string]$value) {{
+    [Win32Focus]::SetForegroundWindow($dialog.Handle) | Out-Null
+    Start-Sleep -Milliseconds 120
+
+    if (-not (Set-DialogFileName $dialog $value)) {{
+        [System.Windows.Forms.SendKeys]::SendWait('%n')
+        Start-Sleep -Milliseconds 120
+        [System.Windows.Forms.Clipboard]::SetText($value)
+        [System.Windows.Forms.SendKeys]::SendWait('^a')
+        Start-Sleep -Milliseconds 80
+        [System.Windows.Forms.SendKeys]::SendWait('^v')
+        Start-Sleep -Milliseconds 180
+    }}
+
+    [System.Windows.Forms.SendKeys]::SendWait('~')
+    Start-Sleep -Milliseconds 260
+}}
+
 $window = Get-EditorWindow '__PROCESS_NAME__'
 if (-not $window) {{
     throw '__NO_WINDOW_ERROR__'
@@ -1364,21 +1460,7 @@ foreach ($p in $paths) {{
         throw ('__NO_PROJECT_ERROR__ (dialog title: ' + $dialog.Title + ')')
     }}
 
-    [Win32Focus]::SetForegroundWindow($dialog.Handle) | Out-Null
-    Start-Sleep -Milliseconds 120
-
-    # Focus dialog location/filename field
-    [System.Windows.Forms.SendKeys]::SendWait('^l')
-    Start-Sleep -Milliseconds 120
-
-    # Paste full file path and confirm
-    [System.Windows.Forms.Clipboard]::SetText($p)
-    [System.Windows.Forms.SendKeys]::SendWait('^v')
-    Start-Sleep -Milliseconds 220
-
-    # Confirm import
-    [System.Windows.Forms.SendKeys]::SendWait('~')
-    Start-Sleep -Milliseconds 250
+    Submit-DialogValue $dialog $p
 
     for ($i = 0; $i -lt 30; $i++) {{
         $stillOpen = Get-ProcessDialogWindow $window.ProcessId
