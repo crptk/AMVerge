@@ -10,7 +10,7 @@ export default function DiscordRPCSection({
   setGeneralSettings,
 }: DiscordRPCSectionProps) {
   return (
-    <section className="settings-section">
+    <section className="panel">
       <h3>Discord Rich Presence</h3>
 
       <div className="settings-row">

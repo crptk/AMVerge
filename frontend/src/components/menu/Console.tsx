@@ -6,6 +6,7 @@ import {
   type ConsoleEntry,
 } from "../../utils/appConsole";
 
+
 export default function Console() {
   const [logs, setLogs] = useState<ConsoleEntry[]>([]);
   const bottomRef = useRef<HTMLDivElement | null>(null);
@@ -34,7 +35,7 @@ export default function Console() {
   };
 
   return (
-    <section className="console-section">
+    <section className="panel menu-panel">
       <div className="console-header">
         <div>
           <h3>Console</h3>

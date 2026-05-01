@@ -1,0 +1,61 @@
+/* --------------------
+   PATCH NOTES
+-------------------- */
+
+.patchnotes-header {
+    display: flex;
+    flex-direction: column;
+    padding-left: 5px;
+    gap: 5px;
+}
+
+.patchnotes-header > h3,
+.patchnotes-header > p {
+    margin: 0;
+}
+
+.patchnotes-content {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    /* border: 1px solid rgba(255, 255, 255, 0.18); */
+    border-radius: 10px;
+    padding: 0 20px 0px 20px;
+    font-family: Consolas, "Courier New", monospace;
+    font-size: 13px;
+    line-height: 1.35;
+    scrollbar-width: thin;
+    scrollbar-color: var(--accent) transparent;    
+}
+
+.patchnotes-content h1,
+.patchnotes-content h2,
+.patchnotes-content h3 {
+    margin-top: 0.2rem;
+    margin-bottom: 0.1rem;
+}
+
+.patchnotes-content ul {
+    margin: 0rem 0 0rem 1.2rem;
+    padding: 0;
+}
+
+.patchnotes-content ul ul {
+    margin-bottom: 0rem;
+    margin-left: 1rem;
+    /* background: red; */
+}
+.patchnotes-content li {
+    margin-bottom: 0.8rem;
+    /* background: green; */
+}
+
+.patchnotes-content li li {
+    margin-bottom: 0.2rem;
+    margin-top: 0.1rem;
+    /* background: blue; */
+}
+
+.patchnotes-content p {
+    margin: 0rem 0;
+}
