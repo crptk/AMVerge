@@ -1,3 +1,4 @@
+#[cfg(target_os = "windows")]
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -13,12 +14,19 @@ use crate::utils::ffmpeg::resolve_bundled_tool;
 use crate::utils::logging::console_log;
 use crate::utils::process::apply_no_window;
 
+mod after_effects;
+mod capcut;
+mod davinci_resolve;
+mod premiere_pro;
+
 #[derive(Debug, Clone, Copy, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum EditorTarget {
     Premiere,
     AfterEffects,
     DavinciResolve,
+    #[serde(rename = "capcut")]
+    CapCut,
 }
 
 #[derive(Debug, Clone, serde::Deserialize)]
@@ -91,13 +99,27 @@ pub async fn import_media_to_editor(
 
     match editor_target {
         EditorTarget::AfterEffects => {
-            import_into_after_effects(&app, &normalized, &abort_state.abort_requested).await
+            after_effects::import_into_after_effects(
+                &app,
+                &normalized,
+                &abort_state.abort_requested,
+            )
+            .await
         }
         EditorTarget::Premiere => {
-            import_into_premiere(&app, &normalized, &abort_state.abort_requested).await
+            premiere_pro::import_into_premiere(&app, &normalized, &abort_state.abort_requested)
+                .await
         }
         EditorTarget::DavinciResolve => {
-            import_into_davinci_resolve(&app, &normalized, &abort_state.abort_requested).await
+            davinci_resolve::import_into_davinci_resolve(
+                &app,
+                &normalized,
+                &abort_state.abort_requested,
+            )
+            .await
+        }
+        EditorTarget::CapCut => {
+            capcut::import_into_capcut(&app, &normalized, &abort_state.abort_requested).await
         }
     }
 }
@@ -114,7 +136,7 @@ pub async fn import_original_cut_to_editor(
 
     match editor_target {
         EditorTarget::AfterEffects => {
-            import_original_cut_into_after_effects(
+            after_effects::import_original_cut_into_after_effects(
                 &app,
                 &abort_state.abort_requested,
                 clips,
@@ -123,7 +145,7 @@ pub async fn import_original_cut_to_editor(
             .await
         }
         EditorTarget::Premiere => {
-            import_original_cut_into_premiere(
+            premiere_pro::import_original_cut_into_premiere(
                 &app,
                 &abort_state.abort_requested,
                 clips,
@@ -132,13 +154,21 @@ pub async fn import_original_cut_to_editor(
             .await
         }
         EditorTarget::DavinciResolve => {
-            import_original_cut_into_davinci_resolve(
+            davinci_resolve::import_original_cut_into_davinci_resolve(
                 &app,
                 &abort_state.abort_requested,
                 clips,
                 sequence_name,
             )
             .await
+        }
+        EditorTarget::CapCut => {
+            let _ = clips;
+            let _ = sequence_name;
+            Err(
+                "Original-cut export is not available for CapCut. Use standard media export/import."
+                    .to_string(),
+            )
         }
     }
 }
@@ -301,6 +331,10 @@ fn summarize_windows_import_error(raw: &str) -> String {
     if raw.contains("AMVERGE_WAITING") {
         return "AMVERGE_WAITING: Editor is still loading.".to_string();
     }
+    if raw.contains("AMVERGE_INVALID_FILENAME") {
+        return "AMVERGE_INVALID_FILENAME: Imported file path was rejected by the editor dialog."
+            .to_string();
+    }
     if raw.contains("Could not connect to DaVinci Resolve") {
         return "DaVinci Resolve scripting bridge did not connect. In Resolve, enable External scripting using Local (Preferences > System > General), then retry.".to_string();
     }
@@ -322,12 +356,17 @@ fn should_retry_windows_import_error(
     attempt_index: u32,
     launched_this_call: bool,
 ) -> bool {
+    if raw.contains("AMVERGE_INVALID_FILENAME") {
+        return false;
+    }
+
     if raw.contains("AMVERGE_NO_WINDOW")
         || raw.contains("AMVERGE_NO_PROJECT")
         || raw.contains("AMVERGE_FOCUS_FAILED")
         || raw.contains("AMVERGE_WAITING")
     {
-        return true;
+        let max_attempts = if launched_this_call { 12 } else { 4 };
+        return attempt_index + 1 < max_attempts;
     }
 
     // Resolve can take a bit of time to expose scripting after launch.
@@ -358,6 +397,9 @@ fn import_hint_for_error(editor_name: &str, raw: &str) -> String {
     }
     if raw.contains("AMVERGE_WAITING") {
         return format!("Waiting for {editor_name}");
+    }
+    if raw.contains("AMVERGE_INVALID_FILENAME") {
+        return format!("{editor_name} rejected imported file path");
     }
     if raw.contains("Could not connect to DaVinci Resolve") {
         return "Waiting for DaVinci Resolve scripting bridge".to_string();
@@ -752,479 +794,6 @@ fn escape_jsx_double_quoted(raw: &str) -> String {
 }
 
 #[cfg(target_os = "windows")]
-fn build_after_effects_original_cut_jsx(
-    original_path: &str,
-    sequence_name: &str,
-    segments: &[OriginalCutSegment],
-) -> String {
-    let escaped_source = escape_jsx_double_quoted(original_path);
-    let escaped_name = escape_jsx_double_quoted(sequence_name);
-
-    let segment_rows = segments
-        .iter()
-        .map(|seg| {
-            format!(
-                "{{name:\"{}\",srcIn:{:.6},srcOut:{:.6},tlStart:{:.6},tlEnd:{:.6}}}",
-                escape_jsx_double_quoted(&seg.name),
-                seg.source_in_sec,
-                seg.source_out_sec,
-                seg.timeline_start_sec,
-                seg.timeline_end_sec
-            )
-        })
-        .collect::<Vec<_>>()
-        .join(",\n    ");
-
-    format!(
-        r#"(function () {{
-  app.beginUndoGroup("AMVerge Original Cut");
-
-  if (!app.project) {{
-    app.newProject();
-  }}
-
-  var sourceFile = new File("{escaped_source}");
-  if (!sourceFile.exists) {{
-    throw new Error("Original media file not found: " + sourceFile.fsName);
-  }}
-
-  function normalizePath(p) {{
-    return String(p || "").replace(/\\/g, "/").toLowerCase();
-  }}
-
-  function findExistingFootage(targetPath) {{
-    if (!app.project || !app.project.items) {{
-      return null;
-    }}
-    var wanted = normalizePath(targetPath);
-    for (var i = 1; i <= app.project.numItems; i++) {{
-      var it = app.project.item(i);
-      if (!it) {{
-        continue;
-      }}
-      try {{
-        if (it.file && normalizePath(it.file.fsName) === wanted) {{
-          return it;
-        }}
-      }} catch (e) {{
-      }}
-    }}
-    return null;
-  }}
-
-  var footage = findExistingFootage(sourceFile.fsName);
-  if (!footage) {{
-    var importOpts = new ImportOptions(sourceFile);
-    footage = app.project.importFile(importOpts);
-  }}
-  if (!footage) {{
-    throw new Error("After Effects failed to import/find the original media.");
-  }}
-
-  var fps = footage.frameRate;
-  if (!fps || fps <= 0) {{
-    fps = 30.0;
-  }}
-
-  var width = footage.width;
-  if (!width || width <= 0) {{
-    width = 1920;
-  }}
-
-  var height = footage.height;
-  if (!height || height <= 0) {{
-    height = 1080;
-  }}
-
-  var pixelAspect = footage.pixelAspect;
-  if (!pixelAspect || pixelAspect <= 0) {{
-    pixelAspect = 1.0;
-  }}
-
-  var cuts = [
-    {segment_rows}
-  ];
-
-  var duration = 0.0;
-  for (var i = 0; i < cuts.length; i++) {{
-    if (cuts[i].tlEnd > duration) {{
-      duration = cuts[i].tlEnd;
-    }}
-  }}
-  if (duration < (1.0 / fps)) {{
-    duration = 1.0 / fps;
-  }}
-
-  var comp = app.project.items.addComp("{escaped_name}", width, height, pixelAspect, duration, fps);
-  for (var j = 0; j < cuts.length; j++) {{
-    var c = cuts[j];
-    var layer = comp.layers.add(footage);
-    layer.name = c.name;
-    layer.startTime = c.tlStart - c.srcIn;
-    layer.inPoint = c.tlStart;
-    layer.outPoint = c.tlEnd;
-  }}
-
-  app.endUndoGroup();
-}})();
-"#
-    )
-}
-
-async fn import_original_cut_into_after_effects(
-    app: &AppHandle,
-    abort_requested: &AtomicBool,
-    clips: Vec<OriginalCutClip>,
-    sequence_name: Option<String>,
-) -> Result<String, String> {
-    #[cfg(not(target_os = "windows"))]
-    {
-        let _ = app;
-        let _ = abort_requested;
-        let _ = clips;
-        let _ = sequence_name;
-        return Err(
-            "Original-cut script import for After Effects is currently implemented for Windows builds only."
-                .to_string(),
-        );
-    }
-
-    #[cfg(target_os = "windows")]
-    {
-        let (original_path, normalized_sequence_name, segments) =
-            normalize_original_cut_input(app, clips, sequence_name)?;
-
-        emit_import_progress(
-            Some(app),
-            96,
-            "Preparing After Effects original-cut script...",
-        );
-
-        if is_import_cancel_requested(abort_requested) {
-            return Err(import_canceled_error());
-        }
-
-        let script_content = build_after_effects_original_cut_jsx(
-            &original_path,
-            &normalized_sequence_name,
-            &segments,
-        );
-        let script_path =
-            write_temp_script("amverge_afterfx_original_cut", "jsx", &script_content)?;
-
-        let afterfx = resolve_afterfx_executable()
-            .ok_or("After Effects executable was not found.".to_string())?;
-        let runner = afterfx
-            .parent()
-            .map(|dir| dir.join("AfterFX.com"))
-            .filter(|p| p.exists())
-            .unwrap_or_else(|| afterfx.clone());
-
-        emit_import_progress(Some(app), 98, "Running After Effects script...");
-        let mut cmd = Command::new(&runner);
-        apply_no_window(&mut cmd);
-        let out = cmd.arg("-r").arg(&script_path).output().map_err(|e| {
-            format!(
-                "Failed to run After Effects script runner ({}): {e}",
-                runner.display()
-            )
-        })?;
-
-        let stdout = String::from_utf8_lossy(&out.stdout).trim().to_string();
-        let stderr = String::from_utf8_lossy(&out.stderr).trim().to_string();
-
-        if !out.status.success() {
-            let details = if !stderr.is_empty() {
-                stderr
-            } else if !stdout.is_empty() {
-                stdout
-            } else {
-                "Unknown After Effects script failure.".to_string()
-            };
-
-            return Err(format!(
-                "After Effects script failed. If your AE build blocks CLI scripts, open AE and allow scripts to write files/preferences.\n{details}"
-            ));
-        }
-
-        emit_import_progress(Some(app), 100, "After Effects original cut imported.");
-        console_log(
-            "NLE|after_effects_original_cut",
-            &format!(
-                "ok source={} segments={} sequence={}",
-                original_path,
-                segments.len(),
-                normalized_sequence_name
-            ),
-        );
-
-        Ok("After Effects original cut import complete.".to_string())
-    }
-}
-
-async fn import_original_cut_into_premiere(
-    app: &AppHandle,
-    abort_requested: &AtomicBool,
-    clips: Vec<OriginalCutClip>,
-    sequence_name: Option<String>,
-) -> Result<String, String> {
-    #[cfg(not(target_os = "windows"))]
-    {
-        let _ = app;
-        let _ = abort_requested;
-        let _ = clips;
-        let _ = sequence_name;
-        return Err(
-            "Original-cut script import for Premiere is currently implemented for Windows builds only."
-                .to_string(),
-        );
-    }
-
-    #[cfg(target_os = "windows")]
-    {
-        let (original_path, normalized_sequence_name, segments) =
-            normalize_original_cut_input(app, clips, sequence_name)?;
-
-        emit_import_progress(Some(app), 96, "Preparing Premiere original-cut XML...");
-
-        if is_import_cancel_requested(abort_requested) {
-            return Err(import_canceled_error());
-        }
-
-        let timeline_xml_path = write_original_cut_timeline_xml(
-            app,
-            &original_path,
-            &normalized_sequence_name,
-            &segments,
-            "amverge_premiere_original_cut",
-        )
-        .await?;
-
-        let timeline_xml = timeline_xml_path.to_string_lossy().to_string();
-        console_log(
-            "NLE|premiere_original_cut",
-            &format!("timeline_xml={}", timeline_xml_path.display()),
-        );
-
-        emit_import_progress(
-            Some(app),
-            98,
-            "Preparing Premiere Pro original-cut import...",
-        );
-        let script_path = write_temp_script(
-            "amverge_premiere_original_cut_import_ui",
-            "ps1",
-            &build_premiere_ui_import_ps(&[timeline_xml]),
-        )?;
-
-        let premiere_already_running = is_windows_process_running("Adobe Premiere Pro.exe");
-        if !premiere_already_running {
-            let premiere = resolve_premiere_executable()
-                .ok_or("Premiere Pro executable was not found.".to_string())?;
-            emit_import_progress(Some(app), 98, "Launching Premiere Pro...");
-            spawn_editor_process(&premiere, "Premiere Pro", "NLE|premiere_original_cut")?;
-        }
-
-        let message = run_windows_import_with_retries(
-            Some(app),
-            abort_requested,
-            "NLE|premiere_original_cut",
-            "Premiere Pro",
-            30,
-            !premiere_already_running,
-            Some("Adobe Premiere Pro.exe"),
-            "Premiere Pro was closed before the original-cut import completed.",
-            "Premiere Pro did not become ready in time. Make sure a project is open, then retry.",
-            || run_editor_ui_import_ps(&script_path, "Premiere Pro"),
-        )
-        .await?;
-
-        console_log(
-            "NLE|premiere_original_cut",
-            &format!(
-                "ok source={} segments={} sequence={} xml={}",
-                original_path,
-                segments.len(),
-                normalized_sequence_name,
-                timeline_xml_path.display()
-            ),
-        );
-        Ok(message)
-    }
-}
-
-fn build_davinci_original_cut_script(
-    timeline_xml_path: &str,
-    original_path: &str,
-    sequence_name: &str,
-) -> String {
-    let source_dir = Path::new(original_path)
-        .parent()
-        .map(|p| p.to_string_lossy().to_string())
-        .unwrap_or_default();
-
-    [
-        "import os".to_string(),
-        "import sys".to_string(),
-        "".to_string(),
-        format!(
-            "TIMELINE_XML_PATH = r'{}'",
-            escape_py_single_quoted(timeline_xml_path)
-        ),
-        format!("SOURCE_PATH = r'{}'", escape_py_single_quoted(original_path)),
-        format!("SOURCE_DIR = r'{}'", escape_py_single_quoted(&source_dir)),
-        format!(
-            "SEQUENCE_NAME = r'{}'",
-            escape_py_single_quoted(sequence_name)
-        ),
-        "".to_string(),
-        "def ensure_resolve_module():".to_string(),
-        "    try:".to_string(),
-        "        import DaVinciResolveScript as dvr_script".to_string(),
-        "        return dvr_script".to_string(),
-        "    except Exception:".to_string(),
-        "        pass".to_string(),
-        "".to_string(),
-        "    candidates = []".to_string(),
-        "    if os.name == 'nt':".to_string(),
-        "        program_data = os.environ.get('PROGRAMDATA', r'C:\\\\ProgramData')".to_string(),
-        "        candidates.append(os.path.join(program_data, 'Blackmagic Design', 'DaVinci Resolve', 'Support', 'Developer', 'Scripting', 'Modules'))".to_string(),
-        "    elif sys.platform == 'darwin':".to_string(),
-        "        candidates.append('/Library/Application Support/Blackmagic Design/DaVinci Resolve/Developer/Scripting/Modules')".to_string(),
-        "    else:".to_string(),
-        "        candidates.append('/opt/resolve/Developer/Scripting/Modules')".to_string(),
-        "".to_string(),
-        "    for path in candidates:".to_string(),
-        "        if os.path.isdir(path) and path not in sys.path:".to_string(),
-        "            sys.path.append(path)".to_string(),
-        "".to_string(),
-        "    import DaVinciResolveScript as dvr_script".to_string(),
-        "    return dvr_script".to_string(),
-        "".to_string(),
-        "dvr_script = ensure_resolve_module()".to_string(),
-        "resolve = dvr_script.scriptapp('Resolve')".to_string(),
-        "if not resolve:".to_string(),
-        "    raise RuntimeError('Could not connect to DaVinci Resolve. Ensure Resolve Studio is running and External scripting is set to Local.')".to_string(),
-        "pm = resolve.GetProjectManager()".to_string(),
-        "project = pm.GetCurrentProject() if pm else None".to_string(),
-        "if not project:".to_string(),
-        "    raise RuntimeError('No Resolve project is open.')".to_string(),
-        "media_pool = project.GetMediaPool()".to_string(),
-        "if not media_pool:".to_string(),
-        "    raise RuntimeError('Could not access Resolve media pool.')".to_string(),
-        "if not os.path.exists(TIMELINE_XML_PATH):".to_string(),
-        "    raise RuntimeError('Timeline XML not found: ' + TIMELINE_XML_PATH)".to_string(),
-        "if os.path.exists(SOURCE_PATH):".to_string(),
-        "    try:".to_string(),
-        "        media_pool.ImportMedia([SOURCE_PATH])".to_string(),
-        "    except Exception:".to_string(),
-        "        pass".to_string(),
-        "import_options = {'timelineName': SEQUENCE_NAME, 'importSourceClips': True}".to_string(),
-        "if SOURCE_DIR and os.path.isdir(SOURCE_DIR):".to_string(),
-        "    import_options['sourceClipsPath'] = SOURCE_DIR".to_string(),
-        "timeline = media_pool.ImportTimelineFromFile(TIMELINE_XML_PATH, import_options)".to_string(),
-        "if not timeline:".to_string(),
-        "    timeline = media_pool.ImportTimelineFromFile(TIMELINE_XML_PATH)".to_string(),
-        "if not timeline:".to_string(),
-        "    raise RuntimeError('Resolve failed to import timeline XML.')".to_string(),
-        "try:".to_string(),
-        "    project.SetCurrentTimeline(timeline)".to_string(),
-        "except Exception:".to_string(),
-        "    pass".to_string(),
-        "print('DaVinci Resolve original cut import complete.')".to_string(),
-    ]
-    .join("\n")
-}
-
-async fn import_original_cut_into_davinci_resolve(
-    app: &AppHandle,
-    abort_requested: &AtomicBool,
-    clips: Vec<OriginalCutClip>,
-    sequence_name: Option<String>,
-) -> Result<String, String> {
-    let (original_path, normalized_sequence_name, segments) =
-        normalize_original_cut_input(app, clips, sequence_name)?;
-
-    #[cfg(target_os = "windows")]
-    emit_import_progress(
-        Some(app),
-        96,
-        "Preparing DaVinci Resolve original-cut XML...",
-    );
-
-    #[cfg(target_os = "windows")]
-    if is_import_cancel_requested(abort_requested) {
-        return Err(import_canceled_error());
-    }
-
-    #[cfg(not(target_os = "windows"))]
-    {
-        let _ = app;
-        let _ = abort_requested;
-    }
-
-    let timeline_xml_path = write_original_cut_timeline_xml(
-        app,
-        &original_path,
-        &normalized_sequence_name,
-        &segments,
-        "amverge_resolve_original_cut",
-    )
-    .await?;
-    let script_body = build_davinci_original_cut_script(
-        timeline_xml_path.to_string_lossy().as_ref(),
-        &original_path,
-        &normalized_sequence_name,
-    );
-    let script_path = write_temp_script("amverge_resolve_original_cut", "py", &script_body)?;
-
-    #[cfg(target_os = "windows")]
-    {
-        let resolve_running = is_windows_process_running("Resolve.exe");
-        if !resolve_running {
-            if let Some(resolve_exe) = resolve_davinci_executable() {
-                emit_import_progress(Some(app), 98, "Launching DaVinci Resolve...");
-                spawn_editor_process(&resolve_exe, "DaVinci Resolve", "NLE|davinci_original_cut")?;
-            } else {
-                return Err("DaVinci Resolve executable was not found.".to_string());
-            }
-        }
-
-        let message = run_windows_import_with_retries(
-            Some(app),
-            abort_requested,
-            "NLE|davinci_original_cut",
-            "DaVinci Resolve",
-            30,
-            !resolve_running,
-            Some("Resolve.exe"),
-            "DaVinci Resolve was closed before the original-cut import completed.",
-            "DaVinci Resolve did not become ready for original-cut scripting in time.",
-            || run_python_script(&script_path),
-        )
-        .await?;
-
-        console_log(
-            "NLE|davinci_original_cut",
-            &format!(
-                "ok source={} segments={} sequence={} xml={}",
-                original_path,
-                segments.len(),
-                normalized_sequence_name,
-                timeline_xml_path.display()
-            ),
-        );
-        return Ok(message);
-    }
-
-    #[cfg(not(target_os = "windows"))]
-    {
-        let result = run_python_script(&script_path)?;
-        return Ok(result);
-    }
-}
-
-#[cfg(target_os = "windows")]
 fn spawn_editor_process(
     executable: &Path,
     editor_name: &str,
@@ -1251,116 +820,6 @@ fn spawn_editor_process(
     Ok(())
 }
 
-async fn import_into_after_effects(
-    app: &AppHandle,
-    media_paths: &[String],
-    abort_requested: &AtomicBool,
-) -> Result<String, String> {
-    #[cfg(not(target_os = "windows"))]
-    {
-        let _ = app;
-        let _ = media_paths;
-        let _ = abort_requested;
-        return Err(
-            "Auto-import for After Effects is currently implemented for Windows builds only."
-                .to_string(),
-        );
-    }
-
-    #[cfg(target_os = "windows")]
-    {
-        emit_import_progress(Some(app), 98, "Preparing After Effects auto-import...");
-
-        // Use UI automation instead of AfterFX -r scripting because some AE
-        // installations intermittently report "scripting plugin is not installed"
-        // for command-line script execution.
-        let script_path = write_temp_script(
-            "amverge_afterfx_import_ui",
-            "ps1",
-            &build_after_effects_ui_import_ps(media_paths),
-        )?;
-
-        let afterfx_already_running = is_windows_process_running("AfterFX.exe");
-
-        if !afterfx_already_running {
-            emit_import_progress(Some(app), 98, "Launching After Effects...");
-            let afterfx = resolve_afterfx_executable()
-                .ok_or("After Effects executable was not found.".to_string())?;
-            spawn_editor_process(&afterfx, "After Effects", "NLE|after_effects")?;
-        }
-
-        let max_attempts: u32 = 30;
-
-        run_windows_import_with_retries(
-            Some(app),
-            abort_requested,
-            "NLE|after_effects",
-            "After Effects",
-            max_attempts,
-            !afterfx_already_running,
-            Some("AfterFX.exe"),
-            "After Effects was closed before the import could complete.",
-            "After Effects did not become ready in time. Make sure a project is open, then retry.",
-            || run_editor_ui_import_ps(&script_path, "After Effects"),
-        )
-        .await
-    }
-}
-
-async fn import_into_premiere(
-    app: &AppHandle,
-    media_paths: &[String],
-    abort_requested: &AtomicBool,
-) -> Result<String, String> {
-    #[cfg(not(target_os = "windows"))]
-    {
-        let _ = app;
-        let _ = media_paths;
-        let _ = abort_requested;
-        return Err(
-            "Auto-import for Premiere Pro is currently implemented for Windows builds only."
-                .to_string(),
-        );
-    }
-
-    #[cfg(target_os = "windows")]
-    {
-        emit_import_progress(Some(app), 98, "Preparing Premiere Pro auto-import...");
-        let script_path = write_temp_script(
-            "amverge_premiere_import",
-            "ps1",
-            &build_premiere_ui_import_ps(media_paths),
-        )?;
-
-        let premiere_already_running = is_windows_process_running("Adobe Premiere Pro.exe");
-
-        if !premiere_already_running {
-            emit_import_progress(Some(app), 98, "Launching Premiere Pro...");
-            let premiere = resolve_premiere_executable()
-                .ok_or("Premiere Pro executable was not found.".to_string())?;
-            spawn_editor_process(&premiere, "Premiere Pro", "NLE|premiere")?;
-        }
-
-        let max_attempts: u32 = 30;
-
-        run_windows_import_with_retries(
-            Some(app),
-            abort_requested,
-            "NLE|premiere",
-            "Premiere Pro",
-            max_attempts,
-            !premiere_already_running,
-            Some("Adobe Premiere Pro.exe"),
-            "Premiere Pro was closed before the import could complete.",
-            "Premiere Pro did not become ready in time. Make sure a project is open, then retry.",
-            || run_editor_ui_import_ps(&script_path, "Premiere Pro"),
-        )
-        .await
-    }
-}
-
-/// Execute the editor UI-import PowerShell script and return the result.
-#[cfg(target_os = "windows")]
 fn run_editor_ui_import_ps(script_path: &Path, editor_name: &str) -> Result<String, String> {
     let mut cmd = Command::new("powershell");
     apply_no_window(&mut cmd);
@@ -1395,53 +854,7 @@ fn run_editor_ui_import_ps(script_path: &Path, editor_name: &str) -> Result<Stri
     }
 }
 
-async fn import_into_davinci_resolve(
-    app: &AppHandle,
-    media_paths: &[String],
-    abort_requested: &AtomicBool,
-) -> Result<String, String> {
-    let script_path = write_temp_script(
-        "amverge_resolve_import",
-        "py",
-        &build_davinci_import_script(media_paths),
-    )?;
-
-    #[cfg(target_os = "windows")]
-    {
-        emit_import_progress(Some(app), 98, "Preparing DaVinci Resolve auto-import...");
-        let resolve_running = is_windows_process_running("Resolve.exe");
-        if !resolve_running {
-            if let Some(resolve_exe) = resolve_davinci_executable() {
-                emit_import_progress(Some(app), 98, "Launching DaVinci Resolve...");
-                spawn_editor_process(&resolve_exe, "DaVinci Resolve", "NLE|davinci")?;
-            } else {
-                return Err("DaVinci Resolve executable was not found.".to_string());
-            }
-        }
-
-        run_windows_import_with_retries(
-            Some(app),
-            abort_requested,
-            "NLE|davinci",
-            "DaVinci Resolve",
-            30,
-            !resolve_running,
-            Some("Resolve.exe"),
-            "DaVinci Resolve was closed before the import could complete.",
-            "DaVinci Resolve did not become ready for scripting in time.",
-            || run_python_script(&script_path),
-        )
-        .await
-    }
-
-    #[cfg(not(target_os = "windows"))]
-    {
-        let _ = app;
-        let _ = abort_requested;
-        run_python_script(&script_path)
-    }
-}
-
+#[cfg(target_os = "windows")]
 fn run_python_script(script_path: &Path) -> Result<String, String> {
     let mut launch_errors: Vec<String> = Vec::new();
 
@@ -1639,7 +1052,8 @@ fn build_editor_ui_import_ps(
 ) -> String {
     let files = media_paths
         .iter()
-        .map(|p| format!("'{}'", escape_ps_single_quoted(p)))
+        .map(|p| normalize_windows_editor_import_path(p))
+        .map(|p| format!("'{}'", escape_ps_single_quoted(&p)))
         .collect::<Vec<_>>()
         .join(",\n    ");
 
@@ -1686,7 +1100,11 @@ $paths = @(
 )
 
 function Get-EditorWindow([string]$processName) {{
-    $procIds = @(Get-Process -Name $processName -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Id)
+    $procs = @(Get-Process -Name $processName -ErrorAction SilentlyContinue)
+    if ((-not $procs -or $procs.Count -eq 0) -and $processName.Contains('*')) {{
+        $procs = @(Get-Process -ErrorAction SilentlyContinue | Where-Object {{ $_.ProcessName -like $processName }})
+    }}
+    $procIds = @($procs | Select-Object -ExpandProperty Id)
     if (-not $procIds -or $procIds.Count -eq 0) {{
         return $null
     }}
@@ -1915,12 +1333,16 @@ foreach ($p in $paths) {{
     [Win32Focus]::SetForegroundWindow($dialog.Handle) | Out-Null
     Start-Sleep -Milliseconds 120
 
-    # Paste the full file path into the filename field
+    # Focus dialog location/filename field
+    [System.Windows.Forms.SendKeys]::SendWait('^l')
+    Start-Sleep -Milliseconds 120
+
+    # Paste full file path and confirm
     [System.Windows.Forms.Clipboard]::SetText($p)
     [System.Windows.Forms.SendKeys]::SendWait('^v')
     Start-Sleep -Milliseconds 220
 
-    # Confirm
+    # Confirm import
     [System.Windows.Forms.SendKeys]::SendWait('~')
     Start-Sleep -Milliseconds 250
 
@@ -1933,7 +1355,8 @@ foreach ($p in $paths) {{
     }}
 
     if ($stillOpen) {{
-        throw 'AMVERGE_WAITING: Import dialog did not close after confirming file import.'
+        $stillOpenTitle = [string]$stillOpen.Title
+        throw ('AMVERGE_INVALID_FILENAME: Import dialog stayed open after path submit. Path=' + $p + '; Dialog=' + $stillOpenTitle)
     }}
 
     Start-Sleep -Milliseconds 350
@@ -1959,196 +1382,145 @@ Write-Output '__EDITOR_NAME__ import complete.'
 }
 
 #[cfg(target_os = "windows")]
-fn build_after_effects_ui_import_ps(media_paths: &[String]) -> String {
-    let project_ready_expr = "($titleLower -match '\\.aep') -and ($titleLower -notmatch 'untitled|sans titre') -and ($titleLower -notmatch 'home|accueil')";
-    let window_title_match_expr = "($titleLower -match 'after effects')";
-    let dialog_reject_expr =
-        "($dialogTitleLower -match 'project|projet') -and ($dialogTitleLower -notmatch 'import|importer')";
-
-    build_editor_ui_import_ps(
-        media_paths,
-        "AfterFX",
-        "After Effects",
-        "AMVERGE_NO_WINDOW: After Effects window not found. After Effects may still be loading.",
-        "AMVERGE_NO_PROJECT: No opened .aep project yet. Select a project from the Home screen.",
-        window_title_match_expr,
-        project_ready_expr,
-        dialog_reject_expr,
-    )
-}
-
-#[cfg(target_os = "windows")]
-fn build_premiere_ui_import_ps(media_paths: &[String]) -> String {
-    let project_ready_expr = "($titleLower -match '\\.prproj') -or (($titleLower -match 'premiere') -and ($title -match '\\s[-–—]\\s') -and ($titleLower -notmatch 'home|accueil|learn|importer|import'))";
-    let window_title_match_expr = "($titleLower -match 'premiere')";
-    let dialog_reject_expr = "$false";
-
-    build_editor_ui_import_ps(
-        media_paths,
-        "Adobe Premiere Pro",
-        "Premiere Pro",
-        "AMVERGE_NO_WINDOW: Adobe Premiere Pro window not found. Premiere may still be loading.",
-        "AMVERGE_NO_PROJECT: No Premiere project is open yet.",
-        window_title_match_expr,
-        project_ready_expr,
-        dialog_reject_expr,
-    )
-}
-
-fn build_davinci_import_script(media_paths: &[String]) -> String {
-    let files = media_paths
-        .iter()
-        .map(|p| format!("r'{}'", escape_py_single_quoted(p)))
-        .collect::<Vec<_>>()
-        .join(",\n    ");
-
-    [
-        "import os".to_string(),
-        "import sys".to_string(),
-        "".to_string(),
-        "MEDIA_FILES = [".to_string(),
-        format!("    {files}"),
-        "]".to_string(),
-        "".to_string(),
-        "def ensure_resolve_module():".to_string(),
-        "    try:".to_string(),
-        "        import DaVinciResolveScript as dvr_script".to_string(),
-        "        return dvr_script".to_string(),
-        "    except Exception:".to_string(),
-        "        pass".to_string(),
-        "".to_string(),
-        "    candidates = []".to_string(),
-        "    if os.name == 'nt':".to_string(),
-        "        program_data = os.environ.get('PROGRAMDATA', r'C:\\\\ProgramData')".to_string(),
-        "        candidates.append(os.path.join(program_data, 'Blackmagic Design', 'DaVinci Resolve', 'Support', 'Developer', 'Scripting', 'Modules'))".to_string(),
-        "    elif sys.platform == 'darwin':".to_string(),
-        "        candidates.append('/Library/Application Support/Blackmagic Design/DaVinci Resolve/Developer/Scripting/Modules')".to_string(),
-        "    else:".to_string(),
-        "        candidates.append('/opt/resolve/Developer/Scripting/Modules')".to_string(),
-        "".to_string(),
-        "    for path in candidates:".to_string(),
-        "        if os.path.isdir(path) and path not in sys.path:".to_string(),
-        "            sys.path.append(path)".to_string(),
-        "".to_string(),
-        "    import DaVinciResolveScript as dvr_script".to_string(),
-        "    return dvr_script".to_string(),
-        "".to_string(),
-        "dvr_script = ensure_resolve_module()".to_string(),
-        "resolve = dvr_script.scriptapp('Resolve')".to_string(),
-        "if not resolve:".to_string(),
-        "    raise RuntimeError('Could not connect to DaVinci Resolve. Ensure Resolve Studio is running and External scripting is set to Local.')"
-            .to_string(),
-        "".to_string(),
-        "pm = resolve.GetProjectManager()".to_string(),
-        "project = pm.GetCurrentProject() if pm else None".to_string(),
-        "if not project:".to_string(),
-        "    project = pm.CreateProject('AMVerge Auto Import') if pm else None".to_string(),
-        "if not project:".to_string(),
-        "    raise RuntimeError('No Resolve project is currently open, and AMVerge could not create one automatically.')"
-            .to_string(),
-        "".to_string(),
-        "media_pool = project.GetMediaPool()".to_string(),
-        "if not media_pool:".to_string(),
-        "    raise RuntimeError('Could not access Resolve media pool.')".to_string(),
-        "".to_string(),
-        "def norm(p):".to_string(),
-        "    return os.path.normcase(os.path.normpath(str(p or ''))).replace('\\\\', '/')".to_string(),
-        "".to_string(),
-        "def iter_clips(folder):".to_string(),
-        "    if not folder:".to_string(),
-        "        return".to_string(),
-        "    for clip in (folder.GetClipList() or []):".to_string(),
-        "        yield clip".to_string(),
-        "    for sub in (folder.GetSubFolderList() or []):".to_string(),
-        "        for clip in iter_clips(sub):".to_string(),
-        "            yield clip".to_string(),
-        "".to_string(),
-        "def clip_exists(project_obj, file_path):".to_string(),
-        "    try:".to_string(),
-        "        root = project_obj.GetMediaPool().GetRootFolder()".to_string(),
-        "    except Exception:".to_string(),
-        "        return False".to_string(),
-        "    wanted = norm(file_path)".to_string(),
-        "    for clip in iter_clips(root):".to_string(),
-        "        try:".to_string(),
-        "            props = clip.GetClipProperty() or {}".to_string(),
-        "            clip_path = props.get('File Path') or props.get('FilePath') or ''".to_string(),
-        "            if norm(clip_path) == wanted:".to_string(),
-        "                return True".to_string(),
-        "        except Exception:".to_string(),
-        "            pass".to_string(),
-        "    return False".to_string(),
-        "".to_string(),
-        "normalized = []".to_string(),
-        "for p in MEDIA_FILES:".to_string(),
-        "    ap = os.path.abspath(p)".to_string(),
-        "    normalized.append(ap.replace('\\\\\\\\', '/'))".to_string(),
-        "".to_string(),
-        "missing = [p for p in normalized if not os.path.exists(p)]".to_string(),
-        "if missing:".to_string(),
-        "    raise RuntimeError('Resolve import paths not found: ' + '; '.join(missing))".to_string(),
-        "".to_string(),
-        "to_import = [p for p in normalized if not clip_exists(project, p)]".to_string(),
-        "if not to_import:".to_string(),
-        "    print('DaVinci Resolve import complete.')".to_string(),
-        "    raise SystemExit(0)".to_string(),
-        "".to_string(),
-        "result = media_pool.ImportMedia(to_import)".to_string(),
-        "if not result:".to_string(),
-        "    clip_infos = [{'FilePath': p} for p in to_import]".to_string(),
-        "    result = media_pool.ImportMedia(clip_infos)".to_string(),
-        "".to_string(),
-        "if not result:".to_string(),
-        "    imported_any = False".to_string(),
-        "    failed = []".to_string(),
-        "    for p in to_import:".to_string(),
-        "        r = media_pool.ImportMedia([p])".to_string(),
-        "        if r:".to_string(),
-        "            imported_any = True".to_string(),
-        "        else:".to_string(),
-        "            failed.append(p)".to_string(),
-        "    if not imported_any:".to_string(),
-        "        raise RuntimeError('Resolve failed to import media into current project. Failed paths: ' + '; '.join(failed))"
-            .to_string(),
-        "".to_string(),
-        "print('DaVinci Resolve import complete.')".to_string(),
-    ]
-    .join("\n")
-}
-
 fn escape_py_single_quoted(raw: &str) -> String {
     raw.replace('\\', "\\\\").replace('\'', "\\'")
 }
 
 #[cfg(target_os = "windows")]
-fn is_windows_process_running(image_name: &str) -> bool {
-    let mut cmd = Command::new("tasklist");
-    apply_no_window(&mut cmd);
-
-    let output = cmd
-        .arg("/FI")
-        .arg(format!("IMAGENAME eq {image_name}"))
-        .arg("/FO")
-        .arg("CSV")
-        .arg("/NH")
-        .output();
-
-    let Ok(out) = output else {
-        return false;
-    };
-
-    if !out.status.success() {
-        return false;
+fn normalize_windows_editor_import_path(raw: &str) -> String {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return String::new();
     }
 
-    let stdout = String::from_utf8_lossy(&out.stdout);
-    let image_name_lower = image_name.to_ascii_lowercase();
+    trimmed.replace('/', "\\")
+}
 
-    stdout.lines().any(|line| {
-        line.trim()
-            .to_ascii_lowercase()
-            .starts_with(&format!("\"{image_name_lower}\""))
-    })
+#[cfg(target_os = "windows")]
+fn should_stage_windows_editor_import_path(path: &str) -> bool {
+    let normalized = normalize_windows_editor_import_path(path);
+    if normalized.is_empty() {
+        return true;
+    }
+
+    if normalized.len() >= 180 {
+        return true;
+    }
+
+    let lowered = normalized.to_ascii_lowercase();
+    lowered.contains("\\appdata\\roaming\\")
+        || lowered.contains("\\appdata\\local\\")
+        || lowered.contains("\\com.amiri.amverge\\episodes\\")
+}
+
+#[cfg(target_os = "windows")]
+fn sanitize_stage_file_stem(raw: &str) -> String {
+    let cleaned: String = raw
+        .chars()
+        .map(|ch| if ch.is_ascii_alphanumeric() { ch } else { '_' })
+        .collect();
+
+    let trimmed = cleaned.trim_matches('_');
+    if trimmed.is_empty() {
+        "clip".to_string()
+    } else {
+        trimmed.chars().take(24).collect()
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn stage_windows_editor_import_paths(
+    editor_slug: &str,
+    media_paths: &[String],
+) -> Result<Vec<String>, String> {
+    stage_windows_editor_import_paths_inner(editor_slug, media_paths, false)
+}
+
+#[cfg(target_os = "windows")]
+fn stage_windows_editor_import_paths_forced(
+    editor_slug: &str,
+    media_paths: &[String],
+) -> Result<Vec<String>, String> {
+    stage_windows_editor_import_paths_inner(editor_slug, media_paths, true)
+}
+
+#[cfg(target_os = "windows")]
+fn stage_windows_editor_import_paths_inner(
+    editor_slug: &str,
+    media_paths: &[String],
+    force_stage: bool,
+) -> Result<Vec<String>, String> {
+    if media_paths.is_empty() {
+        return Err("No media paths were provided for editor import.".to_string());
+    }
+
+    let should_stage = force_stage
+        || media_paths
+            .iter()
+            .any(|path| should_stage_windows_editor_import_path(path));
+
+    if !should_stage {
+        return Ok(media_paths.to_vec());
+    }
+
+    let ts = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|e| e.to_string())?
+        .as_millis();
+    let mut stage_dir = script_runtime_dir()
+        .join("staged_media")
+        .join(editor_slug.trim().to_ascii_lowercase());
+    stage_dir.push(format!("{}_{}", std::process::id(), ts));
+    fs::create_dir_all(&stage_dir).map_err(|e| {
+        format!(
+            "Failed to create staging directory for editor import ({}): {e}",
+            stage_dir.display()
+        )
+    })?;
+
+    let mut staged_paths = Vec::with_capacity(media_paths.len());
+    for (idx, raw) in media_paths.iter().enumerate() {
+        let normalized = normalize_windows_editor_import_path(raw);
+        if normalized.is_empty() {
+            return Err("Encountered empty media path during editor import staging.".to_string());
+        }
+
+        let source = PathBuf::from(&normalized);
+        if !source.exists() {
+            return Err(format!(
+                "Media path does not exist for editor import: {}",
+                source.display()
+            ));
+        }
+
+        let extension = source
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .map(str::to_ascii_lowercase)
+            .filter(|ext| !ext.is_empty())
+            .unwrap_or_else(|| "bin".to_string());
+        let stem = source
+            .file_stem()
+            .and_then(|name| name.to_str())
+            .map(sanitize_stage_file_stem)
+            .unwrap_or_else(|| "clip".to_string());
+        let staged_file_name = format!("{:04}_{}.{}", idx + 1, stem, extension);
+        let staged = stage_dir.join(staged_file_name);
+
+        if fs::hard_link(&source, &staged).is_err() {
+            fs::copy(&source, &staged).map_err(|e| {
+                format!(
+                    "Failed to stage media for editor import ({} -> {}): {e}",
+                    source.display(),
+                    staged.display()
+                )
+            })?;
+        }
+
+        staged_paths.push(staged.to_string_lossy().to_string());
+    }
+
+    Ok(staged_paths)
 }
 
 #[cfg(target_os = "windows")]
