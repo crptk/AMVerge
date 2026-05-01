@@ -304,12 +304,12 @@ export default function HomePage({
 
   // Bump clipSyncVersion only on genuine user-driven changes (Selector Mode only)
   useEffect(() => {
-    if (activeMode === "editor") return; // Timeline is master in editor mode
-
     if (isUpdatingFromTimeline.current) {
       isUpdatingFromTimeline.current = false;
       return;
     }
+
+    if (activeMode === "editor") return; // Timeline is master in editor mode
     setClipSyncVersion((v) => v + 1);
   }, [clips, timelineClipIds, activeMode]);
 
