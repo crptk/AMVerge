@@ -4,10 +4,8 @@ import React from "react";
 import { FaFolderOpen, FaFileExport, FaVideo, FaLayerGroup, FaFolder, FaRocket, FaCodeBranch } from "react-icons/fa";
 import { GeneralSettings } from "../../settings/generalSettings";
 import { type EditorTarget } from "../../hooks/useImportExport";
+import { EDITOR_TARGETS, supportsOriginalCut } from "../../features/export/targets";
 import Dropdown from "../common/Dropdown";
-import premiereIcon from "../../assets/editor-icons/adobepremierepro.svg";
-import afterEffectsIcon from "../../assets/editor-icons/adobeaftereffects.svg";
-import davinciIcon from "../../assets/editor-icons/davinciresolve.svg";
 
 const EXPORT_OPTIONS = [
   { value: "mp4", label: "MP4" },
@@ -15,17 +13,6 @@ const EXPORT_OPTIONS = [
   { value: "mov", label: "MOV" },
   { value: "avi", label: "AVI" },
   { value: "xml", label: "XML" },
-];
-
-const EDITOR_TARGETS: {
-  value: EditorTarget;
-  label: string;
-  className: string;
-  icon: string;
-}[] = [
-  { value: "premiere", label: "Premiere Pro", className: "premiere", icon: premiereIcon },
-  { value: "after_effects", label: "After Effects", className: "after-effects", icon: afterEffectsIcon },
-  { value: "davinci_resolve", label: "DaVinci Resolve", className: "davinci", icon: davinciIcon },
 ];
 
 type PreviewContainerProps = {
@@ -55,7 +42,7 @@ type PreviewContainerProps = {
 
 export default function PreviewContainer (props: PreviewContainerProps) {
   const [mergeEnabled, setMergeEnabled] = React.useState(true);
-  const [editorTarget, setEditorTarget] = React.useState<EditorTarget>("premiere");
+  const [editorTarget, setEditorTarget] = React.useState<EditorTarget>("premier_pro");
   const [showMergeNameModal, setShowMergeNameModal] = React.useState(false);
   const mergeNameInputRef = React.useRef<HTMLInputElement | null>(null);
 
@@ -75,6 +62,7 @@ export default function PreviewContainer (props: PreviewContainerProps) {
       props.handleExport(props.selectedClips, false, undefined, editorTarget);
     }
   };
+  const isOriginalCutSupported = supportsOriginalCut(editorTarget);
 
   const confirmMergeExport = () => {
     const value = (mergeNameInputRef.current?.value ?? "").trim();
@@ -100,7 +88,7 @@ export default function PreviewContainer (props: PreviewContainerProps) {
       <div className="export-panel">
         <div className="export-header">
           <FaFileExport className="header-icon" />
-          <span className="export-title">EXPORT SETTINGS</span>
+          <span className="export-title">EXPORT TO EDITING SOFTWARE</span>
         </div>
 
         <div className="export-settings-row">
@@ -142,7 +130,7 @@ export default function PreviewContainer (props: PreviewContainerProps) {
 
         <div className="export-target-section">
           <label className="export-label">
-            <FaLayerGroup className="label-icon" /> Send To
+            <FaLayerGroup className="label-icon" /> Editing Software
           </label>
           <div className="editor-target-grid">
             {EDITOR_TARGETS.map(({ value, label, className, icon }) => (
@@ -193,8 +181,13 @@ export default function PreviewContainer (props: PreviewContainerProps) {
         </button>
         <button
           className="buttons export-original-button"
+          disabled={!isOriginalCutSupported}
           onClick={() => props.handleExportOriginal(props.selectedClips, editorTarget)}
-          title={`Send original timeline cut to ${EDITOR_TARGETS.find((t) => t.value === editorTarget)?.label ?? "editor"}`}
+          title={
+            isOriginalCutSupported
+              ? `Send original timeline cut to ${EDITOR_TARGETS.find((t) => t.value === editorTarget)?.label ?? "editor"}`
+              : "Original Cut is not available for CapCut"
+          }
         >
           <FaCodeBranch className="btn-icon" /> Export Original Cut
         </button>

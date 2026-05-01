@@ -17,12 +17,13 @@ use crate::utils::process::apply_no_window;
 mod after_effects;
 mod capcut;
 mod davinci_resolve;
-mod premiere_pro;
+mod premier_pro;
 
 #[derive(Debug, Clone, Copy, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum EditorTarget {
-    Premiere,
+    #[serde(rename = "premier_pro")]
+    PremierPro,
     AfterEffects,
     DavinciResolve,
     #[serde(rename = "capcut")]
@@ -106,8 +107,8 @@ pub async fn import_media_to_editor(
             )
             .await
         }
-        EditorTarget::Premiere => {
-            premiere_pro::import_into_premiere(&app, &normalized, &abort_state.abort_requested)
+        EditorTarget::PremierPro => {
+            premier_pro::import_into_premier_pro(&app, &normalized, &abort_state.abort_requested)
                 .await
         }
         EditorTarget::DavinciResolve => {
@@ -144,8 +145,8 @@ pub async fn import_original_cut_to_editor(
             )
             .await
         }
-        EditorTarget::Premiere => {
-            premiere_pro::import_original_cut_into_premiere(
+        EditorTarget::PremierPro => {
+            premier_pro::import_original_cut_into_premier_pro(
                 &app,
                 &abort_state.abort_requested,
                 clips,
@@ -1544,7 +1545,7 @@ fn resolve_afterfx_executable() -> Option<PathBuf> {
 }
 
 #[cfg(target_os = "windows")]
-fn resolve_premiere_executable() -> Option<PathBuf> {
+fn resolve_premier_pro_executable() -> Option<PathBuf> {
     if let Ok(custom) = std::env::var("AMVERGE_PREMIERE_PATH") {
         let path = PathBuf::from(custom);
         if path.exists() {

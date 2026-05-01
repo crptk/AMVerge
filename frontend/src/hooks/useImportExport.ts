@@ -3,7 +3,15 @@ import { invoke } from "@tauri-apps/api/core";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { ClipItem, EpisodeEntry } from "../types/domain"
 import { fileNameFromPath, truncateFileName, detectScenes } from "../utils/episodeUtils";
-export type EditorTarget = "premiere" | "after_effects" | "davinci_resolve";
+import {
+  buildTimelineXmlClips,
+  buildXmlSavePath,
+  resolveTimelineName,
+  sanitizeTimelineName,
+} from "../features/export/xmlTimeline";
+import { editorLabel } from "../features/export/targets";
+export type { EditorTarget } from "../features/export/targets";
+import type { EditorTarget } from "../features/export/targets";
 import { GeneralSettings } from "../settings/generalSettings";
 
 type ImportExportProps = {
@@ -30,16 +38,6 @@ type ImportExportProps = {
   generalSettings: GeneralSettings;
 };
 
-type TimelineXmlClip = {
-  id: string;
-  src: string;
-  originalName?: string;
-  originalPath?: string;
-  sceneIndex?: number;
-  startSec?: number;
-  endSec?: number | null;
-};
-
 export default function useImportExport(props: ImportExportProps) {
   const [loading, setLoading] = useState(false);
   const [importToken, setImportToken] = useState(() => Date.now().toString());
@@ -49,12 +47,6 @@ export default function useImportExport(props: ImportExportProps) {
   const [batchCurrentFile, setBatchCurrentFile] = useState("");
   const [showLoaderCancel, setShowLoaderCancel] = useState(false);
   const [loaderCancelLabel, setLoaderCancelLabel] = useState("Cancel");
-
-  const editorLabel = (target: EditorTarget): string => {
-    if (target === "after_effects") return "After Effects";
-    if (target === "davinci_resolve") return "DaVinci Resolve";
-    return "Premiere Pro";
-  };
 
   const formatAutoImportFailureMessage = (
     target: EditorTarget,
@@ -73,6 +65,10 @@ export default function useImportExport(props: ImportExportProps) {
       return `Export complete. ${editorLabel(target)} was not detected.`;
     }
 
+    if (/AMVERGE_INVALID_FILENAME/i.test(details)) {
+      return `Export completed. ${editorLabel(target)} rejected the imported file path.`;
+    }
+
     if (details) {
       return `Export completed. Auto-import failed: ${details}`;
     }
@@ -88,13 +84,6 @@ export default function useImportExport(props: ImportExportProps) {
     props.setExportDir(resolved);
     return resolved;
   };
-
-  const sanitizeFileName = (value: string): string =>
-    value
-      .trim()
-      .replace(/[<>:"/\\|?*\u0000-\u001F]/g, "_")
-      .replace(/\s+/g, " ")
-      .slice(0, 120) || "timeline";
 
   const cleanErrorMessage = (rawError: unknown): string =>
     String(rawError ?? "Unknown error")
@@ -304,7 +293,7 @@ export default function useImportExport(props: ImportExportProps) {
     selectedClips: Set<string>,
     mergeEnabled: boolean,
     mergeFileName?: string,
-    editorTarget: EditorTarget = "premiere"
+    editorTarget: EditorTarget = "premier_pro"
   ) => {
     if (selectedClips.size === 0) return;
 
@@ -323,11 +312,27 @@ export default function useImportExport(props: ImportExportProps) {
       const clipArray = selected.map((c: ClipItem) => c.src);
       const format = props.exportFormat || "mp4";
       if (format === "xml") {
-        props.setProgress(100);
-        props.setProgressMsg(
-          "Export canceled. XML is not supported in this export flow. Use MP4, MKV, MOV, or AVI."
+        const sequenceName = resolveTimelineName(
+          selected,
+          mergeEnabled ? mergeFileName : undefined
         );
-        overlayHoldMs = 1800;
+        const timelineClips = buildTimelineXmlClips(selected, props.importedVideoPath);
+        const savePath = buildXmlSavePath(dir, sequenceName);
+
+        props.setProgress(95);
+        props.setProgressMsg(
+          `Generating XML timeline for ${editorLabel(editorTarget)}...`
+        );
+
+        await invoke("export_timeline_xml", {
+          clips: timelineClips,
+          savePath,
+          sequenceName,
+        });
+
+        props.setProgress(100);
+        props.setProgressMsg(`XML export complete: ${sequenceName}.xml`);
+        overlayHoldMs = 1500;
         return;
       }
       let exportedPaths: string[] = [];
@@ -450,8 +455,16 @@ export default function useImportExport(props: ImportExportProps) {
 
   const handleExportOriginal = async (
     selectedClips: Set<string>,
-    editorTarget: EditorTarget = "premiere"
+    editorTarget: EditorTarget = "premier_pro"
   ) => {
+    if (editorTarget === "capcut") {
+      props.setProgress(100);
+      props.setProgressMsg(
+        "Original cut is not available for CapCut. Use Export Now for CapCut."
+      );
+      return;
+    }
+
     if (selectedClips.size === 0) return;
 
     const selected = props.clips.filter((c: ClipItem) => selectedClips.has(c.id));
@@ -481,21 +494,8 @@ export default function useImportExport(props: ImportExportProps) {
       });
 
       const originalName = selected[0]?.originalName || "episode";
-      const cutBaseName = sanitizeFileName(originalName);
-      const fallbackOriginalPath =
-        selected.find((clip) => !!clip.originalPath)?.originalPath ??
-        props.importedVideoPath ??
-        undefined;
-
-      const timelineClips: TimelineXmlClip[] = selected.map((clip) => ({
-        id: clip.id,
-        src: clip.src,
-        originalName: clip.originalName,
-        originalPath: clip.originalPath ?? fallbackOriginalPath,
-        sceneIndex: clip.sceneIndex,
-        startSec: clip.startSec,
-        endSec: clip.endSec,
-      }));
+      const cutBaseName = sanitizeTimelineName(originalName);
+      const timelineClips = buildTimelineXmlClips(selected, props.importedVideoPath);
 
       try {
         setShowLoaderCancel(true);

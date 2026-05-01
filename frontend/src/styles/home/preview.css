@@ -203,7 +203,7 @@
     object-fit: contain;
 }
 
-.editor-brand-icon.premiere {
+.editor-brand-icon.premier_pro {
     color: #9999ff;
     background: rgba(153, 153, 255, 0.14);
 }
@@ -216,6 +216,11 @@
 .editor-brand-icon.davinci {
     color: #65d6ff;
     background: rgba(101, 214, 255, 0.14);
+}
+
+.editor-brand-icon.capcut {
+    color: #ffffff;
+    background: rgba(255, 255, 255, 0.1);
 }
 
 .export-dir-row {
