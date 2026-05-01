@@ -1101,6 +1101,13 @@ using System.Text;
 using System.Runtime.InteropServices;
 public class Win32Focus {{
     public delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
+    [StructLayout(LayoutKind.Sequential)]
+    public struct RECT {{
+        public int Left;
+        public int Top;
+        public int Right;
+        public int Bottom;
+    }}
     [DllImport("user32.dll")]
     public static extern bool EnumWindows(EnumWindowsProc lpEnumFunc, IntPtr lParam);
     [DllImport("user32.dll")]
@@ -1127,6 +1134,8 @@ public class Win32Focus {{
     public static extern bool BringWindowToTop(IntPtr hWnd);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     public static extern int GetClassName(IntPtr hWnd, StringBuilder lpClassName, int nMaxCount);
+    [DllImport("user32.dll")]
+    public static extern bool GetWindowRect(IntPtr hWnd, out RECT rect);
     public const int SW_RESTORE = 9;
 }}
 '@ -ErrorAction SilentlyContinue
@@ -1328,6 +1337,14 @@ function Set-DialogFileName($dialog, [string]$value) {{
             return $false
         }}
 
+        $dialogRect = New-Object 'Win32Focus+RECT'
+        $hasDialogRect = [Win32Focus]::GetWindowRect($dialog.Handle, [ref]$dialogRect)
+        $minInputTop = [double]::NegativeInfinity
+        if ($hasDialogRect) {{
+            $dialogHeight = [Math]::Max(1, $dialogRect.Bottom - $dialogRect.Top)
+            $minInputTop = $dialogRect.Top + ($dialogHeight * 0.55)
+        }}
+
         $condition = New-Object System.Windows.Automation.PropertyCondition -ArgumentList @(
             [System.Windows.Automation.AutomationElement]::ControlTypeProperty,
             [System.Windows.Automation.ControlType]::Edit
@@ -1364,6 +1381,9 @@ function Set-DialogFileName($dialog, [string]$value) {{
 
             try {{
                 $rect = $edit.Current.BoundingRectangle
+                if ($hasDialogRect -and $rect.Top -lt $minInputTop) {{
+                    continue
+                }}
                 $score += [double]$rect.Bottom
                 if ($rect.Width -gt 120) {{
                     $score += 100
