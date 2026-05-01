@@ -717,29 +717,37 @@ pub async fn fast_merge(
 
     let ffmpeg = resolve_bundled_tool(&app, "ffmpeg")?;
     
-    // Create a temporary file list for ffmpeg concat
-    use std::io::Write;
-    use tempfile::NamedTempFile;
-    
-    let mut filelist = NamedTempFile::new().map_err(|e| format!("Failed to create temp file: {e}"))?;
-    for c in &clips {
-        let safe_path = c.replace("'", "'\\''");
-        writeln!(filelist, "file '{}'", safe_path).map_err(|e| format!("Failed to write to temp file: {e}"))?;
-    }
-    let filelist_path = filelist.path().to_string_lossy().to_string();
-
     let mut cmd = std::process::Command::new(&ffmpeg);
     apply_no_window(&mut cmd);
     
+    // Build the filter_complex string: [0:v][0:a][1:v][1:a]...concat=n=N:v=1:a=1[v][a]
+    let mut filter_input = String::new();
+    let mut args = vec!["-y".to_string()];
+    
+    for (i, c) in clips.iter().enumerate() {
+        args.push("-i".to_string());
+        args.push(c.clone());
+        filter_input.push_str(&format!("[{}:v][{}:a]", i, i));
+    }
+    
+    let filter_complex = format!("{}concat=n={}:v=1:a=1[v_raw][a];[v_raw]format=yuv420p[v]", filter_input, clips.len());
+    
+    args.extend([
+        "-filter_complex".to_string(),
+        filter_complex,
+        "-map".to_string(), "[v]".to_string(),
+        "-map".to_string(), "[a]".to_string(),
+        "-c:v".to_string(), "libx264".to_string(),
+        "-crf".to_string(), "17".to_string(),
+        "-preset".to_string(), "veryfast".to_string(),
+        "-c:a".to_string(), "aac".to_string(),
+        "-b:a".to_string(), "192k".to_string(),
+        "-movflags".to_string(), "+faststart".to_string(),
+        output_path.clone(),
+    ]);
+
     let result = cmd
-        .args([
-            "-y",
-            "-f", "concat",
-            "-safe", "0",
-            "-i", &filelist_path,
-            "-c", "copy", // Fast stream copy
-            &output_path,
-        ])
+        .args(&args)
         .output()
         .map_err(|e| format!("Failed to run ffmpeg: {e}"))?;
 
