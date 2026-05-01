@@ -9,6 +9,7 @@ export type GeneralSettings = {
     rpcShowFilename: boolean;
     rpcShowButtons: boolean;
     rpcShowMiniIcons: boolean;
+    enableEditor: boolean;
 };
 
 export const DEFAULT_GENERAL_SETTINGS: GeneralSettings = {
@@ -19,7 +20,8 @@ export const DEFAULT_GENERAL_SETTINGS: GeneralSettings = {
     enableDiscordRPC: true,
     rpcShowFilename: true,
     rpcShowButtons: true,
-    rpcShowMiniIcons: true
+    rpcShowMiniIcons: true,
+    enableEditor: true
 }
 
 export function loadGeneralSettings(): GeneralSettings {
@@ -38,6 +40,7 @@ export function loadGeneralSettings(): GeneralSettings {
             rpcShowFilename: typeof parsed.rpcShowFilename === "boolean" ? parsed.rpcShowFilename : DEFAULT_GENERAL_SETTINGS.rpcShowFilename,
             rpcShowButtons: typeof parsed.rpcShowButtons === "boolean" ? parsed.rpcShowButtons : DEFAULT_GENERAL_SETTINGS.rpcShowButtons,
             rpcShowMiniIcons: typeof parsed.rpcShowMiniIcons === "boolean" ? parsed.rpcShowMiniIcons : DEFAULT_GENERAL_SETTINGS.rpcShowMiniIcons,
+            enableEditor: typeof parsed.enableEditor === "boolean" ? parsed.enableEditor : DEFAULT_GENERAL_SETTINGS.enableEditor,
         };
     } catch {
         return DEFAULT_GENERAL_SETTINGS;

@@ -1,0 +1,664 @@
+/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   TIMELINE  –  CapCut-inspired dark track
+   Uses --accent for theming consistency.
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+
+/* ── Root Container ───────────────────────────────────────────────── */
+
+.tl-root {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(180deg, #0d0d0d 0%, #111111 100%);
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 10px 10px 0 0;
+    overflow: hidden;
+    font-family: 'Jersey 10', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+/* ── Toolbar ──────────────────────────────────────────────────────── */
+
+.tl-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 6px 14px;
+    background: rgba(0, 0, 0, 0.45);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    flex-shrink: 0;
+    flex-wrap: wrap;
+}
+
+.tl-toolbar-group {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+}
+
+@media (max-width: 800px) {
+    .tl-toolbar {
+        justify-content: center;
+        gap: 16px;
+    }
+    .tl-toolbar-info {
+        order: -1;
+        width: 100%;
+        justify-content: center;
+    }
+}
+
+.tl-toolbar-info {
+    gap: 10px;
+}
+
+/* ── Toolbar Buttons ──────────────────────────────────────────────── */
+
+.tl-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    height: 28px;
+    padding: 0 10px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.04);
+    color: rgba(255, 255, 255, 0.8);
+    font-family: inherit;
+    font-size: 15px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    white-space: nowrap;
+}
+
+.tl-btn:hover:not(:disabled) {
+    background: rgba(var(--accent-rgb), 0.12);
+    border-color: rgba(var(--accent-rgb), 0.3);
+    color: var(--accent);
+    box-shadow: 0 0 12px rgba(var(--accent-rgb), 0.08);
+}
+
+.tl-btn:active:not(:disabled) {
+    transform: scale(0.96);
+}
+
+.tl-btn:disabled {
+    opacity: 0.3;
+    cursor: default;
+    pointer-events: none;
+}
+
+.tl-btn svg {
+    width: 14px;
+    height: 14px;
+    flex-shrink: 0;
+}
+
+.tl-btn-icon {
+    width: 28px;
+    padding: 0;
+    justify-content: center;
+}
+
+.tl-btn-danger:hover:not(:disabled) {
+    background: rgba(255, 60, 60, 0.12);
+    border-color: rgba(255, 60, 60, 0.3);
+    color: #ff5555;
+    box-shadow: 0 0 12px rgba(255, 60, 60, 0.08);
+}
+
+.tl-btn-fit {
+    background: rgba(var(--accent-rgb), 0.08);
+    border-color: rgba(var(--accent-rgb), 0.2);
+    color: var(--accent);
+}
+
+.tl-btn-fit:hover:not(:disabled) {
+    background: rgba(var(--accent-rgb), 0.2);
+    border-color: var(--accent);
+}
+
+/* ── Time Display ─────────────────────────────────────────────────── */
+
+.tl-time-display {
+    font-size: 17px;
+    color: var(--accent);
+    letter-spacing: 1.5px;
+    font-variant-numeric: tabular-nums;
+    text-shadow: 0 0 10px rgba(var(--accent-rgb), 0.3);
+}
+
+.tl-separator {
+    color: rgba(255, 255, 255, 0.15);
+    font-size: 14px;
+}
+
+.tl-duration-display {
+    font-size: 15px;
+    color: rgba(255, 255, 255, 0.35);
+    letter-spacing: 1.5px;
+    font-variant-numeric: tabular-nums;
+}
+
+/* ── Zoom Bar ─────────────────────────────────────────────────────── */
+
+.tl-zoom-bar {
+    width: 80px;
+    height: 4px;
+    border-radius: 2px;
+    background: rgba(255, 255, 255, 0.08);
+    position: relative;
+    overflow: hidden;
+}
+
+.tl-zoom-fill {
+    height: 100%;
+    border-radius: 2px;
+    background: linear-gradient(90deg, var(--accent), rgba(var(--accent-rgb), 0.5));
+    transition: width 0.15s ease;
+    box-shadow: 0 0 6px rgba(var(--accent-rgb), 0.3);
+}
+
+/* ── Ruler ─────────────────────────────────────────────────────────── */
+
+.tl-ruler {
+    height: 24px;
+    background: rgba(0, 0, 0, 0.3);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    overflow: visible;
+    position: relative;
+    flex-shrink: 0;
+    cursor: pointer;
+    user-select: none;
+}
+
+.tl-ruler-inner {
+    position: relative;
+    height: 100%;
+}
+
+.tl-ruler-tick {
+    position: absolute;
+    top: 0;
+    height: 100%;
+    border-left: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.tl-ruler-tick--major {
+    border-left-color: rgba(255, 255, 255, 0.2);
+}
+
+/* Major ticks get a longer bottom marker */
+.tl-ruler-tick--major::after {
+    content: "";
+    position: absolute;
+    bottom: 0;
+    left: -1px;
+    width: 1px;
+    height: 8px;
+    background: rgba(var(--accent-rgb), 0.4);
+}
+
+.tl-ruler-label {
+    position: absolute;
+    top: 3px;
+    left: 5px;
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.3);
+    white-space: nowrap;
+    pointer-events: none;
+    letter-spacing: 0.5px;
+}
+
+.tl-ruler-tick--major .tl-ruler-label {
+    color: rgba(255, 255, 255, 0.55);
+    font-size: 12px;
+}
+
+/* ── Track Wrapper (scrollable viewport) ──────────────────────────── */
+
+.tl-track-wrapper {
+    overflow-x: auto;
+    overflow-y: hidden;
+    flex: 1;
+    min-height: 80px;
+    position: relative;
+    background:
+        linear-gradient(180deg, #0f0f0f 0%, #141414 100%);
+}
+
+/* Subtle vertical grid lines */
+.tl-ruler-track-container {
+    position: relative;
+    background:
+        repeating-linear-gradient(
+            90deg,
+            transparent,
+            transparent 79px,
+            rgba(255, 255, 255, 0.015) 79px,
+            rgba(255, 255, 255, 0.015) 80px
+        );
+}
+
+/* Custom scrollbar */
+.tl-track-wrapper::-webkit-scrollbar {
+    height: 6px;
+}
+
+.tl-track-wrapper::-webkit-scrollbar-track {
+    background: rgba(0, 0, 0, 0.3);
+}
+
+.tl-track-wrapper::-webkit-scrollbar-thumb {
+    background: rgba(var(--accent-rgb), 0.2);
+    border-radius: 3px;
+}
+
+.tl-track-wrapper::-webkit-scrollbar-thumb:hover {
+    background: rgba(var(--accent-rgb), 0.4);
+}
+
+/* ── Track ─────────────────────────────────────────────────────────── */
+
+.tl-track {
+    position: relative;
+    min-width: 100%;
+    cursor: text;
+}
+
+/* ── Segment Chip — CapCut Style ─────────────────────────────────── */
+
+.tl-segment {
+    position: absolute;
+    display: flex;
+    border-radius: 5px;
+    overflow: hidden;
+    cursor: pointer;
+    transition:
+        box-shadow 0.15s ease,
+        filter 0.15s ease,
+        border-color 0.15s ease;
+    background: #1e1e1e;
+    border: 1px solid rgba(var(--accent-rgb), 0.25);
+    touch-action: none;
+}
+
+.tl-segment:hover {
+    border-color: rgba(var(--accent-rgb), 0.5);
+    box-shadow:
+        0 0 16px rgba(var(--accent-rgb), 0.1),
+        inset 0 0 12px rgba(var(--accent-rgb), 0.03);
+}
+
+.tl-segment--selected {
+    border-color: var(--accent);
+    box-shadow:
+        0 0 12px rgba(var(--accent-rgb), 0.2),
+        0 0 0 1px rgba(var(--accent-rgb), 0.3),
+        inset 0 1px 0 rgba(255, 255, 255, 0.08);
+    /* Static bright border — no pulsing animation */
+}
+
+.tl-segment--dragging {
+    cursor: col-resize;
+    filter: brightness(1.15);
+    box-shadow:
+        0 4px 20px rgba(var(--accent-rgb), 0.25),
+        0 0 0 2px var(--accent);
+    z-index: 10;
+}
+
+.tl-segment--processing {
+    opacity: 0.7;
+}
+
+.tl-segment--processing::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: repeating-linear-gradient(
+        -45deg,
+        transparent,
+        transparent 8px,
+        rgba(var(--accent-rgb), 0.08) 8px,
+        rgba(var(--accent-rgb), 0.08) 16px
+    );
+    animation: tl-processing-slide 1.5s linear infinite;
+    pointer-events: none;
+    z-index: 5;
+}
+
+@keyframes tl-processing-slide {
+    from { background-position: 0 0; }
+    to { background-position: 32px 0; }
+}
+
+/* ── Segment Handles ──────────────────────────────────────────────── */
+
+.tl-segment-handle {
+    flex-shrink: 0;
+    cursor: col-resize;
+    position: relative;
+    z-index: 2;
+    transition: background 0.12s ease;
+    touch-action: none;
+}
+
+.tl-segment-handle::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 2px;
+    height: 20px;
+    border-radius: 1px;
+    background: rgba(255, 255, 255, 0.12);
+    transition: all 0.12s ease;
+}
+
+.tl-segment-handle--left::after {
+    left: 2px;
+}
+
+.tl-segment-handle--right::after {
+    right: 2px;
+}
+
+.tl-segment-handle:hover {
+    background: rgba(var(--accent-rgb), 0.15);
+}
+
+.tl-segment-handle:hover::after {
+    background: var(--accent);
+    box-shadow: 0 0 6px rgba(var(--accent-rgb), 0.4);
+    height: 28px;
+}
+
+/* ── Segment Content ──────────────────────────────────────────────── */
+
+.tl-segment-content {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+/* ── Segment Header Bar ──────────────────────────────────────────── */
+
+.tl-segment-header {
+    height: 22px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    padding: 0 6px;
+    background: rgba(var(--accent-rgb), 0.2);
+    border-bottom: 1px solid rgba(var(--accent-rgb), 0.15);
+    flex-shrink: 0;
+    overflow: hidden;
+}
+
+.tl-segment--selected .tl-segment-header {
+    background: rgba(var(--accent-rgb), 0.35);
+}
+
+.tl-segment-label {
+    font-size: 11px;
+    font-weight: 500;
+    color: rgba(255, 255, 255, 0.9);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    pointer-events: none;
+    letter-spacing: 0.3px;
+    line-height: 22px;
+}
+
+.tl-segment-duration {
+    font-size: 10px;
+    color: rgba(255, 255, 255, 0.55);
+    white-space: nowrap;
+    flex-shrink: 0;
+    pointer-events: none;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.5px;
+    line-height: 22px;
+}
+
+/* ── Segment Body (Filmstrip Area) ────────────────────────────────── */
+
+.tl-segment-body {
+    flex: 1;
+    min-height: 0;
+    position: relative;
+    overflow: hidden;
+}
+
+.tl-segment-filmstrip {
+    position: absolute;
+    inset: 0;
+    opacity: 0.85;
+    pointer-events: none;
+    z-index: 0;
+    filter: brightness(0.9) contrast(1.05);
+    background-position: left top;
+    transition: opacity 0.3s ease;
+}
+
+/* Real sprite sheet — vivid */
+.tl-segment-filmstrip--sprite {
+    opacity: 0.92;
+    filter: brightness(0.95) contrast(1.05);
+}
+
+/* Loading shimmer animation */
+.tl-segment-filmstrip--loading {
+    opacity: 0.3;
+    background: linear-gradient(
+        90deg,
+        rgba(var(--accent-rgb), 0.05) 0%,
+        rgba(var(--accent-rgb), 0.12) 50%,
+        rgba(var(--accent-rgb), 0.05) 100%
+    ) !important;
+    background-size: 200% 100% !important;
+    animation: tl-shimmer 1.8s ease-in-out infinite;
+}
+
+@keyframes tl-shimmer {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+}
+
+/* Edge vignette for depth */
+.tl-segment-body::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background:
+        linear-gradient(90deg, rgba(0, 0, 0, 0.3) 0%, transparent 8%, transparent 92%, rgba(0, 0, 0, 0.3) 100%);
+    pointer-events: none;
+    z-index: 1;
+}
+
+/* High Precision Filmstrip */
+.tl-frame-container {
+    display: flex;
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+    opacity: 0.85;
+}
+
+.tl-segment--selected .tl-frame-container {
+    opacity: 1;
+}
+
+.tl-frame-tile {
+    flex: 1;
+    height: 100%;
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    border-right: 1px solid rgba(0, 0, 0, 0.15); /* subtle separation between frames */
+}
+.tl-frame-tile:last-child {
+    border-right: none;
+}
+
+/* ── Segment Progress Strip (bottom) ──────────────────────────────── */
+
+.tl-segment-progress {
+    height: 3px;
+    flex-shrink: 0;
+    background: repeating-linear-gradient(
+        90deg,
+        rgba(var(--accent-rgb), 0.15) 0px,
+        rgba(var(--accent-rgb), 0.15) 2px,
+        transparent 2px,
+        transparent 5px
+    );
+}
+
+.tl-segment--selected .tl-segment-progress {
+    background: repeating-linear-gradient(
+        90deg,
+        rgba(var(--accent-rgb), 0.35) 0px,
+        rgba(var(--accent-rgb), 0.35) 2px,
+        transparent 2px,
+        transparent 5px
+    );
+}
+
+/* ── Playhead — CapCut pill-handle style ──────────────────────────── */
+
+.tl-playhead {
+    position: absolute;
+    top: 0;
+    z-index: 20;
+    pointer-events: none;
+    transform: translateX(-50%);
+}
+
+.tl-playhead-head {
+    width: 16px;
+    height: 20px;
+    margin: 0 auto;
+    pointer-events: auto;
+    cursor: ew-resize;
+    position: relative;
+    touch-action: none;
+
+    /* Pill/capsule shape */
+    background: var(--accent);
+    border-radius: 4px 4px 2px 2px;
+    box-shadow:
+        0 2px 8px rgba(var(--accent-rgb), 0.4),
+        0 0 12px rgba(var(--accent-rgb), 0.2);
+    transition: box-shadow 0.15s ease, transform 0.1s ease;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.tl-playhead-head:hover {
+    box-shadow:
+        0 2px 12px rgba(var(--accent-rgb), 0.6),
+        0 0 20px rgba(var(--accent-rgb), 0.3);
+    transform: scaleX(1.1);
+}
+
+.tl-playhead-head:active {
+    transform: scaleX(1.15);
+}
+
+/* Timecode tooltip during scrub */
+.tl-playhead-timecode {
+    position: absolute;
+    bottom: calc(100% + 4px);
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0, 0, 0, 0.85);
+    color: var(--accent);
+    font-size: 10px;
+    font-variant-numeric: tabular-nums;
+    padding: 2px 6px;
+    border-radius: 3px;
+    white-space: nowrap;
+    pointer-events: none;
+    letter-spacing: 0.5px;
+    border: 1px solid rgba(var(--accent-rgb), 0.3);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+    opacity: 0;
+    transition: opacity 0.15s ease;
+}
+
+.tl-playhead-head:hover .tl-playhead-timecode,
+.tl-playhead-head:active .tl-playhead-timecode {
+    opacity: 1;
+}
+
+/* Vertical stem line */
+.tl-playhead-stem {
+    width: 1px;
+    margin: 0 auto;
+    background: var(--accent);
+    opacity: 0.8;
+    pointer-events: none;
+    box-shadow: 0 0 3px rgba(var(--accent-rgb), 0.3);
+}
+
+/* ── Selection Info Bar ───────────────────────────────────────────── */
+
+.tl-selection-bar {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    padding: 5px 14px;
+    background: rgba(var(--accent-rgb), 0.06);
+    border-top: 1px solid rgba(var(--accent-rgb), 0.12);
+    flex-shrink: 0;
+}
+
+.tl-selection-count {
+    font-size: 13px;
+    color: rgba(255, 255, 255, 0.6);
+    letter-spacing: 0.5px;
+}
+
+.tl-selection-hint {
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.35);
+}
+
+.tl-selection-hint kbd {
+    display: inline-block;
+    padding: 1px 5px;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 3px;
+    background: rgba(255, 255, 255, 0.06);
+    font-family: inherit;
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.5);
+    margin: 0 2px;
+}
+
+/* ── Timeline Container (parent in MainLayout) ────────────────────── */
+
+.timeline-container {
+    background: linear-gradient(180deg, #0d0d0d 0%, #111111 100%);
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.timeline-v-divider {
+    transition: background 0.15s ease;
+}
+
+.timeline-v-divider:hover {
+    background: rgba(var(--accent-rgb), 0.15) !important;
+}

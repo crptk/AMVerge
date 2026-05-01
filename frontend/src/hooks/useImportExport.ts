@@ -1,4 +1,4 @@
-import { useState, useRef, startTransition } from "react";
+import { useState, useRef, startTransition, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { ClipItem, EpisodeEntry } from "../types/domain"
@@ -35,31 +35,8 @@ export default function useImportExport(props: ImportExportProps) {
   const [batchTotal, setBatchTotal] = useState(0);
   const [batchDone, setBatchDone] = useState(0);
   const [batchCurrentFile, setBatchCurrentFile] = useState("");
-  const onImportClick = async () => {
-    const files = await open({
-      multiple: true,
-      filters: [
-        {
-          name: "Video",
-          extensions: ["mp4", "mkv", "mov", "avi"]
-        }
-      ]
-    });
 
-    if (!files) return;
-
-    // open() with multiple:true returns string[] | null
-    const fileList = Array.isArray(files) ? files : [files];
-    if (fileList.length === 0) return;
-
-    if (fileList.length === 1) {
-      handleImport(fileList[0]);
-    } else {
-      handleBatchImport(fileList);
-    }
-  }
-
-  const handleImport = async (file: string | null) => {
+  const handleImport = useCallback(async (file: string | null) => {
     // This opens the file dialog to select a video file
     if (!file) return;
 
@@ -120,9 +97,33 @@ export default function useImportExport(props: ImportExportProps) {
     } finally {
       if (importGenRef.current === gen) setLoading(false);
     }
-  };
+  }, [props.setProgress, props.setProgressMsg, props.setSelectedClips, props.setFocusedClip, props.setImportedVideoPath, props.setVideoIsHEVC, props.generalSettings, props.episodesPath, props.selectedFolderId, props.setEpisodes, props.setSelectedEpisodeId, props.setOpenedEpisodeId, props.setClips, props.onRPCUpdate]);
 
-  const handleBatchImport = async (files: string[]) => {
+  const onImportClick = useCallback(async () => {
+    const files = await open({
+      multiple: true,
+      filters: [
+        {
+          name: "Video",
+          extensions: ["mp4", "mkv", "mov", "avi"]
+        }
+      ]
+    });
+
+    if (!files) return;
+
+    // open() with multiple:true returns string[] | null
+    const fileList = Array.isArray(files) ? files : [files];
+    if (fileList.length === 0) return;
+
+    if (fileList.length === 1) {
+      handleImport(fileList[0]);
+    } else {
+      handleBatchImport(fileList);
+    }
+  }, [handleImport]);
+
+  const handleBatchImport = useCallback(async (files: string[]) => {
     const gen = ++importGenRef.current;
     props.abortedRef.current = false;
 
@@ -212,9 +213,9 @@ export default function useImportExport(props: ImportExportProps) {
         setBatchCurrentFile("");
       }
     }
-  };
+  }, [props.abortedRef, props.setProgress, props.setProgressMsg, props.setSelectedClips, props.setFocusedClip, props.setVideoIsHEVC, props.episodesPath, props.selectedFolderId, props.setEpisodes, props.setSelectedEpisodeId, props.setOpenedEpisodeId, props.setImportedVideoPath, props.setClips]);
 
-  const handleExport = async (selectedClips: Set<string>, mergeEnabled: boolean, mergeFileName?: string) => {
+  const handleExport = useCallback(async (selectedClips: Set<string>, mergeEnabled: boolean, mergeFileName?: string) => {
     if (selectedClips.size === 0) return;
 
     const selected = props.clips.filter((c: ClipItem) => selectedClips.has(c.id));
@@ -236,7 +237,6 @@ export default function useImportExport(props: ImportExportProps) {
       const clipArray = selected.map((c: ClipItem) => c.src);
       const format = props.exportFormat || "mp4";
 
-      const rpcButtons = [];
       props.onRPCUpdate?.({
         type: "update",
         details: `Exporting ${selected.length} clips`,
@@ -297,14 +297,14 @@ export default function useImportExport(props: ImportExportProps) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [props.clips, props.exportDir, props.exportFormat, props.generalSettings, props.onRPCUpdate, props.setExportDir]);
 
-  const handlePickExportDir = async () => {
+  const handlePickExportDir = useCallback(async () => {
     const dir = await open({ directory: true, multiple: false });
     if (dir) props.setExportDir(dir as string);
-  };
+  }, [props.setExportDir]);
 
-  const handleDownloadSingleClip = async (clip: ClipItem) => {
+  const handleDownloadSingleClip = useCallback(async (clip: ClipItem) => {
     try {
       const format = props.exportFormat || "mp4";
       const fileName = clip.originalName || fileNameFromPath(clip.src);
@@ -329,7 +329,7 @@ export default function useImportExport(props: ImportExportProps) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [props.exportFormat]);
 
   return {
     loading,

@@ -47,13 +47,7 @@ export default function ClipsContainer(props: ClipContainerProps) {
       const isCtrlOrCmd = e.ctrlKey || e.metaKey;
       const isShift = e.shiftKey;
 
-      // For debugging: track last clicked clip in dev mode
-      if (import.meta.env.DEV) {
-        (window as any).__amverge_lastClipClickT = performance.now();
-        (window as any).__amverge_lastClipClickSrc = clipSrc;
-      }
-
-      // Shift-click: select a range of clips
+      // Shift-click: select a range of clips for the timeline
       if (isShift) {
         const anchorIndex = props.focusedClip
           ? props.clips.findIndex((c) => c.src === props.focusedClip)
@@ -68,7 +62,7 @@ export default function ClipsContainer(props: ClipContainerProps) {
         return;
       }
 
-      // Ctrl/Cmd-click: toggle selection for this clip
+      // Ctrl/Cmd-click: toggle timeline state for this clip
       if (isCtrlOrCmd) {
         startTransition(() => {
           props.setSelectedClips((prev) => {
@@ -80,10 +74,25 @@ export default function ClipsContainer(props: ClipContainerProps) {
         return;
       }
 
-      // Single click: focus this clip (no selection change)
+      // Single click: focus this clip for preview (NO timeline change)
       props.setFocusedClip(clipSrc);
     },
     [props.clips, props.focusedClip, props.setFocusedClip, props.setSelectedClips]
+  );
+
+  // Handles explicit timeline toggle (from the Plus/Check button)
+  const handleToggleTimeline = useCallback(
+    (clipId: string, e: React.MouseEvent) => {
+      e.stopPropagation(); // Don't trigger focus click
+      startTransition(() => {
+        props.setTimelineClipIds((prev) => {
+          const next = new Set(prev);
+          next.has(clipId) ? next.delete(clipId) : next.add(clipId);
+          return next;
+        });
+      });
+    },
+    [props.setTimelineClipIds]
   );
 
   // Handles double-click on a clip tile (focus + toggle selection)
@@ -99,6 +108,20 @@ export default function ClipsContainer(props: ClipContainerProps) {
       });
     },
     [props.setFocusedClip, props.setSelectedClips]
+  );
+
+  // Handles explicit grid selection toggle
+  const handleToggleSelection = useCallback(
+    (clipId: string, selected: boolean) => {
+      startTransition(() => {
+        props.setSelectedClips((prev) => {
+          const next = new Set(prev);
+          selected ? next.add(clipId) : next.delete(clipId);
+          return next;
+        });
+      });
+    },
+    [props.setSelectedClips]
   );
 
   // Ref for the main container (for scroll-to-top on import)
@@ -131,7 +154,8 @@ export default function ClipsContainer(props: ClipContainerProps) {
                   clip={clip}
                   index={index}
                   importToken={props.importToken}
-                  isExportSelected={(props.selectedClips ?? new Set()).has(clip.id)}
+                  isExportSelected={(props.timelineClipIds ?? new Set()).has(clip.id)}
+                  isSelected={(props.selectedClips ?? new Set()).has(clip.id)}
                   isFocused={props.focusedClip === clip.src}
                   gridPreview={props.gridPreview}
                   requestProxySequential={requestProxySequential}
@@ -140,6 +164,8 @@ export default function ClipsContainer(props: ClipContainerProps) {
                   reportStaggerDemand={reportStaggerDemand}
                   onClipClick={handleClipClick}
                   onClipDoubleClick={handleClipDoubleClick}
+                  onToggleTimeline={handleToggleTimeline}
+                  onToggleSelection={handleToggleSelection}
                   videoIsHEVC={props.videoIsHEVC}
                   userHasHEVC={props.userHasHEVC}
                   generalSettings={props.generalSettings}
