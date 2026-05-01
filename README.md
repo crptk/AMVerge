@@ -200,3 +200,8 @@ pyinstaller backend_script.spec
 - Ability to combine clips from multiple episodes into one compilation
 - Setting to move the episode list location inside Menu > Settings
 
+## License
+
+AMVerge is licensed under the GNU GPL v3.0.
+
+Any derivative work must also be open-source under the same license.
