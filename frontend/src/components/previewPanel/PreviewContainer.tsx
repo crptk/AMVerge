@@ -42,7 +42,7 @@ type PreviewContainerProps = {
 
 export default function PreviewContainer (props: PreviewContainerProps) {
   const [mergeEnabled, setMergeEnabled] = React.useState(true);
-  const [editorTarget, setEditorTarget] = React.useState<EditorTarget>("premier_pro");
+  const [editorTarget] = React.useState<EditorTarget>("premier_pro");
   const [showMergeNameModal, setShowMergeNameModal] = React.useState(false);
   const mergeNameInputRef = React.useRef<HTMLInputElement | null>(null);
 
@@ -125,28 +125,6 @@ export default function PreviewContainer (props: PreviewContainerProps) {
               </label>
               <p>Merge clips</p>
             </div>
-          </div>
-        </div>
-
-        <div className="export-target-section">
-          <label className="export-label">
-            <FaLayerGroup className="label-icon" /> Editing Software
-          </label>
-          <div className="editor-target-grid">
-            {EDITOR_TARGETS.map(({ value, label, className, icon }) => (
-              <button
-                key={value}
-                type="button"
-                className={`editor-target-chip ${className} ${editorTarget === value ? "active" : ""}`}
-                onClick={() => setEditorTarget(value)}
-                title={`Send to ${label}`}
-                aria-label={`Send to ${label}`}
-              >
-                <span className={`editor-brand-icon ${className}`}>
-                  <img src={icon} alt={label} className="editor-target-icon" />
-                </span>
-              </button>
-            ))}
           </div>
         </div>
 
