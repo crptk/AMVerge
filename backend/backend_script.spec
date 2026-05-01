@@ -1,13 +1,10 @@
 # -*- mode: python ; coding: utf-8 -*-
-import sys
+
 
 a = Analysis(
     ['app.py'],
     pathex=[],
-    binaries=[
-        (('bin/ffmpeg.exe' if sys.platform.startswith('win') else 'bin/ffmpeg'), '.'),
-        (('bin/ffprobe.exe' if sys.platform.startswith('win') else 'bin/ffprobe'), '.'),
-    ],
+    binaries=[('bin/ffmpeg.exe', '.'), ('bin/ffprobe.exe', '.')],
     datas=[],
     hiddenimports=[],
     hookspath=[],
@@ -29,8 +26,7 @@ exe = EXE(
     bootloader_ignore_signals=False,
     strip=False,
     upx=True,
-    # Keep console hidden on Windows, visible on macOS/Linux to avoid .app sidecar issues.
-    console=not sys.platform.startswith('win'),
+    console=False,
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,

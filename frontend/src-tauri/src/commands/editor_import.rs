@@ -315,6 +315,39 @@ fn emit_import_progress(app: Option<&AppHandle>, percent: u8, message: &str) {
 }
 
 #[cfg(target_os = "windows")]
+fn is_windows_process_running(image_name: &str) -> bool {
+    let expected = image_name.trim().to_ascii_lowercase();
+    if expected.is_empty() {
+        return false;
+    }
+
+    let mut cmd = Command::new("tasklist");
+    apply_no_window(&mut cmd);
+
+    let output = cmd.arg("/FO").arg("CSV").arg("/NH").output();
+    let Ok(out) = output else {
+        return false;
+    };
+    if !out.status.success() {
+        return false;
+    }
+
+    String::from_utf8_lossy(&out.stdout).lines().any(|line| {
+        let trimmed = line.trim();
+        if !trimmed.starts_with('"') {
+            return false;
+        }
+
+        let Some(end_quote) = trimmed[1..].find('"') else {
+            return false;
+        };
+
+        let image = trimmed[1..1 + end_quote].trim().to_ascii_lowercase();
+        image == expected
+    })
+}
+
+#[cfg(target_os = "windows")]
 fn summarize_windows_import_error(raw: &str) -> String {
     if raw.contains("AMVERGE_CANCELED") {
         return "AMVERGE_CANCELED: Auto-import canceled by user.".to_string();

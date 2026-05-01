@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="CapCut icon">
+  <rect x="4" y="4" width="56" height="56" rx="13" fill="#111111" />
+  <path
+    d="M16 20h21l10-6v10l-10 6H16zM16 44h21l10 6V40l-10-6H16zM16 22l32 20M16 42l32-20"
+    fill="none"
+    stroke="#ffffff"
+    stroke-width="4"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+</svg>

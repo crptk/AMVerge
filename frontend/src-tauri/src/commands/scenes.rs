@@ -62,15 +62,23 @@ pub async fn detect_scenes(
 
         let script_path = root.join("backend").join("app.py");
         let python_path = if cfg!(windows) {
-            root.join("backend").join("venv").join("Scripts").join("python.exe")
+            root.join("backend")
+                .join("venv")
+                .join("Scripts")
+                .join("python.exe")
         } else {
             root.join("backend").join("venv").join("bin").join("python")
         };
 
-        let python_name = python_path
-            .file_name()
-            .and_then(|x| x.to_str())
-            .unwrap_or(if cfg!(windows) { "python.exe" } else { "python" });
+        let python_name =
+            python_path
+                .file_name()
+                .and_then(|x| x.to_str())
+                .unwrap_or(if cfg!(windows) {
+                    "python.exe"
+                } else {
+                    "python"
+                });
         console_log(
             "SCENE|spawn",
             &format!(
@@ -109,10 +117,15 @@ pub async fn detect_scenes(
             .resolve(sidecar_rel, tauri::path::BaseDirectory::Resource)
             .map_err(|e| e.to_string())?;
 
-        let backend_name = backend
-            .file_name()
-            .and_then(|x| x.to_str())
-            .unwrap_or(if cfg!(windows) { "backend_script.exe" } else { "backend_script" });
+        let backend_name =
+            backend
+                .file_name()
+                .and_then(|x| x.to_str())
+                .unwrap_or(if cfg!(windows) {
+                    "backend_script.exe"
+                } else {
+                    "backend_script"
+                });
         console_log(
             "SCENE|spawn",
             &format!("mode=prod exe={backend_name} args=[{video_name},{output_dir_base}]"),
