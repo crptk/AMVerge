@@ -73,7 +73,7 @@ pub(super) async fn import_into_capcut(
             abort_requested,
             "NLE|capcut",
             "CapCut",
-            24,
+            30,
             !capcut_running,
             None,
             "CapCut was closed before the import could complete.",
