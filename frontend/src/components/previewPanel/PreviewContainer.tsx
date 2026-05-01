@@ -1,10 +1,9 @@
 import VideoPlayer from "./videoPlayer/VideoPlayer.tsx"
 import HowToUse from "./HowToUse.tsx"
 import React from "react";
-import { FaFolderOpen, FaFileExport, FaVideo, FaLayerGroup, FaFolder, FaRocket, FaCodeBranch } from "react-icons/fa";
+import { FaFolderOpen, FaFileExport, FaVideo, FaLayerGroup, FaFolder, FaRocket } from "react-icons/fa";
 import { GeneralSettings } from "../../settings/generalSettings";
 import { type EditorTarget } from "../../hooks/useImportExport";
-import { EDITOR_TARGETS, supportsOriginalCut } from "../../features/export/targets";
 import Dropdown from "../common/Dropdown";
 
 const EXPORT_OPTIONS = [
@@ -42,7 +41,6 @@ type PreviewContainerProps = {
 
 export default function PreviewContainer (props: PreviewContainerProps) {
   const [mergeEnabled, setMergeEnabled] = React.useState(true);
-  const [editorTarget] = React.useState<EditorTarget>("premier_pro");
   const [showMergeNameModal, setShowMergeNameModal] = React.useState(false);
   const mergeNameInputRef = React.useRef<HTMLInputElement | null>(null);
 
@@ -59,16 +57,15 @@ export default function PreviewContainer (props: PreviewContainerProps) {
     if (mergeEnabled) {
       setShowMergeNameModal(true);
     } else {
-      props.handleExport(props.selectedClips, false, undefined, editorTarget);
+      props.handleExport(props.selectedClips, false);
     }
   };
-  const isOriginalCutSupported = supportsOriginalCut(editorTarget);
 
   const confirmMergeExport = () => {
     const value = (mergeNameInputRef.current?.value ?? "").trim();
     if (!value) return;
     setShowMergeNameModal(false);
-    props.handleExport(props.selectedClips, true, value, editorTarget);
+    props.handleExport(props.selectedClips, true, value);
   };
   return (
     <main  className="preview-container" >
@@ -156,18 +153,6 @@ export default function PreviewContainer (props: PreviewContainerProps) {
           onClick={onExportClick}
         >
           <FaRocket className="btn-icon" /> Export Now
-        </button>
-        <button
-          className="buttons export-original-button"
-          disabled={!isOriginalCutSupported}
-          onClick={() => props.handleExportOriginal(props.selectedClips, editorTarget)}
-          title={
-            isOriginalCutSupported
-              ? `Send original timeline cut to ${EDITOR_TARGETS.find((t) => t.value === editorTarget)?.label ?? "editor"}`
-              : "Original Cut is not available for CapCut"
-          }
-        >
-          <FaCodeBranch className="btn-icon" /> Export Original Cut
         </button>
       </div>
       
