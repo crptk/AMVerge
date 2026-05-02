@@ -1,4 +1,4 @@
-import { useState, useRef, startTransition } from "react";
+import { useState, useRef, startTransition, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { ClipItem, EpisodeEntry } from "../types/domain";
@@ -52,30 +52,7 @@ export default function useImportExport(props: ImportExportProps) {
     });
   };
 
-  const onImportClick = async () => {
-    const files = await open({
-      multiple: true,
-      filters: [
-        {
-          name: "Video",
-          extensions: ["mp4", "mkv", "mov", "avi"],
-        },
-      ],
-    });
-
-    if (!files) return;
-
-    const fileList = Array.isArray(files) ? files : [files];
-    if (fileList.length === 0) return;
-
-    if (fileList.length === 1) {
-      handleImport(fileList[0]);
-    } else {
-      handleBatchImport(fileList);
-    }
-  };
-
-  const handleImport = async (file: string | null) => {
+  const handleImport = useCallback(async (file: string | null) => {
     if (!file || loading) return;
 
     const gen = ++importGenRef.current;
@@ -170,9 +147,42 @@ export default function useImportExport(props: ImportExportProps) {
         setLoading(false);
       }
     }
-  };
+  }, [setProgress, setProgressMsg, 
+    setSelectedClips, setFocusedClip, 
+    setImportedVideoPath, setVideoIsHEVC, 
+    generalSettings, episodesPath, 
+    selectedFolderId, setEpisodes, 
+    setSelectedEpisodeId, 
+    setOpenedEpisodeId, setClips, 
+    onRPCUpdate]);
 
-  const handleBatchImport = async (files: string[]) => {
+  
+  const onImportClick = useCallback(async () => {
+    const files = await open({
+      multiple: true,
+      filters: [
+        {
+          name: "Video",
+          extensions: ["mp4", "mkv", "mov", "avi"]
+        }
+      ]
+    });
+
+    if (!files) return;
+
+    // open() with multiple:true returns string[] | null
+    const fileList = Array.isArray(files) ? files : [files];
+    if (fileList.length === 0) return;
+
+    if (fileList.length === 1) {
+      handleImport(fileList[0]);
+    } else {
+      handleBatchImport(fileList);
+    }
+  }, [handleImport]);
+
+
+  const handleBatchImport = useCallback(async (files: string[]) => {
     if (loading) return;
     const gen = ++importGenRef.current;
     props.abortedRef.current = false;
@@ -267,9 +277,15 @@ export default function useImportExport(props: ImportExportProps) {
         setBatchCurrentFile("");
       }
     }
-  };
+  }, [abortedRef, setProgress, 
+    setProgressMsg, setSelectedClips, 
+    setFocusedClip, setVideoIsHEVC, 
+    episodesPath, selectedFolderId, 
+    setEpisodes, setSelectedEpisodeId, 
+    setOpenedEpisodeId, setImportedVideoPath, 
+    setClips]);
 
-  const handleExport = async (
+  const handleExport = useCallback(async (
     selectedClips: Set<string>,
     mergeEnabled: boolean,
     mergeFileName?: string
@@ -353,14 +369,13 @@ export default function useImportExport(props: ImportExportProps) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [clips, exportPath, exportFormat, generalSettings, onRPCUpdate, setExportDir]);
 
-  const handlePickExportDir = async () => {
+  const handlePickExportDir = useCallback(async () => {
     const dir = await open({ directory: true, multiple: false });
     if (dir) setExportPath(dir as string);
-  };
-
-  const handleDownloadSingleClip = async (clip: ClipItem) => {
+  }, [setExportPath]);
+  const handleDownloadSingleClip = useCallback(async (clip: ClipItem) => {
     try {
       const format = exportFormat || "mp4";
       const fileName = clip.originalName || fileNameFromPath(clip.src);
@@ -387,7 +402,7 @@ export default function useImportExport(props: ImportExportProps) {
     } finally {
       setLoading(false);
     }
-  };
+  }, exportFormat);
 
   async function handleAbort() {
     props.abortedRef.current = true;
@@ -398,6 +413,7 @@ export default function useImportExport(props: ImportExportProps) {
       console.error("abort_detect_scenes failed:", err);
     }
   }
+  
   return {
     loading,
     importToken,

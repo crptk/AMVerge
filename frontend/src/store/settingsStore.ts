@@ -17,7 +17,7 @@ export type GeneralSettings = {
     rpcShowButtons: boolean;
     rpcShowMiniIcons: boolean;
 };
-
+// ADD "enableEditor: true as default, BOOLEAN SWITCH ON/OFF IN GENERAL SETTINGS"
 
 export type GeneralSettingsStore = GeneralSettings & {
   setEpisodesPath: (path: string | null) => void;

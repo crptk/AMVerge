@@ -20,6 +20,8 @@ export type SidebarProps = {
   onMoveFolder: (folderId: string, parentFolderId: string | null, beforeFolderId?: string) => void;
   onSortEpisodePanel: (direction: "asc" | "desc") => void;
   onClearEpisodePanelCache: () => void | Promise<void>;
+  activeMode: "selector" | "editor";
+  
 };
 
 export type EpisodePanelProps = Omit<SidebarProps, "activePage" | "setActivePage">;

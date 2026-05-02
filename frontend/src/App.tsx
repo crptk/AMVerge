@@ -59,6 +59,16 @@ function App() {
   const setExportPath = useGeneralSettingsStore(s => s.setExportPath);
   const themeSettings = useThemeSettingsStore();
 
+  // PUT THIS INTO GENERALSETTINGS STORE UNDER THEIR SAME LOCAL STORAGE
+  const [timelineEnabled, setTimelineEnabled] = useState(() => {
+    try {
+      const raw = localStorage.getItem("amverge_timeline_enabled_v1");
+      return raw === null ? true : raw === "true";
+    } catch {
+      return true;
+    }
+  });
+
   useEffect(() => {
     applyThemeSettings(themeSettings);
   }, [themeSettings]);

@@ -1,6 +1,7 @@
 // Root sidebar container. Composes SidebarNav and EpisodePanel, then passes sidebar-related props down
 import SidebarNav from "./SidebarNav";
 import EpisodePanel from "./episodePanel/EpisodePanel";
+import ClipsContainer from "../clipsGrid/ClipsContainer";
 import type { SidebarProps } from "./types";
 
 export default function Sidebar({

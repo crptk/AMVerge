@@ -61,12 +61,6 @@ export default function ClipsContainer(props: ClipContainerProps) {
       const isCtrlOrCmd = e.ctrlKey || e.metaKey;
       const isShift = e.shiftKey;
 
-      // For debugging: track last clicked clip in dev mode
-      if (import.meta.env.DEV) {
-        (window as any).__amverge_lastClipClickT = performance.now();
-        (window as any).__amverge_lastClipClickSrc = clipSrc;
-      }
-
       // Shift-click: select a range of clips
       if (isShift) {
         const anchorIndex = focusedClip
@@ -100,6 +94,20 @@ export default function ClipsContainer(props: ClipContainerProps) {
     [clips, focusedClip, setFocusedClip, setSelectedClips]
   );
 
+  const handleToggleTimeline = useCallback(
+    (clipId: string, e: React.MouseEvent) => {
+      e.stopPropagation(); // Don't trigger focus click
+      startTransition(() => {
+        props.setTimelineClipIds((prev) => {
+          const next = new Set(prev);
+          next.has(clipId) ? next.delete(clipId) : next.add(clipId);
+          return next;
+        });
+      });
+    },
+    [props.setTimelineClipIds]
+  );
+
   // Handles double-click on a clip tile (focus + toggle selection)
   const handleClipDoubleClick = useCallback(
     (clipId: string, clipSrc: string, _index: number, _e: React.MouseEvent<HTMLDivElement>) => {
@@ -113,6 +121,19 @@ export default function ClipsContainer(props: ClipContainerProps) {
       });
     },
     [setFocusedClip, setSelectedClips]
+  );
+
+  const handleToggleSelection = useCallback(
+    (clipId: string, selected: boolean) => {
+      startTransition(() => {
+        setSelectedClips((prev) => {
+          const next = new Set(prev);
+          selected ? next.add(clipId) : next.delete(clipId);
+          return next;
+        });
+      });
+    },
+    [setSelectedClips]
   );
 
   // Ref for the main container (for scroll-to-top on import)
@@ -145,6 +166,7 @@ export default function ClipsContainer(props: ClipContainerProps) {
                   clip={clip}
                   index={index}
                   isExportSelected={(selectedClips ?? new Set()).has(clip.id)}
+                  isSelected={(selectedClips ?? new Set()).has(clip.id)}
                   isFocused={focusedClip === clip.src}
                   requestProxySequential={requestProxySequential}
                   reportProxyDemand={reportProxyDemand}
@@ -152,6 +174,8 @@ export default function ClipsContainer(props: ClipContainerProps) {
                   reportStaggerDemand={reportStaggerDemand}
                   onClipClick={handleClipClick}
                   onClipDoubleClick={handleClipDoubleClick}
+                  onToggleTimeline={handleToggleTimeline}
+                  onToggleSelection={handleToggleSelection}
                   userHasHEVC={props.userHasHEVC}
                   onDownloadClip={props.onDownloadClip}
                 />

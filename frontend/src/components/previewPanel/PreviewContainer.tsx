@@ -14,7 +14,15 @@ const EXPORT_OPTIONS = [
   { value: "xml", label: "XML" },
 ];
 type PreviewContainerProps = {
-  focusedClipThumbnail: string | null;
+  programClip: string | null;
+  programClipThumbnail: string | null;
+  programTime?: number;
+
+  // Source (Grid)
+  sourceClip: string | null;
+  sourceClipThumbnail: string | null;
+  selectedClips: Set<string>;
+  timelineClipIds: Set<string>;
   userHasHEVC: React.RefObject<boolean>;
   handleExport: (
     selectedClips: Set<string>,
@@ -24,12 +32,15 @@ type PreviewContainerProps = {
   onPickExportDir: () => void;
   onExportDirChange: (dir: string) => void;
   defaultMergedName: string;
+  onTimeUpdate?: (time: number) => void;
+  activeMode?: "selector" | "editor";
 };
 
 export default function PreviewContainer (props: PreviewContainerProps) {
   const [mergeEnabled, setMergeEnabled] = React.useState(true);
   const [showMergeNameModal, setShowMergeNameModal] = React.useState(false);
   const mergeNameInputRef = React.useRef<HTMLInputElement | null>(null);
+  const [activeView, setActiveView] = React.useState<"source" | "program">("source");
   const exportFormat = useGeneralSettingsStore(s => s.exportFormat);
 
   const selectedClips = useAppStateStore(s => s.selectedClips);
@@ -38,6 +49,27 @@ export default function PreviewContainer (props: PreviewContainerProps) {
   const setExportFormat = useGeneralSettingsStore(s => s.setExportFormat);
   const exportPath = useGeneralSettingsStore(s => s.exportPath);
 
+  const hasProgram = !!props.programClip;
+  const hasSource = !!props.sourceClip;
+
+  // Auto-switch to program when timeline is scrubbed/active (Only on initial load/presence)
+  React.useEffect(() => {
+    if (props.activeMode === "editor") {
+      setActiveView("program");
+    } else if (props.activeMode === "selector" && hasSource) {
+      setActiveView("source");
+    }
+  }, [props.activeMode, hasSource, hasProgram]);
+
+  // Auto-switch to SOURCE when a new clip is focused in the grid
+  const lastSourceRef = React.useRef(props.sourceClip);
+  React.useEffect(() => {
+    if (props.sourceClip && props.sourceClip !== lastSourceRef.current) {
+      setActiveView("source");
+    }
+    lastSourceRef.current = props.sourceClip;
+  }, [props.sourceClip]);
+  
   React.useEffect(() => {
     if (showMergeNameModal) {
       requestAnimationFrame(() => {
@@ -48,10 +80,11 @@ export default function PreviewContainer (props: PreviewContainerProps) {
   }, [showMergeNameModal]);
 
   const onExportClick = () => {
+    const targetClips = activeView === "program" ? props.timelineClipIds : props.selectedClips;
     if (mergeEnabled) {
       setShowMergeNameModal(true);
     } else {
-      props.handleExport(selectedClips, false);
+      props.handleExport(targetClips, false);
     }
   };
 

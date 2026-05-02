@@ -12,6 +12,7 @@ import { DownloadButton } from "./DownloadButton.tsx";
 import { useGeneralSettingsStore, useThemeSettingsStore } from "../../store/settingsStore.ts";
 import { useUIStateStore } from "../../store/UIStore.ts";
 import { useAppStateStore } from "../../store/appStore.ts";
+import { FaCheck, FaPlus } from "react-icons/fa";
 
 const DOWNLOAD_TONE_SAMPLE_SIZE = 24;
 const DOWNLOAD_TONE_SOURCE_SIZE = 34;
@@ -22,11 +23,14 @@ export const LazyClip = memo(function LazyClip({
   clip,
   index,
   isExportSelected,
+  isSelected,
   isFocused,
   requestProxySequential,
   reportProxyDemand,
   onClipClick,
   onClipDoubleClick,
+  onToggleTimeline,
+  onToggleSelection,
   registerVideoRef,
   reportStaggerDemand,
   userHasHEVC,
@@ -55,6 +59,10 @@ export const LazyClip = memo(function LazyClip({
   const [effectiveSrc, setEffectiveSrc] = useState(clip.src);
   const [downloadTone, setDownloadTone] = useState<"light" | "dark">("light");
 
+  const originalPath = clip.src;
+    
+    // Is this clip currently being merged or split on the backend?
+  const isProcessing = clip.originalName === "Merging..." || clip.originalName === "Splitting...";
   const videoIsHEVC = useAppStateStore(s => s.videoIsHEVC);
   const gridPreview = useUIStateStore(s => s.gridPreview);
   
@@ -82,21 +90,21 @@ export const LazyClip = memo(function LazyClip({
   // this allows the parent to re-prioritize work when the user scrolls.
   useEffect(() => {
     if (!gridPreview) {
-      reportProxyDemand(clip.src, null);
+      reportProxyDemand(originalPath, null);
       return;
     }
 
     const wantsProxyNow =
       needsHevcProxy &&
       isVisible &&
-      effectiveSrc === clip.src; // still on original => proxy not yet applied
+      effectiveSrc === originalPath; // still on original => proxy not yet applied
 
     if (wantsProxyNow) {
-      reportProxyDemand(clip.src, { order: index, priority: isHovered });
+      reportProxyDemand(originalPath, { order: index, priority: isHovered });
     } else {
-      reportProxyDemand(clip.src, null);
+      reportProxyDemand(originalPath, null);
     }
-  }, [gridPreview, needsHevcProxy, isVisible, effectiveSrc, clip.src, index, isHovered, reportProxyDemand]);
+  }, [gridPreview, needsHevcProxy, isVisible, effectiveSrc, originalPath, index, isHovered, reportProxyDemand]);
 
 
   // reset state when clip or import changes
@@ -129,42 +137,39 @@ export const LazyClip = memo(function LazyClip({
     if (!isVisible) return;
     if (!showVideo) return;
 
-    if (effectiveSrc !== clip.src) return; // already proxy
-    if (proxyInFlightRef.current) return;
-
-    proxyInFlightRef.current = true;
-    setForceThumbnail(true);
-    setIsVideoReady(false);
-
-    const clipPath = clip.src;
-
+    const clipPath = originalPath;
+    if (!clipPath || clipPath === "") return;
+    
     const run = async () => {
       try {
+        if (proxyInFlightRef.current) return;
+        if (effectiveSrc !== originalPath) return;
+
+        proxyInFlightRef.current = true
+        setForceThumbnail(true);
+
         const proxyPath = gridPreview
           ? await requestProxySequential(clipPath, /* priority */ isHovered)
-          : await invoke<string>("ensure_preview_proxy", { clipPath });
+          : await invoke<string>("ensure_preview_proxy", { originalPath: clipPath });
 
         // if this tile has since been rebound to a different clip, ignore the result.
         if (clip.src !== clipPath) return;
-
-        if (!proxyPath) {
+        if (proxyPath) {
+          setEffectiveSrc(proxyPath);
+          setForceThumbnail(false);
           // if we can't generate a proxy, don't mount the (unsupported) HEVC video.
+          setTimeout(() => {
+            const vid = videoRef.current;
+            if (!vid) return;
+            vid.load();
+            vid.play().catch(() => {});
+          }, 0);
+        } else {
           setForceThumbnail(true);
-          return;
         }
 
-        setEffectiveSrc(proxyPath);
-        setForceThumbnail(false);
-
-        setTimeout(() => {
-          const vid = videoRef.current;
-          if (!vid) return;
-          vid.load();
-          vid.play().catch(() => {});
-        }, 0);
       } catch (err) {
         console.warn("ensure_preview_proxy failed", err);
-        // stay on the thumbnail; the original HEVC stream is not playable.
         setForceThumbnail(true);
       } finally {
         proxyInFlightRef.current = false;
@@ -172,7 +177,7 @@ export const LazyClip = memo(function LazyClip({
     };
 
     void run();
-  }, [needsHevcProxy, isVisible, isHovered, gridPreview, effectiveSrc, clip.src, requestProxySequential]);
+  }, [needsHevcProxy, isVisible, isHovered, gridPreview, originalPath, requestProxySequential]);
 
   // Stagger queue: report demand when grid-preview is on and tile is visible.
   // same pattern as the proxy queue - register/unregister, central loop picks
@@ -284,11 +289,8 @@ export const LazyClip = memo(function LazyClip({
 
       v.autoplay = true;
       v.loop = true;
-      try {
-        if (v.readyState === 0) v.load();
-      } catch {
-        // ignore
-      }
+
+      v.load();
       v.play().catch(() => {});
     } else {
       v.pause();
@@ -388,7 +390,8 @@ export const LazyClip = memo(function LazyClip({
   return (
     <div
       ref={wrapperRef}
-      className={`clip-wrapper ${isFocused ? "focused" : ""}`}
+      className={`clip-wrapper ${isFocused ? "focused" : ""}
+      ${isSelected ? "selected" : ""}`}
       onClick={handleClick}
       onDoubleClick={handleDoubleClick}
       // hover toggles isHovered, which controls whether the <video> mounts and whether playback starts.
@@ -405,14 +408,23 @@ export const LazyClip = memo(function LazyClip({
         setIsVideoReady(false);
       }}
     >
-      <span className={`clip-export-dot ${isExportSelected ? "ok" : ""}`} />
+      {generalSettings.enableEditor && (
+        <button 
+          className={`clip-timeline-toggle ${isExportSelected ? "active" : ""}`}
+          onClick={(e) => onToggleTimeline(clip.id, e)}
+          title={isExportSelected ? "Remove from timeline" : "Add to timeline"}
+        >
+          {isExportSelected ? <FaCheck /> : <FaPlus />}
+        </button>
+      )}
+
       {isVisible ? (
         <>
           {/* Thumbnail — always rendered when visible, hidden on hover */}
           <img
             ref={thumbnailRef}
             className="clip"
-            src={`${convertFileSrc(clip.thumbnail)}?v=${importToken}`}
+            src={`${convertFileSrc(effectiveSrc)}?v=${importToken}#t=${clip.start || 0}${clip.end ? "," + clip.end : ""}`}
             style={{ opacity: shouldShowThumbnail ? 1 : 0 }}
             draggable={false}
             onLoad={(e) => {
@@ -459,7 +471,7 @@ export const LazyClip = memo(function LazyClip({
                 if (hasReportedErrorRef.current) return;
                 hasReportedErrorRef.current = true;
 
-                if (effectiveSrc !== clip.src) {
+                if (effectiveSrc !== originalPath) {
                   setForceThumbnail(true);
                   return;
                 }
@@ -472,21 +484,21 @@ export const LazyClip = memo(function LazyClip({
 
                 invoke("hover_preview_error", {
                   clipId: clip.id,
-                  clipPath: clip.src,
+                  clipPath: originalPath,
                   errorCode,
                 }).catch(() => {});
 
                 if (proxyInFlightRef.current) return;
                 proxyInFlightRef.current = true;
 
-                const clipPath = clip.src;
+                const clipPath = originalPath;
                 (async () => {
                   try {
                     const proxyPath = gridPreview
                       ? await requestProxySequential(clipPath, true)
                       : await invoke<string>("ensure_preview_proxy", { clipPath });
 
-                    if (clip.src !== clipPath) return;
+                    if (originalPath !== clipPath) return;
                     if (!proxyPath) {
                       setForceThumbnail(true);
                       return;
@@ -514,6 +526,16 @@ export const LazyClip = memo(function LazyClip({
                 })();
               }}
             />
+          )}
+          {isProcessing && (
+          <div className="clip-status-overlay">
+            <span className="status-text">{clip.originalName}</span>
+          </div>
+          )}
+          {!isProcessing && forceThumbnail && needsHevcProxy && (
+            <div className="clip-status-overlay">
+              <span className="status-text">Processing...</span>
+            </div>
           )}
           {showDownloadButton && (
             <DownloadButton tone={downloadTone} onClick={() => onDownloadClip(clip)} />

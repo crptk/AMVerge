@@ -1,4 +1,4 @@
-import type { RefObject } from "react";
+import React, { useEffect, type RefObject } from "react";
 import { FaExpand, FaPause, FaPlay, FaVolumeMute, FaVolumeUp } from "react-icons/fa";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { useVideoPlayer } from "./useVideoPlayer";
@@ -9,6 +9,8 @@ type VideoPlayerProps = {
     videoIsHEVC: boolean | null;
     userHasHEVC: RefObject<boolean>;
     posterPath: string | null;
+    externalTime?: number;
+    onTimeUpdate?: (time: number) => void;
 };
 
 export default function VideoPlayer({
@@ -16,7 +18,14 @@ export default function VideoPlayer({
     videoIsHEVC,
     userHasHEVC,
     posterPath,
+    externalTime,
+    onTimeUpdate,
 }: VideoPlayerProps) {
+    useEffect(() => {
+        console.log("[VideoPlayer] Mounted with clip:", selectedClip);
+        return () => console.log("[VideoPlayer] Unmounted clip:", selectedClip);
+    }, [selectedClip]);
+
     const {
         videoRef,
         progressRef,
@@ -44,6 +53,8 @@ export default function VideoPlayer({
         selectedClip,
         videoIsHEVC,
         userHasHEVC,
+        externalTime,
+        onTimeUpdate,
     });
 
     const importToken = useAppStateStore(s => s.importToken);
@@ -54,7 +65,7 @@ export default function VideoPlayer({
                 <video
                     ref={videoRef}
                     src={effectiveClip ? `${convertFileSrc(effectiveClip)}?v=${importToken}` : undefined}
-                    poster={posterPath ? `${convertFileSrc(posterPath)}?v=${importToken}` : undefined}
+                    poster={(externalTime === undefined) && posterPath ? `${convertFileSrc(posterPath)}?v=${importToken}` : undefined}
                     preload="metadata"
                     muted
                     loop
@@ -63,7 +74,7 @@ export default function VideoPlayer({
                         e.preventDefault();
                         e.stopPropagation();
                     }}
-                    style={{ opacity: isVideoReady ? 1 : 0 }}
+                    style={{ width: '100%', height: '100%', objectFit: 'contain' }}
                     onError={(e) => {
                         const video = e.currentTarget;
                         triggerProxyFallback(`onError_${video.error?.code ?? "unknown"}`);
@@ -76,7 +87,7 @@ export default function VideoPlayer({
                     onClick={togglePlay}
                 />
 
-                <div id="video-controls" className="controls" data-state="hidden">
+                <div className="controls" data-state="hidden">
                     <button type="button" onClick={togglePlay}>
                         {isPlaying ? <FaPause /> : <FaPlay />}
                     </button>
