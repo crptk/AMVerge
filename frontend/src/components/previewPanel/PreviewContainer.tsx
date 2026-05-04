@@ -1,21 +1,29 @@
 import VideoPlayer from "./videoPlayer/VideoPlayer.tsx"
 import HowToUse from "./HowToUse.tsx"
 import React from "react";
-import { FaFolderOpen, FaFileExport, FaVideo, FaLayerGroup, FaFolder, FaRocket } from "react-icons/fa";
+import {
+  FaFolderOpen,
+  FaFileExport,
+  FaFolder,
+  FaRocket,
+  FaTags,
+  FaVideo,
+  FaRandom,
+  FaFilm,
+  FaLayerGroup,
+  FaMicrochip,
+} from "react-icons/fa";
 import Dropdown from "../common/Dropdown";
 import { useAppStateStore } from "../../stores/appStore.ts";
 import { useAppPersistedStore } from "../../stores/appStore.ts";
 import { useUIStateStore } from "../../stores/UIStore.ts";
 import { useGeneralSettingsStore } from "../../stores/settingsStore.ts";
 import useImportExport from "../../hooks/useImportExport";
-
-const EXPORT_OPTIONS = [
-  { value: "mp4", label: "MP4" },
-  { value: "mkv", label: "MKV" },
-  { value: "mov", label: "MOV" },
-  { value: "avi", label: "AVI" },
-  { value: "xml", label: "XML" },
-];
+import {
+  getActiveExportProfile,
+  getExportProfileSummary,
+  type ExportProfileIcon,
+} from "../../features/export/profiles.ts";
 type PreviewContainerProps = {
   // Program (Timeline)
   programClip: string | null;
@@ -28,8 +36,16 @@ type PreviewContainerProps = {
   onTimeUpdate?: (time: number) => void;
 };
 
+const PROFILE_ICON_COMPONENTS: Record<ExportProfileIcon, typeof FaVideo> = {
+  video: FaVideo,
+  remux: FaRandom,
+  premiere: FaFilm,
+  after_effects: FaLayerGroup,
+  resolve: FaMicrochip,
+  capcut: FaRocket,
+};
+
 export default function PreviewContainer (props: PreviewContainerProps) {
-  const [mergeEnabled, setMergeEnabled] = React.useState(true);
   const [showMergeNameModal, setShowMergeNameModal] = React.useState(false);
   const mergeNameInputRef = React.useRef<HTMLInputElement | null>(null);
 
@@ -45,10 +61,24 @@ export default function PreviewContainer (props: PreviewContainerProps) {
   const setExportDir = useAppPersistedStore(s => s.setExportDir);
   const activeMode = useUIStateStore(s => s.activeMode);
   const generalSettings = useGeneralSettingsStore();
-  const setExportFormat = useGeneralSettingsStore(s => s.setExportFormat);
+  const setActiveExportProfileId = useGeneralSettingsStore(s => s.setActiveExportProfileId);
   const { handleExport, handlePickExportDir } = useImportExport();
 
   const defaultMergedName = (clips[0]?.originalName || "episode") + "_merged";
+  const activeExportProfile = React.useMemo(
+    () => getActiveExportProfile(generalSettings.exportProfiles, generalSettings.activeExportProfileId),
+    [generalSettings.exportProfiles, generalSettings.activeExportProfileId]
+  );
+  const exportProfileOptions = React.useMemo(
+    () =>
+      generalSettings.exportProfiles.map((profile) => ({
+        value: profile.id,
+        label: profile.name.trim() || "Untitled Profile",
+        description: `${getExportProfileSummary(profile)} • ${profile.mergeEnabled ? "MERGE" : "CLIPS"}`,
+        icon: React.createElement(PROFILE_ICON_COMPONENTS[profile.icon]),
+      })),
+    [generalSettings.exportProfiles]
+  );
 
   const hasProgram = !!props.programClip;
   const hasSource = !!props.sourceClip;
@@ -82,7 +112,7 @@ export default function PreviewContainer (props: PreviewContainerProps) {
 
   const onExportClick = () => {
     const targetClips = activeView === "program" ? timelineClipIds : selectedClips;
-    if (mergeEnabled) {
+    if (activeExportProfile.mergeEnabled) {
       setShowMergeNameModal(true);
     } else {
       handleExport(targetClips, false);
@@ -161,34 +191,16 @@ export default function PreviewContainer (props: PreviewContainerProps) {
         </div>
 
         <div className="export-settings-row">
-          <div className="export-setting-group">
+          <div className="export-setting-group export-profile-group">
             <label className="export-label">
-              <FaVideo className="label-icon" /> Format
+              <FaTags className="label-icon" /> Export Profile
             </label>
             <Dropdown
-              className="export-format-select"
-              options={EXPORT_OPTIONS}
-              value={generalSettings.exportFormat}
-              onChange={(val) => setExportFormat(val as any)}
+              className="export-profile-select"
+              options={exportProfileOptions}
+              value={activeExportProfile.id}
+              onChange={setActiveExportProfileId}
             />
-          </div>
-
-          <div className="export-setting-group">
-            <label className="export-label">
-              <FaLayerGroup className="label-icon" /> Options
-            </label>
-            <div className="checkbox-row">
-              <label className="custom-checkbox">
-                <input 
-                  type="checkbox"
-                  className="checkbox"
-                  checked={mergeEnabled}
-                  onChange={(e) => setMergeEnabled(e.target.checked)}
-                />
-                <span className="checkmark"></span>
-              </label>
-              <p>Merge clips</p>
-            </div>
           </div>
         </div>
 

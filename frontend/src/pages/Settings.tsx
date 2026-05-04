@@ -2,10 +2,12 @@ import { useState } from "react";
 import GeneralSection from "../components/settings/GeneralSection";
 import AppearanceSection from "../components/settings/AppearanceSection";
 import DiscordRPCSection from "../components/settings/DiscordRPCSection";
+import ExportSection from "../components/settings/ExportSection";
 
 
 const PAGES = [
   { key: "general", label: "General" },
+  { key: "export", label: "Export" },
   { key: "appearance", label: "Appearance" },
   { key: "discord", label: "Discord RPC" },
 ];
@@ -43,7 +45,7 @@ export default function Settings({
 
       <div className="menu-content">
         <div className="menu-section">
-          <div className="tab-content" style={{ flex: 1 }}>
+          <div className="tab-content settings-tab-content" style={{ flex: 1 }}>
             {activeTab === "general" && (
               <GeneralSection
                 onGeneralSettingsReset={onGeneralSettingsReset}
@@ -55,6 +57,10 @@ export default function Settings({
               <AppearanceSection
                 onThemeReset={onThemeReset}
               />
+            )}
+
+            {activeTab === "export" && (
+              <ExportSection />
             )}
 
             {activeTab === "discord" && (
