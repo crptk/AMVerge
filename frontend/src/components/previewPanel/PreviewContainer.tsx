@@ -3,10 +3,10 @@ import HowToUse from "./HowToUse.tsx"
 import React from "react";
 import { FaFolderOpen, FaFileExport, FaVideo, FaLayerGroup, FaFolder, FaRocket } from "react-icons/fa";
 import Dropdown from "../common/Dropdown";
-import { useAppStateStore } from "../../stores/appStore";
-import { useAppPersistedStore } from "../../stores/appStore";
-import { useUIStateStore } from "../../stores/UIStore";
-import { useGeneralSettingsStore } from "../../stores/settingsStore";
+import { useAppStateStore } from "../../stores/appStore.ts";
+import { useAppPersistedStore } from "../../stores/appStore.ts";
+import { useUIStateStore } from "../../stores/UIStore.ts";
+import { useGeneralSettingsStore } from "../../stores/settingsStore.ts";
 import useImportExport from "../../hooks/useImportExport";
 
 const EXPORT_OPTIONS = [
