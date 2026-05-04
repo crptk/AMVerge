@@ -1,5 +1,6 @@
 pub mod cache;
 pub mod export;
+pub mod filmstrip;
 pub mod preview;
 pub mod scenes;
 pub mod settings;

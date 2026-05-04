@@ -2,8 +2,12 @@ import VideoPlayer from "./videoPlayer/VideoPlayer.tsx"
 import HowToUse from "./HowToUse.tsx"
 import React from "react";
 import { FaFolderOpen, FaFileExport, FaVideo, FaLayerGroup, FaFolder, FaRocket } from "react-icons/fa";
-import { GeneralSettings } from "../../settings/generalSettings";
 import Dropdown from "../common/Dropdown";
+import { useAppStateStore } from "../../stores/appStore";
+import { useAppPersistedStore } from "../../stores/appStore";
+import { useUIStateStore } from "../../stores/UIStore";
+import { useGeneralSettingsStore } from "../../stores/settingsStore";
+import useImportExport from "../../hooks/useImportExport";
 
 const EXPORT_OPTIONS = [
   { value: "mp4", label: "MP4" },
@@ -13,30 +17,59 @@ const EXPORT_OPTIONS = [
   { value: "xml", label: "XML" },
 ];
 type PreviewContainerProps = {
-  focusedClip: string | null;
-  focusedClipThumbnail: string | null;
-  focusedClipMergedSrcs?: string[];
-  selectedClips: Set<string>;
-  videoIsHEVC: boolean | null;
-  userHasHEVC: React.RefObject<boolean>;
-  importToken: string;
-  handleExport: (
-    selectedClips: Set<string>,
-    enableMerged: boolean,
-    mergeFileName?: string
-  ) => Promise<void>;
-  exportDir: string | null;
-  onPickExportDir: () => void;
-  onExportDirChange: (dir: string) => void;
-  defaultMergedName: string;
-  generalSettings: GeneralSettings;
-  setGeneralSettings: React.Dispatch<React.SetStateAction<GeneralSettings>>;
+  // Program (Timeline)
+  programClip: string | null;
+  programClipThumbnail: string | null;
+  programTime?: number;
+
+  // Source (Grid)
+  sourceClip: string | null;
+  sourceClipThumbnail: string | null;
+  onTimeUpdate?: (time: number) => void;
 };
 
 export default function PreviewContainer (props: PreviewContainerProps) {
   const [mergeEnabled, setMergeEnabled] = React.useState(true);
   const [showMergeNameModal, setShowMergeNameModal] = React.useState(false);
   const mergeNameInputRef = React.useRef<HTMLInputElement | null>(null);
+
+  const [activeView, setActiveView] = React.useState<"source" | "program">("source");
+
+  const clips = useAppStateStore(s => s.clips);
+  const selectedClips = useAppStateStore(s => s.selectedClips);
+  const timelineClipIds = useAppStateStore(s => s.timelineClipIds);
+  const videoIsHEVC = useAppStateStore(s => s.videoIsHEVC);
+  const userHasHEVC = useAppStateStore(s => s.userHasHEVC);
+  const importToken = useAppStateStore(s => s.importToken);
+  const exportDir = useAppPersistedStore(s => s.exportDir);
+  const setExportDir = useAppPersistedStore(s => s.setExportDir);
+  const activeMode = useUIStateStore(s => s.activeMode);
+  const generalSettings = useGeneralSettingsStore();
+  const setExportFormat = useGeneralSettingsStore(s => s.setExportFormat);
+  const { handleExport, handlePickExportDir } = useImportExport();
+
+  const defaultMergedName = (clips[0]?.originalName || "episode") + "_merged";
+
+  const hasProgram = !!props.programClip;
+  const hasSource = !!props.sourceClip;
+
+  // Auto-switch to program when timeline is scrubbed/active (Only on initial load/presence)
+  React.useEffect(() => {
+    if (activeMode === "editor") {
+      setActiveView("program");
+    } else if (activeMode === "selector" && hasSource) {
+      setActiveView("source");
+    }
+  }, [activeMode, hasSource, hasProgram]);
+
+  // Auto-switch to SOURCE when a new clip is focused in the grid
+  const lastSourceRef = React.useRef(props.sourceClip);
+  React.useEffect(() => {
+    if (props.sourceClip && props.sourceClip !== lastSourceRef.current) {
+      setActiveView("source");
+    }
+    lastSourceRef.current = props.sourceClip;
+  }, [props.sourceClip]);
 
   React.useEffect(() => {
     if (showMergeNameModal) {
@@ -48,33 +81,77 @@ export default function PreviewContainer (props: PreviewContainerProps) {
   }, [showMergeNameModal]);
 
   const onExportClick = () => {
+    const targetClips = activeView === "program" ? timelineClipIds : selectedClips;
     if (mergeEnabled) {
       setShowMergeNameModal(true);
     } else {
-      props.handleExport(props.selectedClips, false);
+      handleExport(targetClips, false);
     }
   };
 
   const confirmMergeExport = () => {
+    const targetClips = activeView === "program" ? timelineClipIds : selectedClips;
     const value = (mergeNameInputRef.current?.value ?? "").trim();
     if (!value) return;
     setShowMergeNameModal(false);
-    props.handleExport(props.selectedClips, true, value);
+    handleExport(targetClips, true, value);
   };
+
   return (
     <main  className="preview-container" >
-      <div className="preview-window">
-        {props.focusedClip ? (
-          <VideoPlayer
-           selectedClip={props.focusedClip}
-           mergedSrcs={props.focusedClipMergedSrcs}
-           videoIsHEVC={props.videoIsHEVC}
-           userHasHEVC={props.userHasHEVC}
-           posterPath={props.focusedClipThumbnail}
-           importToken={props.importToken}
-          />
-          ) : (
-            <p>No clip selected</p>
+      <div className="preview-view-switcher">
+        <button 
+          className={`switcher-btn ${activeView === "source" ? "active" : ""} ${!hasSource ? "disabled" : ""}`}
+          onClick={() => hasSource && setActiveView("source")}
+        >
+          SOURCE
+        </button>
+        <button 
+          className={`switcher-btn ${activeView === "program" ? "active" : ""} ${!hasProgram ? "disabled" : ""}`}
+          onClick={() => hasProgram && setActiveView("program")}
+        >
+          PROGRAM
+        </button>
+      </div>
+
+      <div className="preview-windows-layout single">
+        {activeView === "source" && hasSource && (
+          <div className="preview-window-wrapper source" key="source-wrapper">
+            <div className="preview-window">
+              <VideoPlayer 
+                key={`source-player-${props.sourceClip}`}
+                selectedClip={props.sourceClip!}
+                videoIsHEVC={videoIsHEVC}
+                userHasHEVC={userHasHEVC}
+                posterPath={props.sourceClipThumbnail}
+                importToken={importToken}
+                onTimeUpdate={props.onTimeUpdate}
+              />
+            </div>
+          </div>
+        )}
+
+        {activeView === "program" && hasProgram && (
+          <div className="preview-window-wrapper program" key="program-wrapper">
+            <div className="preview-window">
+              <VideoPlayer 
+                key={`program-player-${props.programClip}`}
+                selectedClip={props.programClip!}
+                videoIsHEVC={videoIsHEVC}
+                userHasHEVC={userHasHEVC}
+                posterPath={props.programClipThumbnail}
+                importToken={importToken}
+                externalTime={props.programTime}
+                onTimeUpdate={props.onTimeUpdate}
+              />
+            </div>
+          </div>
+        )}
+
+        {((activeView === "source" && !hasSource) || (activeView === "program" && !hasProgram) || (!hasSource && !hasProgram)) && (
+          <div className="preview-window empty" key="empty-preview">
+            <p>{activeView === "program" ? "Timeline is empty" : "No clip selected"}</p>
+          </div>
         )}
       </div>
       <div className="export-panel">
@@ -91,13 +168,8 @@ export default function PreviewContainer (props: PreviewContainerProps) {
             <Dropdown
               className="export-format-select"
               options={EXPORT_OPTIONS}
-              value={props.generalSettings.exportFormat}
-              onChange={(val) =>
-                props.setGeneralSettings((prev) => ({
-                  ...prev,
-                  exportFormat: val as any,
-                }))
-              }
+              value={generalSettings.exportFormat}
+              onChange={(val) => setExportFormat(val as any)}
             />
           </div>
 
@@ -129,12 +201,12 @@ export default function PreviewContainer (props: PreviewContainerProps) {
               type="text"
               className="export-dir-input"
               placeholder="Select destination..."
-              value={props.exportDir || ""}
-              onChange={(e) => props.onExportDirChange(e.target.value)}
+              value={exportDir || ""}
+              onChange={(e) => setExportDir(e.target.value)}
             />
             <button
               className="buttons export-dir-browse"
-              onClick={props.onPickExportDir}
+              onClick={handlePickExportDir}
               title="Browse for output folder"
             >
               <FaFolderOpen />
@@ -163,11 +235,11 @@ export default function PreviewContainer (props: PreviewContainerProps) {
             onMouseDown={(e) => e.stopPropagation()}
           >
             <div className="episode-modal-title">Merged file name</div>
-            <input
+              <input
               ref={mergeNameInputRef}
               className="episode-modal-input"
               placeholder="Enter file name..."
-              defaultValue={props.defaultMergedName}
+              defaultValue={defaultMergedName}
               onKeyDown={(e) => {
                 if (e.key === "Escape") setShowMergeNameModal(false);
                 if (e.key === "Enter") confirmMergeExport();

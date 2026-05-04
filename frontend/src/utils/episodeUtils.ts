@@ -25,7 +25,9 @@ export const detectScenes = async (
       id: crypto.randomUUID(),
       src: s.path,
       thumbnail: s.thumbnail,
-      originalName: s.original_file
+      originalName: s.original_file,
+      start: s.start,
+      end: s.end
     }));
 };
 

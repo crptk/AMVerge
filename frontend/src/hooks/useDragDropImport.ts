@@ -1,18 +1,24 @@
 import { useEffect, useRef } from "react";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
+import { useUIStateStore } from "../stores/UIStore";
 
 type UseDragDropImportProps = {
-  setIsDragging: React.Dispatch<React.SetStateAction<boolean>>;
   handleImport: (file: string) => void | Promise<void>;
   handleBatchImport: (files: string[]) => void | Promise<void>;
 };
 
 export default function useDragDropImport({
-  setIsDragging,
   handleImport,
   handleBatchImport,
 }: UseDragDropImportProps) {
   const lastExternalDropRef = useRef<{ path: string; ts: number } | null>(null);
+  const setIsDragging = useUIStateStore((state) => state.setIsDragging);
+
+  // Use refs for handlers to avoid restarting the effect if they change
+  const handlersRef = useRef({ handleImport, handleBatchImport });
+  useEffect(() => {
+    handlersRef.current = { handleImport, handleBatchImport };
+  }, [handleImport, handleBatchImport]);
 
   useEffect(() => {
     let disposed = false;
@@ -51,9 +57,9 @@ export default function useDragDropImport({
         if (videoFiles.length === 0) return;
 
         if (videoFiles.length === 1) {
-          void handleImport(videoFiles[0]);
+          void handlersRef.current.handleImport(videoFiles[0]);
         } else {
-          void handleBatchImport(videoFiles);
+          void handlersRef.current.handleBatchImport(videoFiles);
         }
 
         return;
@@ -82,5 +88,5 @@ export default function useDragDropImport({
 
       void unlistenPromise.then((stop) => stop());
     };
-  }, [setIsDragging, handleImport, handleBatchImport]);
+  }, [setIsDragging]);
 }

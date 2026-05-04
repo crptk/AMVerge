@@ -24,6 +24,7 @@ pub async fn delete_episode_cache(
     if episode_dir.exists() {
         std::fs::remove_dir_all(&episode_dir).map_err(|e| e.to_string())?;
     }
+
     Ok(())
 }
 

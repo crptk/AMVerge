@@ -1,30 +1,30 @@
-type ImportButtonsProps = {
-  cols: number;
-  gridSize: number;
-  onBigger: () => void;
-  onSmaller: () => void;
-  setGridPreview: (checked: boolean) => void;
-  gridPreview: boolean;
-  selectedClips: Set<string>;
-  setSelectedClips: React.Dispatch<
-    React.SetStateAction<Set<string>>
-  >;
-  onImport: () => void;
-  loading: boolean;
-  bgProcessing: boolean;
-};
+import { useAppStateStore } from "../stores/appStore";
+import { useUIStateStore } from "../stores/UIStore";
+import useImportExport from "../hooks/useImportExport";
 
-export default function ImportButtons(props: ImportButtonsProps) {
-  const hasSelection = props.selectedClips.size > 0;
+export default function ImportButtons() {
+  const selectedClips = useAppStateStore((s: any) => s.selectedClips);
+  const setSelectedClips = useAppStateStore((s: any) => s.setSelectedClips);
+  const loading = useAppStateStore((s: any) => s.loading);
+  const gridPreview = useUIStateStore((s: any) => s.gridPreview);
+  const setGridPreview = useUIStateStore((s: any) => s.setGridPreview);
+  const cols = useUIStateStore((s: any) => s.cols);
+  const setCols = useUIStateStore((s: any) => s.setCols);
+  const { onImportClick } = useImportExport();
+
+  const hasSelection = selectedClips.size > 0;
+
+  const handleBigger = () => setCols(Math.max(1, cols - 1));
+  const handleSmaller = () => setCols(Math.min(12, cols + 1));
     
   return (
       <main className="clips-import">
         <div className="import-buttons-container">
-          <button onClick={() => { props.onImport();}}
-                  disabled={props.loading || props.bgProcessing}
+          <button onClick={onImportClick}
+                  disabled={loading}
                   id="file-button"
           >
-            {props.loading || props.bgProcessing ? "Processing..." : "Import Episode"}
+            {loading ? "Processing..." : "Import Episode"}
           </button>
         </div>
         <div className="grid-checkboxes">
@@ -34,8 +34,8 @@ export default function ImportButtons(props: ImportButtonsProps) {
                 <input 
                   type="checkbox" 
                   className="checkbox"
-                  checked={props.gridPreview}
-                  onChange={(e) => props.setGridPreview(e.target.checked)}
+                  checked={gridPreview}
+                  onChange={(e) => setGridPreview(e.target.checked)}
                 />
                 <span className="checkmark"></span>
               </label>
@@ -50,20 +50,20 @@ export default function ImportButtons(props: ImportButtonsProps) {
                   disabled={!hasSelection}
                   onChange={(e) => {
                     if (!e.target.checked) {
-                      props.setSelectedClips(new Set())
+                      setSelectedClips(new Set())
                     }
                   }}
                 />
                 <span className="checkmark"></span>
               </label>
-              <span>{props.selectedClips.size} selected</span>    
+              <span>{selectedClips.size} selected</span>    
             </div>
           </div>
           <div className="zoomWrapper">
-            <span>Size: {props.gridSize}px</span>
+            <span>Grid: {cols} columns</span>
             <form>
-              <button type="button" onClick={props.onSmaller}>-</button>
-              <button type="button" onClick={props.onBigger}>+</button>  
+              <button type="button" onClick={handleSmaller}>-</button>
+              <button type="button" onClick={handleBigger}>+</button>  
             </form>
           </div>
         </div>

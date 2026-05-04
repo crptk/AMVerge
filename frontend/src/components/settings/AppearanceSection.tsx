@@ -1,21 +1,19 @@
 import { useId, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { invoke, convertFileSrc } from "@tauri-apps/api/core";
-import { getDarkerColor, type ThemeSettings } from "../../settings/themeSettings";
+import { getDarkerColor, useThemeSettingsStore } from "../../stores/settingsStore";
 import ColorPicker from "../common/ColorPicker";
 import CropModal from "./CropModal";
 
 type AppearanceSectionProps = {
-  themeSettings: ThemeSettings;
-  setThemeSettings: React.Dispatch<React.SetStateAction<ThemeSettings>>;
   onThemeReset: () => void;
 };
 
 export default function AppearanceSection({
-  themeSettings,
-  setThemeSettings,
   onThemeReset
 }: AppearanceSectionProps) {
+  const themeSettings = useThemeSettingsStore();
+  const setThemeSettings = useThemeSettingsStore.setState;
   const accentId = useId();
   const bgGradientId = useId();
   const bgOpacityId = useId();

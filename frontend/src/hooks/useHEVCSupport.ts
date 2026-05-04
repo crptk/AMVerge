@@ -1,6 +1,9 @@
 import { useEffect } from "react";
+import { useAppStateStore } from "../stores/appStore";
 
-export default function useHEVCSupport(userHasHEVC: React.RefObject<boolean>) {
+export default function useHEVCSupport() {
+  const setUserHasHEVC = useAppStateStore((state) => state.setUserHasHEVC);
+
   useEffect(() => {
     try {
       const candidates = [
@@ -17,12 +20,13 @@ export default function useHEVCSupport(userHasHEVC: React.RefObject<boolean>) {
 
       const videoEl = document.createElement("video");
 
-      userHasHEVC.current = candidates.some((mime) => {
+      const hasHEVC = candidates.some((mime) => {
         const result = videoEl.canPlayType(mime);
         return isTypeSupported(mime) || result === "probably";
       });
+      setUserHasHEVC(hasHEVC);
     } catch {
-      userHasHEVC.current = false;
+      setUserHasHEVC(false);
     }
-  }, [userHasHEVC]);
+  }, [setUserHasHEVC]);
 }

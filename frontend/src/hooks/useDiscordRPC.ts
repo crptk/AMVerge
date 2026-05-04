@@ -1,9 +1,12 @@
 import { useEffect, useRef, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { GeneralSettings } from "../settings/generalSettings";
+import { useGeneralSettingsStore } from "../stores/settingsStore";
+import { useUIStateStore } from "../stores/UIStore";
 
-export default function useDiscordRPC(generalSettings: GeneralSettings, activePage: string) {
+export default function useDiscordRPC() {
   const isStartedRef = useRef(false);
+  const generalSettings = useGeneralSettingsStore();
+  const activePage = useUIStateStore(state => state.activePage);
 
   const startRPC = useCallback(async () => {
     if (isStartedRef.current) return;
@@ -35,7 +38,7 @@ export default function useDiscordRPC(generalSettings: GeneralSettings, activePa
   }, []);
 
   const updateRPC = useCallback(async (data: any) => {
-    if (!isStartedRef.current || !generalSettings.enableDiscordRPC) return;
+    if (!isStartedRef.current || !generalSettings.discordRPCEnabled) return;
     try {
       await invoke("update_discord_rpc", { data });
     } catch (err) {
@@ -43,11 +46,11 @@ export default function useDiscordRPC(generalSettings: GeneralSettings, activePa
       console.error("Failed to update Discord RPC:", err);
       // isStartedRef.current = false;
     }
-  }, [generalSettings.enableDiscordRPC]);
+  }, [generalSettings.discordRPCEnabled]);
 
   // Handle start/stop based on setting
   useEffect(() => {
-    if (generalSettings.enableDiscordRPC) {
+    if (generalSettings.discordRPCEnabled) {
       startRPC();
     } else {
       stopRPC();
@@ -56,11 +59,11 @@ export default function useDiscordRPC(generalSettings: GeneralSettings, activePa
     return () => {
       stopRPC();
     };
-  }, [generalSettings.enableDiscordRPC, startRPC, stopRPC]);
+  }, [generalSettings.discordRPCEnabled, startRPC, stopRPC]);
 
   // Update status based on page navigation
   useEffect(() => {
-    if (!isStartedRef.current || !generalSettings.enableDiscordRPC) return;
+    if (!isStartedRef.current || !generalSettings.discordRPCEnabled) return;
 
     let details = "Navigating menus";
     let state = "Idle";

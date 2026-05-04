@@ -1,12 +1,14 @@
-import { useEffect, useRef, useState } from "react";
-import type { RefObject } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
+
 import { invoke } from "@tauri-apps/api/core";
 
 type UseVideoPlayerArgs = {
     selectedClip: string;
     mergedSrcs?: string[];
     videoIsHEVC: boolean | null;
-    userHasHEVC: RefObject<boolean>;
+    userHasHEVC: boolean;
+    externalTime?: number;
+    onTimeUpdate?: (time: number) => void;
 };
 
 export function useVideoPlayer({
@@ -14,6 +16,8 @@ export function useVideoPlayer({
     mergedSrcs,
     videoIsHEVC,
     userHasHEVC,
+    externalTime,
+    onTimeUpdate,
 }: UseVideoPlayerArgs) {
     const videoRef = useRef<HTMLVideoElement | null>(null);
     const progressRef = useRef<HTMLDivElement | null>(null);
@@ -30,17 +34,20 @@ export function useVideoPlayer({
     const wasPlayingRef = useRef(false);
     const rafRef = useRef<number | null>(null);
 
+    // Seek generation: incremented on clip change to discard stale seeks
+    const seekGenerationRef = useRef(0);
+
     const [effectiveClip, setEffectiveClip] = useState<string | null>(selectedClip);
     const [mergedPreviewPath, setMergedPreviewPath] = useState<string | null>(null);
     const mergedSrcsKey = mergedSrcs ? mergedSrcs.join("|") : null;
     const [isVideoReady, setIsVideoReady] = useState(false);
-    const [isPlaying, setIsPlaying] = useState(true);
+    const [isPlaying, setIsPlaying] = useState(false);
     const [isMuted, setIsMuted] = useState(false);
     const [currentTime, setCurrentTime] = useState(0);
     const [duration, setDuration] = useState(0);
     const [isScrubbing, setIsScrubbing] = useState(false);
 
-    const hasHevcSupport = userHasHEVC.current === true;
+    const hasHevcSupport = userHasHEVC === true;
 
     const requestFirstFrame = (video: HTMLVideoElement) => {
         if (hasFirstFrameRef.current) return;
@@ -136,7 +143,7 @@ export function useVideoPlayer({
         video.currentTime = percentage * duration;
     };
 
-    const togglePlay = () => {
+    const togglePlay = useCallback(() => {
         const video = videoRef.current;
         if (!video) return;
 
@@ -147,28 +154,28 @@ export function useVideoPlayer({
             video.pause();
             setIsPlaying(false);
         }
-    };
+    }, []);
 
-    const toggleMute = () => {
+    const toggleMute = useCallback(() => {
         const video = videoRef.current;
         if (!video) return;
 
         video.muted = !video.muted;
         setIsMuted(video.muted);
-    };
+    }, []);
 
-    const goFullScreen = () => {
+    const goFullScreen = useCallback(() => {
         const video = videoRef.current;
         if (!video) return;
 
         if (video.requestFullscreen) video.requestFullscreen();
-    };
+    }, []);
 
     const handleLoadedMetadata = (video: HTMLVideoElement) => {
         video.style.setProperty("--aspect-ratio", `${video.videoWidth} / ${video.videoHeight}`);
         setDuration(video.duration);
         requestFirstFrame(video);
-        safePlay(video);
+        if (isPlaying) safePlay(video);
     };
 
     const handleLoadedData = () => {
@@ -180,6 +187,19 @@ export function useVideoPlayer({
         if (!video) return;
 
         setCurrentTime(video.currentTime);
+        
+        // Only drive the timeline from the video if the video is fully ready.
+        if (isVideoReady) {
+            // If playing or scrubbing, sync to timeline
+            if (!video.paused || isScrubbing) {
+                if (onTimeUpdate) {
+                    if (import.meta.env.DEV && !video.paused) {
+                        console.log("[VideoPlayer] Syncing to Timeline ->", video.currentTime.toFixed(3));
+                    }
+                    onTimeUpdate(video.currentTime);
+                }
+            }
+        }
     };
 
     const handlePlay = (video: HTMLVideoElement) => {
@@ -208,8 +228,22 @@ export function useVideoPlayer({
 
     useEffect(() => {
         const video = videoRef.current;
-        if (!video || !selectedClip) return;
+        if (!video) return;
 
+        // Bump seek generation so stale externalTime seeks are discarded
+        seekGenerationRef.current++;
+
+        // 1. Handle Empty State
+        if (!selectedClip) {
+            setEffectiveClip(null);
+            setIsVideoReady(false);
+            setCurrentTime(0);
+            setDuration(0);
+            setIsPlaying(false);
+            return;
+        }
+
+        // 2. Cleanup old clip state
         proxyInFlightRef.current = false;
         proxyAttemptedForClipRef.current = null;
         hasFirstFrameRef.current = false;
@@ -220,113 +254,58 @@ export function useVideoPlayer({
         if (videoFrameCallbackIdRef.current && (video as any).cancelVideoFrameCallback) {
             try {
                 (video as any).cancelVideoFrameCallback(videoFrameCallbackIdRef.current);
-            } catch {
-                // ignore
-            }
+            } catch { /* ignore */ }
         }
-
         videoFrameCallbackIdRef.current = null;
 
-        setEffectiveClip(null);
-        setIsVideoReady(false);
-        setCurrentTime(0);
-        setDuration(0);
-        setIsPlaying(false);
-    }, [selectedClip]);
-
-    useEffect(() => {
-        if (!selectedClip) {
-            setEffectiveClip(null);
-            setIsVideoReady(false);
-            return;
-        }
-
-        // For non-HEVC (or HEVC-capable) clips, the base source is the merged preview if available.
-        // For HEVC clips needing a proxy, skip merged preview and proxy the original clip.
-        const baseSrc = mergedPreviewPath ?? selectedClip;
-
-        if (hasHevcSupport) {
-            if (effectiveClip !== baseSrc) {
-                setEffectiveClip(baseSrc);
+        // 3. Determine if we can use the source directly or need a proxy
+        if (hasHevcSupport || videoIsHEVC === false) {
+            if (effectiveClip !== selectedClip) {
+                setEffectiveClip(selectedClip);
                 setIsVideoReady(false);
             }
             return;
         }
 
         if (videoIsHEVC === null) {
-            if (effectiveClip !== null) {
-                setEffectiveClip(null);
-                setIsVideoReady(false);
-            }
+            setIsVideoReady(false);
             return;
         }
 
-        if (videoIsHEVC === false) {
-            if (effectiveClip !== baseSrc) {
-                setEffectiveClip(baseSrc);
-                setIsVideoReady(false);
-            }
-            return;
+        // 4. Proxy Logic
+        if (effectiveClip && effectiveClip !== selectedClip) {
+            setIsVideoReady(false);
         }
 
-        // videoIsHEVC === true && !hasHevcSupport: proxy the original clip (skip merged preview)
-        if (effectiveClip && effectiveClip !== selectedClip) return;
-        if (proxyInFlightRef.current) return;
-        if (proxyAttemptedForClipRef.current === selectedClip) return;
+        if (proxyInFlightRef.current || proxyAttemptedForClipRef.current === selectedClip) return;
 
         proxyAttemptedForClipRef.current = selectedClip;
         proxyInFlightRef.current = true;
 
-        setEffectiveClip(null);
-        setIsVideoReady(false);
-
         invoke<string>("ensure_preview_proxy", { clipPath: selectedClip })
             .then((proxyPath) => {
                 proxyInFlightRef.current = false;
-                if (!proxyPath) return;
-                if (selectedClipRef.current !== selectedClip) return;
+                if (!proxyPath || selectedClipRef.current !== selectedClip) return;
 
                 setEffectiveClip(proxyPath);
                 setIsVideoReady(false);
 
                 setTimeout(() => {
-                    const video = videoRef.current;
-                    if (!video) return;
-                    video.load();
-                    safePlay(video);
+                    const v = videoRef.current;
+                    if (!v) return;
+                    v.load();
+                    if (isPlaying) safePlay(v);
                 }, 0);
             })
             .catch((err) => {
                 proxyInFlightRef.current = false;
                 if (import.meta.env.DEV) console.warn("ensure_preview_proxy failed", err);
+                // Fallback to original even if proxy failed
+                setEffectiveClip(selectedClip);
             });
-    }, [selectedClip, videoIsHEVC, hasHevcSupport, effectiveClip, mergedPreviewPath]);
+    }, [selectedClip, videoIsHEVC, hasHevcSupport]);
 
-    // Fetch stream-copy merged preview when the focused clip has merged sources (skipped for HEVC).
-    useEffect(() => {
-        if (!mergedSrcsKey || !mergedSrcs) return;
-        if (videoIsHEVC === true && !hasHevcSupport) return;
-        if (!selectedClip) return;
-        if (mergedPreviewFetchedKeyRef.current === mergedSrcsKey) return;
-        if (mergedPreviewInFlightRef.current) return;
-
-        mergedPreviewFetchedKeyRef.current = mergedSrcsKey;
-        mergedPreviewInFlightRef.current = true;
-
-        invoke<string>("ensure_merged_preview", { srcs: mergedSrcs })
-            .then((path) => {
-                if (selectedClipRef.current !== selectedClip) return;
-                setMergedPreviewPath(path);
-            })
-            .catch((err) => {
-                if (import.meta.env.DEV) console.warn("ensure_merged_preview failed", err);
-                mergedPreviewFetchedKeyRef.current = null;
-            })
-            .finally(() => {
-                mergedPreviewInFlightRef.current = false;
-            });
-    }, [mergedSrcsKey, mergedSrcs, selectedClip, videoIsHEVC, hasHevcSupport]);
-
+    // Keyboard shortcuts — use stable callbacks
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
             if (
@@ -342,7 +321,11 @@ export function useVideoPlayer({
 
             if (e.code === "Space") {
                 e.preventDefault();
-                togglePlay();
+                if (video.paused) {
+                    video.play();
+                } else {
+                    video.pause();
+                }
             }
 
             if (e.code === "ArrowRight") {
@@ -357,7 +340,7 @@ export function useVideoPlayer({
 
             if (e.code === "KeyF") {
                 e.preventDefault();
-                goFullScreen();
+                if (video.requestFullscreen) video.requestFullscreen();
             }
         };
 
@@ -397,6 +380,30 @@ export function useVideoPlayer({
             }
         };
     }, [isScrubbing, duration]);
+
+    // External time seeking — waits for video to be fully loaded and ready
+    useEffect(() => {
+        if (externalTime === undefined) return;
+
+        const video = videoRef.current;
+        if (!video) return;
+
+        // Don't seek until the video is actually loaded and has valid duration
+        if (!isVideoReady || !duration || duration <= 0) return;
+
+        const diff = Math.abs(video.currentTime - externalTime);
+        const isSignificantJump = diff > 0.1;
+        
+        // Skip small corrections during playback to avoid jitter
+        if (isPlaying && !isSignificantJump) return;
+
+        if (diff > 0.01) {
+            // Clamp to valid range
+            const clampedTime = Math.max(0, Math.min(externalTime, duration));
+            video.currentTime = clampedTime;
+            setCurrentTime(clampedTime);
+        }
+    }, [externalTime, duration, isVideoReady]);
 
     return {
         videoRef,

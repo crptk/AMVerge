@@ -87,7 +87,8 @@ body.is-resizing-sidebar {
     min-height: 0;
 }
 
-.episode-panel {
+.episode-panel,
+.sidebar-library {
     display: flex;
     flex-direction: column;
     width: 100%;

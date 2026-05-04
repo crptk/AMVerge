@@ -1,10 +1,13 @@
 export type ClipItem = {
   id: string;
   src: string;
+  srcList?: string[];
   thumbnail: string;
   originalName?: string;
-  thumbnailReady?: boolean; // false = actively generating; undefined/true = ready
-  mergedSrcs?: string[];   // all source files this clip represents (set when clips are merged)
+  thumbnailReady?: boolean;
+  mergedSrcs?: string[];
+  start?: number;
+  end?: number;
 };
 
 export type EpisodeFolder = {

@@ -1,14 +1,8 @@
-import { type GeneralSettings } from "../../settings/generalSettings";
+import { useGeneralSettingsStore } from "../../stores/settingsStore";
 
-type DiscordRPCSectionProps = {
-  generalSettings: GeneralSettings;
-  setGeneralSettings: React.Dispatch<React.SetStateAction<GeneralSettings>>;
-};
-
-export default function DiscordRPCSection({
-  generalSettings,
-  setGeneralSettings,
-}: DiscordRPCSectionProps) {
+export default function DiscordRPCSection() {
+  const generalSettings = useGeneralSettingsStore();
+  const setGeneralSettings = useGeneralSettingsStore.setState;
   return (
     <section className="panel">
       <h3>Discord Rich Presence</h3>
@@ -20,11 +14,11 @@ export default function DiscordRPCSection({
             <input
               type="checkbox"
               className="checkbox"
-              checked={generalSettings.enableDiscordRPC}
+              checked={generalSettings.discordRPCEnabled}
               onChange={(e) =>
                 setGeneralSettings((prev) => ({
                   ...prev,
-                  enableDiscordRPC: e.target.checked,
+                  discordRPCEnabled: e.target.checked,
                 }))
               }
             />
@@ -36,7 +30,7 @@ export default function DiscordRPCSection({
         Display your current AMVerge activity on your Discord profile.
       </p>
 
-      {generalSettings.enableDiscordRPC && (
+      {generalSettings.discordRPCEnabled && (
         <>
           <div className="settings-row">
             <label className="settings-label">Show filename</label>

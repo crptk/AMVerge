@@ -1,21 +1,19 @@
 import { open } from "@tauri-apps/plugin-dialog";
 import { invoke } from "@tauri-apps/api/core";
-import { type GeneralSettings } from "../../settings/generalSettings";
+import { useGeneralSettingsStore } from "../../stores/settingsStore";
 import { useEffect, useState } from "react";
 
 type GeneralSectionProps = {
-  generalSettings: GeneralSettings;
-  setGeneralSettings: React.Dispatch<React.SetStateAction<GeneralSettings>>;
   onGeneralSettingsReset: () => void;
   onEpisodesPathChanged: (oldPath: string, newPath: string) => void;
 };
 
 export default function GeneralSection({
-  generalSettings,
-  setGeneralSettings,
   onGeneralSettingsReset,
   onEpisodesPathChanged,
 }: GeneralSectionProps) {
+  const generalSettings = useGeneralSettingsStore();
+  const setGeneralSettings = useGeneralSettingsStore.setState;
   const [loading, setLoading] = useState(false);
   const [showFactoryResetConfirm, setShowFactoryResetConfirm] = useState(false);
   const factoryResetConfirmation =
@@ -84,6 +82,29 @@ export default function GeneralSection({
       </div>
       <p style={{ fontSize: "0.8rem", opacity: 0.6, marginLeft: "24px", marginBottom: "16px", marginTop: "-4px" }}>
         The current version of the AMVerge application.
+      </p>
+
+      <div className="settings-row">
+        <label className="settings-label">Video Editor <span className="beta-badge">BETA</span></label>
+        <div className="settings-control">
+          <label className="custom-checkbox">
+            <input
+              type="checkbox"
+              className="checkbox"
+              checked={generalSettings.enableEditor}
+              onChange={(e) =>
+                setGeneralSettings((prev) => ({
+                  ...prev,
+                  enableEditor: e.target.checked,
+                }))
+              }
+            />
+            <span className="checkmark"></span>
+          </label>
+        </div>
+      </div>
+      <p style={{ fontSize: "0.8rem", opacity: 0.6, marginLeft: "24px", marginBottom: "16px", marginTop: "-4px" }}>
+        Enable the timeline editor and video assembly features.
       </p>
 
       <div className="settings-row">

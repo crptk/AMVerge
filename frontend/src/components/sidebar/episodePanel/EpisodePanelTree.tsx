@@ -1,5 +1,5 @@
 // Recursive Episode Panel tree renderer. Displays folders, nested folders, and episode rows.
-import type React from "react";
+import React from "react";
 import EpisodeRow from "./EpisodeRow";
 import FolderRow from "./FolderRow";
 import type { EpisodePanelProps, PointerDragSource, PointerDropTarget } from "../types";
@@ -116,7 +116,6 @@ export default function EpisodePanelTree({
       </div>
     );
   };
-
   const rootFolders = foldersByParentId.get(null) ?? [];
 
   return (

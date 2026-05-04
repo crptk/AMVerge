@@ -4,7 +4,7 @@ import Navbar from "./Navbar";
 
 export interface AppLayoutProps {
   windowWrapperRef: React.RefObject<HTMLDivElement | null>;
-  sidebarProps: React.ComponentProps<typeof Sidebar>;
+  sidebarEnabled: boolean;
   navbarProps: React.ComponentProps<typeof Navbar>;
   dividerProps: {
     onPointerDown: (e: React.PointerEvent<HTMLDivElement>) => void;
@@ -18,7 +18,7 @@ export interface AppLayoutProps {
 
 export default function AppLayout({
   windowWrapperRef,
-  sidebarProps,
+  sidebarEnabled,
   navbarProps,
   dividerProps,
   children,
@@ -41,9 +41,9 @@ export default function AppLayout({
           ["--amverge-divider-offset" as any]: `${dividerProps.dividerOffsetPx}px`,
         }}
       >
-        {sidebarProps.sideBarEnabled && (
+        {sidebarEnabled && (
           <>
-            <Sidebar {...sidebarProps} />
+            <Sidebar />
             <div
               className="divider sidebar-splitter"
               onPointerDown={dividerProps.onPointerDown}

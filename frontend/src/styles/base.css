@@ -83,3 +83,31 @@ body::before {
     background: #777;
     box-shadow: 0 0 8px rgba(180, 180, 180, 0.5);
 }
+
+.beta-badge {
+    background: rgba(var(--accent-rgb), 0.1);
+    color: rgb(var(--accent-rgb));
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    font-weight: bold;
+    border: 1px solid rgba(var(--accent-rgb), 0.3);
+    margin-left: 8px;
+    letter-spacing: 0.1em;
+    vertical-align: middle;
+}
+
+.discord-contact {
+    font-size: 0.7rem;
+    opacity: 0.4;
+    margin-top: 2px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    transition: opacity 0.2s ease;
+}
+
+.discord-contact:hover {
+    opacity: 0.8;
+}

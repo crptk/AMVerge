@@ -1,13 +1,8 @@
 // Sidebar navigation buttons. Handles switching between top-level pages like Home and Menu
-import type React from "react";
 import type { IconType } from "react-icons";
 import { FaBars, FaCog, FaHome } from "react-icons/fa";
 import type { Page } from "./types";
-
-type SidebarNavProps = {
-  activePage: Page;
-  setActivePage: React.Dispatch<React.SetStateAction<Page>>;
-};
+import { useUIStateStore } from "../../stores/UIStore";
 
 const buttons: { name: string; page: Page; icon: IconType }[] = [
   { name: "Home", page: "home", icon: FaHome },
@@ -15,7 +10,10 @@ const buttons: { name: string; page: Page; icon: IconType }[] = [
   { name: "Settings", page: "settings", icon: FaCog },
 ];
 
-export default function SidebarNav({ activePage, setActivePage }: SidebarNavProps) {
+export default function SidebarNav() {
+  const activePage = useUIStateStore(s => s.activePage);
+  const setActivePage = useUIStateStore(s => s.setActivePage);
+
   return (
     <div className="menu-buttons">
       {buttons.map((button) => {
