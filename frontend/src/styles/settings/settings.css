@@ -196,6 +196,7 @@
 .export-setting-row .settings-control.export-setting-control > .settings-text-input,
 .export-setting-row .settings-control.export-setting-control > .settings-number-input {
     width: min(560px, 100%);
+    min-width: 0;
 }
 
 .export-setting-row .settings-control.export-setting-control > .custom-checkbox {
@@ -265,6 +266,13 @@
 
 .settings-wide-dropdown {
     width: 100%;
+}
+
+.settings-wide-dropdown,
+.settings-wide-dropdown .dropdown-trigger,
+.settings-wide-dropdown .dropdown-value,
+.settings-wide-dropdown .dropdown-item-content {
+    min-width: 0;
 }
 
 .export-profile-dropdown {
@@ -462,6 +470,8 @@
     gap: 8px;
     flex-wrap: wrap;
     justify-content: flex-end;
+    max-width: 100%;
+    min-width: 0;
 }
 
 .profile-icon-inline-list {
@@ -470,10 +480,29 @@
     gap: 6px;
     justify-content: flex-end;
     max-width: min(560px, 72vw);
+    min-width: 0;
+    overflow: visible;
 }
 
 .profile-icon-more-trigger {
     font-size: 14px;
+    border: none;
+    background: transparent;
+    box-shadow: none;
+    color: rgb(255 255 255 / 0.74);
+    width: 28px;
+}
+
+.profile-icon-more-trigger:hover {
+    border: none;
+    background: transparent;
+    color: rgb(255 255 255 / 0.95);
+    transform: none;
+}
+
+.profile-icon-more-trigger:focus-visible {
+    outline: 1px solid rgb(255 255 255 / 0.3);
+    outline-offset: 2px;
 }
 
 .profile-icon-popover {
@@ -513,14 +542,15 @@
 
 .profile-icon-pin {
     position: absolute;
-    top: -7px;
-    right: -7px;
-    width: 16px;
-    height: 16px;
-    border: 1px solid rgb(255 255 255 / 0.25);
+    top: 2px;
+    left: 2px;
+    right: auto;
+    width: 18px;
+    height: 18px;
+    border: 1px solid rgb(255 255 255 / 0.22);
     border-radius: 999px;
-    background: rgb(12 12 14 / 0.96);
-    color: rgb(255 255 255 / 0.55);
+    background: rgb(0 0 0 / 0.72);
+    color: rgb(255 255 255 / 0.78);
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -529,14 +559,17 @@
     opacity: 0;
     transform: scale(0.9);
     transition: opacity 0.16s ease, transform 0.16s ease, color 0.16s ease, border-color 0.16s ease;
+    z-index: 3;
 }
 
 .profile-icon-pin svg {
-    width: 9px;
-    height: 9px;
+    width: 8px;
+    height: 8px;
 }
 
 .profile-icon-tile:hover .profile-icon-pin,
+.profile-custom-icon-slot:hover .profile-icon-pin,
+.profile-icon-pin:hover,
 .profile-icon-pin:focus-visible,
 .profile-icon-pin.pinned {
     opacity: 1;
@@ -545,7 +578,13 @@
 
 .profile-icon-pin.pinned {
     color: var(--accent);
-    border-color: rgb(var(--accent-rgb) / 0.6);
+    border-color: rgb(var(--accent-rgb) / 0.55);
+    background: rgb(0 0 0 / 0.8);
+}
+
+.profile-icon-pin.profile-icon-pin-custom {
+    left: 2px;
+    top: 2px;
 }
 
 @media (max-width: 700px) {
@@ -604,6 +643,17 @@
     box-shadow: 0 0 10px rgb(var(--accent-rgb) / 0.18);
 }
 
+/* Keep the "more" trigger as plain dots permanently (no icon-tile chrome). */
+.profile-icon-button.profile-icon-more-trigger,
+.profile-icon-button.profile-icon-more-trigger:hover,
+.profile-icon-button.profile-icon-more-trigger:active {
+    border: none;
+    background: transparent;
+    box-shadow: none;
+    transform: none;
+    color: rgb(255 255 255 / 0.74);
+}
+
 .profile-upload-tile {
     border-style: dashed;
     border-color: rgb(255 255 255 / 0.45);
@@ -617,26 +667,26 @@
 
 .profile-icon-delete {
     position: absolute;
-    top: -7px;
-    right: -7px;
-    width: 19px;
-    height: 19px;
-    border: 1px solid rgb(0 0 0 / 0.35);
+    top: 2px;
+    right: 2px;
+    width: 17px;
+    height: 17px;
+    border: 1px solid rgb(255 255 255 / 0.22);
     border-radius: 999px;
-    background: #ff2c2c;
+    background: rgb(255 61 61 / 0.95);
     color: white;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    font-size: 14px;
+    font-size: 11px;
     font-weight: 900;
     line-height: 1;
     cursor: pointer;
     opacity: 0;
-    transform: scale(0.82);
+    transform: scale(0.88);
     transition: opacity 0.16s ease, transform 0.16s ease;
     box-shadow: 0 3px 10px rgb(0 0 0 / 0.45);
-    z-index: 2;
+    z-index: 4;
 }
 
 .profile-custom-icon-slot:hover .profile-icon-delete,
@@ -646,7 +696,7 @@
 }
 
 .profile-icon-delete:hover {
-    background: #ff5555;
+    background: rgb(255 92 92 / 0.98);
 }
 
 .export-profile-note {
@@ -668,12 +718,17 @@
     margin-top: 2px;
 }
 
-@media (max-width: 980px) {
+@media (max-width: 1120px) {
     .export-setting-row {
         flex-direction: column;
         align-items: stretch;
         height: auto;
         gap: 10px;
+    }
+
+    .export-setting-row .settings-control {
+        width: 100%;
+        justify-content: flex-start;
     }
 
     .export-setting-description {
@@ -696,5 +751,28 @@
         right: 0;
         width: auto;
         max-width: 100%;
+    }
+
+    .profile-icon-control-inline {
+        width: 100%;
+        justify-content: flex-start;
+    }
+
+    .profile-icon-inline-list {
+        width: 100%;
+        max-width: 100%;
+        justify-content: flex-start;
+    }
+
+    .profile-icon-popover {
+        right: auto;
+        left: 0;
+        width: min(100%, 520px);
+        max-width: min(520px, calc(100vw - 48px));
+    }
+
+    .export-profile-action {
+        min-width: 0;
+        font-size: 16px;
     }
 }

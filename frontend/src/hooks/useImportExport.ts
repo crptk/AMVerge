@@ -45,6 +45,35 @@ function resolveEditorTarget(editorTarget: ExportProfile["editorTarget"]): Edito
   return null;
 }
 
+function uniquePathList(paths: (string | null | undefined)[]): string[] {
+  const seen = new Set<string>();
+  const unique: string[] = [];
+
+  for (const rawPath of paths) {
+    const path = (rawPath || "").trim();
+    if (!path) continue;
+    const key = path.replace(/\//g, "\\").toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    unique.push(path);
+  }
+
+  return unique;
+}
+
+function resolveAutoImportMediaPaths(
+  editorTarget: EditorTarget,
+  selected: ClipItem[],
+  exportedPaths: string[],
+): string[] {
+  if (editorTarget !== "capcut") {
+    return exportedPaths;
+  }
+
+  const originalSourcePaths = uniquePathList(selected.map((clip) => clip.originalPath));
+  return originalSourcePaths.length > 0 ? originalSourcePaths : exportedPaths;
+}
+
 function formatAutoImportFailureMessage(target: EditorTarget, rawError: unknown): string {
   const details = String(rawError ?? "Unknown error")
     .replace(/^Error:\s*/i, "")
@@ -355,9 +384,10 @@ export default function useImportExport(props?: ImportExportProps) {
         if (shouldAutoImportMedia && editorTarget && exportedPaths.length > 0) {
           appState.setProgress(99);
           appState.setProgressMsg(`Importing media into ${editorLabel(editorTarget)}...`);
+          const mediaPathsForImport = resolveAutoImportMediaPaths(editorTarget, selected, exportedPaths);
           await invoke<string>("import_media_to_editor", {
             editorTarget,
-            mediaPaths: exportedPaths,
+            mediaPaths: mediaPathsForImport,
           });
         }
       } else {
@@ -376,9 +406,10 @@ export default function useImportExport(props?: ImportExportProps) {
         if (shouldAutoImportMedia && editorTarget && exportedPaths.length > 0) {
           appState.setProgress(99);
           appState.setProgressMsg(`Importing media into ${editorLabel(editorTarget)}...`);
+          const mediaPathsForImport = resolveAutoImportMediaPaths(editorTarget, selected, exportedPaths);
           await invoke<string>("import_media_to_editor", {
             editorTarget,
-            mediaPaths: exportedPaths,
+            mediaPaths: mediaPathsForImport,
           });
         }
       }

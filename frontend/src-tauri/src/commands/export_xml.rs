@@ -1,4 +1,5 @@
-use std::path::PathBuf;
+use std::fs;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use serde::Deserialize;
@@ -44,6 +45,51 @@ pub(super) struct TimelineClipSegment {
     pub(super) source_out: i64,
     pub(super) timeline_start: i64,
     pub(super) timeline_end: i64,
+}
+
+#[derive(Debug, Clone)]
+struct SceneClipDescriptor {
+    parent_dir: PathBuf,
+    prefix: String,
+    extension: String,
+}
+
+type TimeBounds = (f64, f64);
+type IndexedTimeBounds = std::collections::BTreeMap<u32, TimeBounds>;
+
+fn parse_scene_suffix_index(suffix: &str) -> Option<u32> {
+    if suffix.is_empty() || !suffix.chars().all(|c| c.is_ascii_digit()) {
+        return None;
+    }
+
+    suffix.parse::<u32>().ok()
+}
+
+fn split_scene_stem_and_index(stem: &str) -> Option<(&str, u32)> {
+    let (base, suffix) = stem.rsplit_once('_')?;
+    Some((base, parse_scene_suffix_index(suffix)?))
+}
+
+fn parse_scene_index_from_clip_path(path: &str) -> Option<u32> {
+    let stem = Path::new(path).file_stem()?.to_str()?;
+    split_scene_stem_and_index(stem).map(|(_, index)| index)
+}
+
+fn parse_scene_descriptor_from_clip_path(path: &str) -> Option<SceneClipDescriptor> {
+    let clip_path = Path::new(path);
+    let parent_dir = clip_path.parent()?.to_path_buf();
+    let stem = clip_path.file_stem()?.to_str()?;
+    let extension = clip_path
+        .extension()
+        .and_then(|v| v.to_str())
+        .map(|v| v.to_ascii_lowercase())?;
+    let (base, _) = split_scene_stem_and_index(stem)?;
+
+    Some(SceneClipDescriptor {
+        parent_dir,
+        prefix: format!("{base}_"),
+        extension,
+    })
 }
 
 fn parse_ffprobe_ratio(raw: Option<&str>) -> Option<(u32, u32)> {
@@ -204,6 +250,159 @@ async fn probe_source_video_meta(
     })
 }
 
+fn probe_clip_duration_sec(ffprobe: &Path, clip_path: &Path) -> Result<f64, String> {
+    let mut cmd = Command::new(ffprobe);
+    apply_no_window(&mut cmd);
+    let output = cmd
+        .args([
+            "-v",
+            "error",
+            "-show_entries",
+            "format=duration",
+            "-of",
+            "default=nk=1:nw=1",
+            clip_path.to_string_lossy().as_ref(),
+        ])
+        .output()
+        .map_err(|e| {
+            format!(
+                "Failed to run ffprobe for {} ({}): {e}",
+                clip_path.display(),
+                ffprobe.display()
+            )
+        })?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        return Err(if stderr.is_empty() {
+            format!("ffprobe failed for {}", clip_path.display())
+        } else {
+            format!("ffprobe failed for {}: {}", clip_path.display(), stderr)
+        });
+    }
+
+    let raw = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let parsed = raw
+        .lines()
+        .next()
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+        .and_then(|v| v.parse::<f64>().ok())
+        .filter(|v| v.is_finite() && *v > 0.0)
+        .ok_or_else(|| {
+            format!(
+                "Could not parse clip duration for {} from ffprobe output: {}",
+                clip_path.display(),
+                raw
+            )
+        })?;
+
+    Ok(parsed)
+}
+
+fn build_scene_time_bounds_from_directory(
+    ffprobe: &Path,
+    descriptor: &SceneClipDescriptor,
+    min_segment_len: f64,
+) -> Result<IndexedTimeBounds, String> {
+    let mut indexed_durations: std::collections::BTreeMap<u32, f64> =
+        std::collections::BTreeMap::new();
+
+    let entries = fs::read_dir(&descriptor.parent_dir).map_err(|e| {
+        format!(
+            "Failed to read scene directory {}: {e}",
+            descriptor.parent_dir.display()
+        )
+    })?;
+
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if !path.is_file() {
+            continue;
+        }
+
+        let extension_matches = path
+            .extension()
+            .and_then(|v| v.to_str())
+            .map(|v| v.eq_ignore_ascii_case(&descriptor.extension))
+            .unwrap_or(false);
+        if !extension_matches {
+            continue;
+        }
+
+        let Some(stem) = path.file_stem().and_then(|v| v.to_str()) else {
+            continue;
+        };
+        if !stem.starts_with(&descriptor.prefix) {
+            continue;
+        }
+
+        let Some(suffix) = stem.strip_prefix(&descriptor.prefix) else {
+            continue;
+        };
+        let Some(index) = parse_scene_suffix_index(suffix) else {
+            continue;
+        };
+
+        match probe_clip_duration_sec(ffprobe, &path) {
+            Ok(duration) => {
+                indexed_durations.insert(index, duration.max(min_segment_len));
+            }
+            Err(err) => {
+                console_log(
+                    "EXPORT_XML|fallback",
+                    &format!("duration probe skipped {} ({err})", path.display()),
+                );
+            }
+        }
+    }
+
+    if indexed_durations.is_empty() {
+        return Err(format!(
+            "No scene clip durations could be probed in {}.",
+            descriptor.parent_dir.display()
+        ));
+    }
+
+    let mut running = 0.0_f64;
+    let mut bounds: IndexedTimeBounds = std::collections::BTreeMap::new();
+    for (index, duration) in indexed_durations {
+        let start = running;
+        let end = start + duration.max(min_segment_len);
+        bounds.insert(index, (start, end));
+        running = end;
+    }
+
+    Ok(bounds)
+}
+
+fn build_time_bounds_from_selected_order(
+    ffprobe: &Path,
+    clips: &[TimelineXmlClip],
+    min_segment_len: f64,
+) -> Result<Vec<TimeBounds>, String> {
+    let mut running = 0.0_f64;
+    let mut bounds: Vec<TimeBounds> = Vec::with_capacity(clips.len());
+
+    for clip in clips {
+        let clip_path = Path::new(&clip.src);
+        if !clip_path.exists() {
+            return Err(format!(
+                "Scene clip file is missing: {}",
+                clip_path.display()
+            ));
+        }
+
+        let duration = probe_clip_duration_sec(ffprobe, clip_path)?.max(min_segment_len);
+        let start = running;
+        let end = start + duration;
+        bounds.push((start, end));
+        running = end;
+    }
+
+    Ok(bounds)
+}
+
 #[tauri::command]
 pub async fn export_timeline_xml(
     app: AppHandle,
@@ -272,9 +471,15 @@ pub async fn export_timeline_xml(
     }
 
     let ffprobe = resolve_bundled_tool(&app, "ffprobe")?;
-    let source_meta = probe_source_video_meta(ffprobe, original_path.clone()).await?;
+    let source_meta = probe_source_video_meta(ffprobe.clone(), original_path.clone()).await?;
 
     let mut ordered = clips;
+    for clip in &mut ordered {
+        if clip.scene_index.is_none() {
+            clip.scene_index = parse_scene_index_from_clip_path(&clip.src);
+        }
+    }
+
     ordered.sort_by(|a, b| {
         a.scene_index
             .unwrap_or(u32::MAX)
@@ -290,18 +495,43 @@ pub async fn export_timeline_xml(
     });
 
     let fps = f64::from(source_meta.fps_num) / f64::from(source_meta.fps_den);
+    let min_segment_len = 1.0 / fps.max(1.0);
+    let inferred_bounds = ordered
+        .iter()
+        .find_map(|clip| parse_scene_descriptor_from_clip_path(&clip.src))
+        .and_then(|descriptor| {
+            build_scene_time_bounds_from_directory(&ffprobe, &descriptor, min_segment_len).ok()
+        });
+    let ordered_fallback_bounds =
+        build_time_bounds_from_selected_order(&ffprobe, &ordered, min_segment_len).ok();
+
     let mut timeline_cursor = 0_i64;
     let mut segments: Vec<TimelineClipSegment> = Vec::with_capacity(ordered.len());
 
     for (idx, clip) in ordered.iter().enumerate() {
-        let start_sec = clip.start_sec.ok_or(
-            "Clip cut metadata is incomplete. Re-import this episode before exporting XML.",
-        )?;
+        let inferred_for_clip = clip
+            .scene_index
+            .and_then(|scene_idx| inferred_bounds.as_ref().and_then(|m| m.get(&scene_idx)))
+            .copied();
+        let ordered_fallback_for_clip = ordered_fallback_bounds
+            .as_deref()
+            .and_then(|v| v.get(idx))
+            .copied();
+
+        let start_sec = clip
+            .start_sec
+            .or_else(|| inferred_for_clip.map(|(start, _)| start))
+            .or_else(|| ordered_fallback_for_clip.map(|(start, _)| start))
+            .ok_or(
+                "Clip cut metadata is incomplete. Re-import this episode before exporting XML.",
+            )?;
 
         let next_start = ordered.get(idx + 1).and_then(|c| c.start_sec);
         let mut end_sec = clip
             .end_sec
             .or(next_start)
+            .or_else(|| inferred_for_clip.map(|(_, end)| end))
+            .or_else(|| ordered_fallback_for_clip.map(|(_, end)| end))
             .unwrap_or(source_meta.duration_sec);
 
         if !end_sec.is_finite() || end_sec <= start_sec {

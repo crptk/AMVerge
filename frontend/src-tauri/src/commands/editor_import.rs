@@ -1066,15 +1066,14 @@ fn run_python_script(script_path: &Path) -> Result<String, String> {
                     return Ok(msg);
                 }
 
-                launch_errors.push(format!(
-                    "{} exited with status {}{}{}",
-                    exe,
-                    out.status,
-                    if stdout.is_empty() { "" } else { "\nstdout: " },
-                    stdout
-                ));
                 if !stderr.is_empty() {
-                    launch_errors.push(format!("stderr: {stderr}"));
+                    launch_errors.push(format!("{exe} stderr: {stderr}"));
+                }
+                if !stdout.is_empty() {
+                    launch_errors.push(format!("{exe} stdout: {stdout}"));
+                }
+                if stderr.is_empty() && stdout.is_empty() {
+                    launch_errors.push(format!("{exe} exited with status {}", out.status));
                 }
             }
             Err(e) => {
@@ -1084,7 +1083,7 @@ fn run_python_script(script_path: &Path) -> Result<String, String> {
     }
 
     Err(format!(
-        "Failed to run DaVinci scripting bridge.\n{}",
+        "{}\nFailed to run DaVinci scripting bridge.",
         launch_errors.join("\n")
     ))
 }

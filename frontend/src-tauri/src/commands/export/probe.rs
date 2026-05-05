@@ -92,3 +92,43 @@ pub(super) async fn is_ae_copy_safe(ffprobe: PathBuf, clip_path: String) -> Resu
     let a = ffprobe_codec_name(ffprobe, clip_path, "a:0").await?;
     Ok(a.is_none() || a.as_deref() == Some("aac"))
 }
+
+pub(super) async fn clip_starts_with_keyframe(
+    ffprobe: PathBuf,
+    path: String,
+) -> Result<Option<bool>, String> {
+    tokio::task::spawn_blocking(move || {
+        let mut cmd = Command::new(&ffprobe);
+        apply_no_window(&mut cmd);
+        let out = cmd
+            .args([
+                "-v",
+                "error",
+                "-select_streams",
+                "v:0",
+                "-show_entries",
+                "frame=key_frame",
+                "-of",
+                "default=nk=1:nw=1",
+                "-read_intervals",
+                "0%+0.20",
+                &path,
+            ])
+            .output()
+            .map_err(|e| format!("Failed to run ffprobe ({}): {e}", ffprobe.display()))?;
+
+        if !out.status.success() {
+            return Ok(None);
+        }
+
+        let stdout_text = String::from_utf8_lossy(&out.stdout);
+        let first = stdout_text
+            .lines()
+            .map(str::trim)
+            .find(|line| !line.is_empty());
+
+        Ok(first.map(|line| line == "1"))
+    })
+    .await
+    .map_err(|e| format!("ffprobe task panicked: {e}"))?
+}

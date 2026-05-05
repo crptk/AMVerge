@@ -32,8 +32,8 @@ export const buildTimelineXmlClips = (
     originalName: clip.originalName,
     originalPath: clip.originalPath ?? fallbackOriginalPath,
     sceneIndex: clip.sceneIndex,
-    startSec: clip.startSec,
-    endSec: clip.endSec,
+    startSec: clip.startSec ?? clip.start,
+    endSec: clip.endSec ?? clip.end ?? null,
   }));
 };
 

@@ -1,4 +1,5 @@
-import { invoke } from "@tauri-apps/api/core";
+import { convertFileSrc, invoke } from "@tauri-apps/api/core";
+import { open } from "@tauri-apps/plugin-dialog";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   FaEllipsisH,
@@ -8,6 +9,7 @@ import {
   FaTrash,
 } from "react-icons/fa";
 import Dropdown from "../common/Dropdown";
+import CropModal from "./CropModal";
 import { useGeneralSettingsStore } from "../../stores/settingsStore";
 import {
   EXPORT_AUDIO_OPTIONS,
@@ -78,6 +80,24 @@ const INLINE_DEFAULT_ICONS: ExportProfileIcon[] = [
   "resolve",
   "capcut",
 ];
+const ICON_FILE_EXTENSIONS = ["png", "jpg", "jpeg", "webp", "gif", "bmp", "tif", "tiff"];
+type PersistedFeaturedIcons = {
+  builtIn: ExportProfileIcon[];
+  custom: string[];
+};
+
+type CropModalPayload = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  rotation: number;
+  flip: { horizontal: boolean; vertical: boolean };
+};
+
+function normalizeIconPath(path: string | null | undefined): string {
+  return (path || "").split("?")[0];
+}
 
 export default function ExportSection() {
   const exportProfiles = useGeneralSettingsStore((state) => state.exportProfiles);
@@ -88,11 +108,17 @@ export default function ExportSection() {
   const addExportProfile = useGeneralSettingsStore((state) => state.addExportProfile);
   const deleteExportProfile = useGeneralSettingsStore((state) => state.deleteExportProfile);
   const updateExportProfile = useGeneralSettingsStore((state) => state.updateExportProfile);
+  const customProfileIcons = useGeneralSettingsStore((state) => state.customProfileIcons);
+  const addCustomProfileIcon = useGeneralSettingsStore((state) => state.addCustomProfileIcon);
+  const removeCustomProfileIcon = useGeneralSettingsStore((state) => state.removeCustomProfileIcon);
 
   const [nvidiaDetection, setNvidiaDetection] = useState<NvidiaDetectionResult>(DEFAULT_DETECTION);
   const [gpuProbeComplete, setGpuProbeComplete] = useState(false);
   const [showIconPicker, setShowIconPicker] = useState(false);
   const [featuredIcons, setFeaturedIcons] = useState<ExportProfileIcon[]>([]);
+  const [featuredCustomIcons, setFeaturedCustomIcons] = useState<string[]>([]);
+  const [iconToCrop, setIconToCrop] = useState<string | null>(null);
+  const [sourceIconPath, setSourceIconPath] = useState<string | null>(null);
   const iconPickerRef = useRef<HTMLDivElement | null>(null);
 
   const activeProfile = useMemo(
@@ -175,33 +201,129 @@ export default function ExportSection() {
       }),
     [parallelLimit]
   );
-  const availableIconValues = useMemo(
-    () => EXPORT_PROFILE_ICON_OPTIONS.map((option) => option.value),
+  const pickerIconOptions = useMemo(
+    () => EXPORT_PROFILE_ICON_OPTIONS.filter((option) => option.value !== "custom"),
     []
   );
-  const inlineVisibleIcons = useMemo(() => {
-    const validFeatured = featuredIcons.filter((icon) => availableIconValues.includes(icon));
-    const defaultIcons = INLINE_DEFAULT_ICONS.filter((icon) => availableIconValues.includes(icon));
-    const rest = defaultIcons.filter((icon) => !validFeatured.includes(icon));
-    return [...validFeatured, ...rest].slice(0, INLINE_VISIBLE_ICON_COUNT);
-  }, [availableIconValues, featuredIcons]);
+  const availableIconValues = useMemo(
+    () => pickerIconOptions.map((option) => option.value),
+    [pickerIconOptions]
+  );
+  const normalizedActiveCustomIconPath = useMemo(
+    () => normalizeIconPath(activeProfile.customIconPath),
+    [activeProfile.customIconPath]
+  );
+  const normalizedCustomProfileIcons = useMemo(() => {
+    const seen = new Set<string>();
+    const deduped: string[] = [];
+    const candidates = [...customProfileIcons, activeProfile.customIconPath || ""];
+    for (const rawPath of candidates) {
+      const normalized = normalizeIconPath(rawPath);
+      if (!normalized || seen.has(normalized)) continue;
+      seen.add(normalized);
+      deduped.push(normalized);
+    }
+    return deduped;
+  }, [activeProfile.customIconPath, customProfileIcons]);
 
-  const saveFeaturedIcons = (nextIcons: ExportProfileIcon[]) => {
-    setFeaturedIcons(nextIcons);
+  const saveFeaturedIcons = (nextBuiltIn: ExportProfileIcon[], nextCustom: string[]) => {
+    const builtInSeen = new Set<ExportProfileIcon>();
+    const customSeen = new Set<string>();
+    const validBuiltIn: ExportProfileIcon[] = [];
+    const validCustom: string[] = [];
+
+    for (const icon of nextBuiltIn) {
+      if (!availableIconValues.includes(icon) || builtInSeen.has(icon)) continue;
+      builtInSeen.add(icon);
+      validBuiltIn.push(icon);
+      if (validBuiltIn.length >= MAX_FEATURED_ICONS) break;
+    }
+
+    const remainingSlots = Math.max(0, MAX_FEATURED_ICONS - validBuiltIn.length);
+    for (const rawPath of nextCustom) {
+      const normalizedPath = normalizeIconPath(rawPath);
+      if (!normalizedPath || !normalizedCustomProfileIcons.includes(normalizedPath) || customSeen.has(normalizedPath)) {
+        continue;
+      }
+      customSeen.add(normalizedPath);
+      validCustom.push(normalizedPath);
+      if (validCustom.length >= remainingSlots) break;
+    }
+
+    setFeaturedIcons(validBuiltIn);
+    setFeaturedCustomIcons(validCustom);
     try {
-      window.localStorage.setItem(FEATURED_PROFILE_ICONS_KEY, JSON.stringify(nextIcons));
+      const payload: PersistedFeaturedIcons = { builtIn: validBuiltIn, custom: validCustom };
+      window.localStorage.setItem(FEATURED_PROFILE_ICONS_KEY, JSON.stringify(payload));
     } catch {
       // Ignore storage failures and keep in-memory state.
     }
   };
 
+  const inlineVisibleIconItems = useMemo(() => {
+    const validFeatured = featuredIcons.filter((icon) => availableIconValues.includes(icon));
+    const defaultIcons = INLINE_DEFAULT_ICONS.filter((icon) => availableIconValues.includes(icon));
+    const rest = defaultIcons.filter((icon) => !validFeatured.includes(icon));
+    const featuredCustom = featuredCustomIcons.filter((iconPath) =>
+      normalizedCustomProfileIcons.includes(iconPath)
+    );
+    const customCandidates =
+      activeProfile.icon === "custom" && normalizedActiveCustomIconPath
+        ? [normalizedActiveCustomIconPath, ...featuredCustom.filter((path) => path !== normalizedActiveCustomIconPath)]
+        : featuredCustom;
+
+    const deduped = [
+      ...validFeatured.map((icon) => ({ type: "builtin" as const, value: icon })),
+      ...rest.map((icon) => ({ type: "builtin" as const, value: icon })),
+      ...customCandidates.map((path) => ({ type: "custom" as const, path })),
+    ].slice(0, INLINE_VISIBLE_ICON_COUNT);
+
+    if (
+      activeProfile.icon === "custom" &&
+      normalizedActiveCustomIconPath &&
+      !deduped.some((item) => item.type === "custom" && item.path === normalizedActiveCustomIconPath)
+    ) {
+      if (deduped.length >= INLINE_VISIBLE_ICON_COUNT) {
+        deduped[deduped.length - 1] = { type: "custom", path: normalizedActiveCustomIconPath };
+      } else {
+        deduped.push({ type: "custom", path: normalizedActiveCustomIconPath });
+      }
+    }
+
+    return deduped;
+  }, [
+    activeProfile.icon,
+    availableIconValues,
+    featuredCustomIcons,
+    featuredIcons,
+    normalizedActiveCustomIconPath,
+    normalizedCustomProfileIcons,
+  ]);
+
   const toggleFeaturedIcon = (icon: ExportProfileIcon) => {
     if (featuredIcons.includes(icon)) {
-      saveFeaturedIcons(featuredIcons.filter((item) => item !== icon));
+      saveFeaturedIcons(
+        featuredIcons.filter((item) => item !== icon),
+        featuredCustomIcons
+      );
       return;
     }
-    if (featuredIcons.length >= MAX_FEATURED_ICONS) return;
-    saveFeaturedIcons([...featuredIcons, icon]);
+    if (featuredIcons.length + featuredCustomIcons.length >= MAX_FEATURED_ICONS) return;
+    saveFeaturedIcons([...featuredIcons, icon], featuredCustomIcons);
+  };
+
+  const toggleFeaturedCustomIcon = (iconPath: string) => {
+    const normalizedPath = normalizeIconPath(iconPath);
+    if (!normalizedPath) return;
+    if (featuredCustomIcons.includes(normalizedPath)) {
+      saveFeaturedIcons(
+        featuredIcons,
+        featuredCustomIcons.filter((item) => item !== normalizedPath)
+      );
+      return;
+    }
+    if (featuredIcons.length + featuredCustomIcons.length >= MAX_FEATURED_ICONS) return;
+    saveFeaturedIcons(featuredIcons, [...featuredCustomIcons, normalizedPath]);
   };
 
   useEffect(() => {
@@ -228,14 +350,49 @@ export default function ExportSection() {
     try {
       const raw = window.localStorage.getItem(FEATURED_PROFILE_ICONS_KEY);
       if (!raw) return;
-      const parsed = JSON.parse(raw) as ExportProfileIcon[];
-      if (!Array.isArray(parsed)) return;
-      const valid = parsed.filter((icon) => availableIconValues.includes(icon)).slice(0, MAX_FEATURED_ICONS);
-      setFeaturedIcons(valid);
+      const parsed = JSON.parse(raw) as PersistedFeaturedIcons | ExportProfileIcon[];
+      const parsedBuiltIn = Array.isArray(parsed)
+        ? parsed
+        : parsed && typeof parsed === "object" && Array.isArray(parsed.builtIn)
+          ? parsed.builtIn
+          : [];
+      const parsedCustom =
+        !Array.isArray(parsed) &&
+        parsed &&
+        typeof parsed === "object" &&
+        Array.isArray(parsed.custom)
+          ? parsed.custom
+          : [];
+
+      const builtInSeen = new Set<ExportProfileIcon>();
+      const customSeen = new Set<string>();
+      const validBuiltIn: ExportProfileIcon[] = [];
+      const validCustom: string[] = [];
+
+      for (const icon of parsedBuiltIn) {
+        if (!availableIconValues.includes(icon) || builtInSeen.has(icon)) continue;
+        builtInSeen.add(icon);
+        validBuiltIn.push(icon);
+        if (validBuiltIn.length >= MAX_FEATURED_ICONS) break;
+      }
+
+      const remainingSlots = Math.max(0, MAX_FEATURED_ICONS - validBuiltIn.length);
+      for (const iconPath of parsedCustom) {
+        const normalizedPath = normalizeIconPath(iconPath);
+        if (!normalizedPath || !normalizedCustomProfileIcons.includes(normalizedPath) || customSeen.has(normalizedPath)) {
+          continue;
+        }
+        customSeen.add(normalizedPath);
+        validCustom.push(normalizedPath);
+        if (validCustom.length >= remainingSlots) break;
+      }
+
+      setFeaturedIcons(validBuiltIn);
+      setFeaturedCustomIcons(validCustom);
     } catch {
       // Ignore invalid persisted values.
     }
-  }, [availableIconValues]);
+  }, [availableIconValues, normalizedCustomProfileIcons]);
 
   useEffect(() => {
     if (!showIconPicker) return;
@@ -349,6 +506,70 @@ export default function ExportSection() {
     updateActiveProfile({ codec: options[0]?.value ?? activeProfile.codec });
   };
 
+  const handlePickCustomIcon = async () => {
+    const selected = await open({
+      multiple: false,
+      filters: [{ name: "Image", extensions: ICON_FILE_EXTENSIONS }],
+    });
+
+    if (!selected || typeof selected !== "string") return;
+    setSourceIconPath(selected);
+    setIconToCrop(convertFileSrc(selected));
+    setShowIconPicker(false);
+  };
+
+  const handleDeleteCustomIcon = async (iconPath: string) => {
+    const normalizedPath = normalizeIconPath(iconPath);
+    try {
+      await invoke("delete_profile_icon_file", { iconPath });
+    } catch (error) {
+      console.warn("Failed to delete custom profile icon file:", error);
+    } finally {
+      if (featuredCustomIcons.includes(normalizedPath)) {
+        saveFeaturedIcons(
+          featuredIcons,
+          featuredCustomIcons.filter((item) => item !== normalizedPath)
+        );
+      }
+      removeCustomProfileIcon(iconPath);
+    }
+  };
+
+  const handleCustomIconCropComplete = async (cropData: CropModalPayload) => {
+    if (!sourceIconPath) return;
+
+    try {
+      const iconId = `${activeProfile.id}_${Date.now()}`;
+      const storedPath = await invoke<string>("crop_and_save_profile_icon", {
+        sourcePath: sourceIconPath,
+        iconId,
+        crop: {
+          x: cropData.x,
+          y: cropData.y,
+          width: cropData.width,
+          height: cropData.height,
+          rotation: cropData.rotation,
+          flip_h: cropData.flip.horizontal,
+          flip_v: cropData.flip.vertical,
+        },
+      });
+
+      const normalizedStoredPath = storedPath.split("?")[0];
+      const stampedPath = `${normalizedStoredPath}?t=${Date.now()}`;
+
+      addCustomProfileIcon(stampedPath);
+      updateActiveProfile({
+        icon: "custom",
+        customIconPath: stampedPath,
+      });
+    } catch (error) {
+      console.error("Failed to crop and save profile icon:", error);
+    } finally {
+      setIconToCrop(null);
+      setSourceIconPath(null);
+    }
+  };
+
   return (
     <section className="panel export-settings-panel">
       <h3>Export</h3>
@@ -418,29 +639,69 @@ export default function ExportSection() {
         control={
           <div className="profile-icon-control-inline" ref={iconPickerRef}>
             <div className="profile-icon-inline-list">
-              {inlineVisibleIcons.map((iconValue) => {
+              {inlineVisibleIconItems.map((item) => {
+                if (item.type === "builtin") {
+                  return (
+                    <button
+                      key={`builtin-${item.value}`}
+                      type="button"
+                      className={`profile-icon-button${activeProfile.icon === item.value ? " active" : ""}`}
+                      title={item.value}
+                      onClick={() => updateActiveProfile({ icon: item.value })}
+                    >
+                      {renderProfileIcon({
+                        icon: item.value,
+                        customIconPath: item.value === "custom" ? activeProfile.customIconPath : null,
+                      })}
+                    </button>
+                  );
+                }
+
+                const isActiveCustom =
+                  activeProfile.icon === "custom" && normalizedActiveCustomIconPath === item.path;
                 return (
-                  <button
-                    key={iconValue}
-                    type="button"
-                    className={`profile-icon-button${activeProfile.icon === iconValue ? " active" : ""}`}
-                    title={iconValue}
-                    onClick={() => updateActiveProfile({ icon: iconValue })}
-                  >
-                    {renderProfileIcon({
-                      icon: iconValue,
-                      customIconPath: iconValue === "custom" ? activeProfile.customIconPath : null,
-                    })}
-                  </button>
+                  <div key={`custom-${item.path}`} className="profile-custom-icon-slot">
+                    <button
+                      type="button"
+                      className={`profile-icon-button${isActiveCustom ? " active" : ""}`}
+                      title="Use custom icon"
+                      onClick={() =>
+                        updateActiveProfile({
+                          icon: "custom",
+                          customIconPath: `${item.path}?t=${Date.now()}`,
+                        })
+                      }
+                    >
+                      <img
+                        className="profile-custom-icon"
+                        src={convertFileSrc(item.path)}
+                        alt="Custom profile icon"
+                      />
+                    </button>
+                    <button
+                      type="button"
+                      className="profile-icon-delete"
+                      title="Delete custom icon"
+                      aria-label="Delete custom icon"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        void handleDeleteCustomIcon(item.path);
+                      }}
+                    >
+                      ×
+                    </button>
+                  </div>
                 );
               })}
             </div>
             <button
               type="button"
               className={`profile-icon-button profile-upload-tile${activeProfile.icon === "custom" ? " active" : ""}`}
-              title="Use custom icon slot"
-              aria-label="Use custom icon slot"
-              onClick={() => updateActiveProfile({ icon: "custom" })}
+              title="Add custom icon"
+              aria-label="Add custom icon"
+              onClick={() => {
+                void handlePickCustomIcon();
+              }}
             >
               <FaPlus />
             </button>
@@ -460,7 +721,7 @@ export default function ExportSection() {
                   <h3>Choose Profile Icon</h3>
                 </div>
                 <div className="profile-icon-grid">
-                  {EXPORT_PROFILE_ICON_OPTIONS.map((option) => {
+                  {pickerIconOptions.map((option) => {
                     const pinned = featuredIcons.includes(option.value);
                     return (
                       <div key={option.value} className="profile-icon-tile">
@@ -473,10 +734,7 @@ export default function ExportSection() {
                             setShowIconPicker(false);
                           }}
                         >
-                          {renderProfileIcon({
-                            icon: option.value,
-                            customIconPath: option.value === "custom" ? activeProfile.customIconPath : null,
-                          })}
+                          {renderProfileIcon({ icon: option.value, customIconPath: null })}
                         </button>
                         <button
                           type="button"
@@ -489,6 +747,73 @@ export default function ExportSection() {
                           }}
                         >
                           <FaThumbtack />
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+                <div className="profile-icon-modal-header">
+                  <h3>Custom Icons</h3>
+                </div>
+                <div className="profile-icon-grid">
+                  <button
+                    type="button"
+                    className="profile-icon-button profile-upload-tile"
+                    title="Add custom icon"
+                    aria-label="Add custom icon"
+                    onClick={() => {
+                      void handlePickCustomIcon();
+                    }}
+                  >
+                    <FaPlus />
+                  </button>
+                  {normalizedCustomProfileIcons.map((iconPath) => {
+                    const isActiveCustom =
+                      activeProfile.icon === "custom" && normalizedActiveCustomIconPath === iconPath;
+                    const pinnedCustom = featuredCustomIcons.includes(iconPath);
+                    return (
+                      <div key={`popover-${iconPath}`} className="profile-custom-icon-slot">
+                        <button
+                          type="button"
+                          className={`profile-icon-button${isActiveCustom ? " active" : ""}`}
+                          title="Use custom icon"
+                          onClick={() => {
+                            updateActiveProfile({
+                              icon: "custom",
+                              customIconPath: `${iconPath}?t=${Date.now()}`,
+                            });
+                            setShowIconPicker(false);
+                          }}
+                        >
+                          <img
+                            className="profile-custom-icon"
+                            src={convertFileSrc(iconPath)}
+                            alt="Custom profile icon"
+                          />
+                        </button>
+                        <button
+                          type="button"
+                          className={`profile-icon-pin profile-icon-pin-custom${pinnedCustom ? " pinned" : ""}`}
+                          title={pinnedCustom ? "Unpin from quick icons" : "Pin to quick icons"}
+                          aria-label={pinnedCustom ? "Unpin from quick icons" : "Pin to quick icons"}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            toggleFeaturedCustomIcon(iconPath);
+                          }}
+                        >
+                          <FaThumbtack />
+                        </button>
+                        <button
+                          type="button"
+                          className="profile-icon-delete"
+                          title="Delete custom icon"
+                          aria-label="Delete custom icon"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            void handleDeleteCustomIcon(iconPath);
+                          }}
+                        >
+                          ×
                         </button>
                       </div>
                     );
@@ -666,6 +991,22 @@ export default function ExportSection() {
               onChange={(container) => updateActiveProfile({ container })}
             />
           }
+        />
+      )}
+
+      {iconToCrop && (
+        <CropModal
+          image={iconToCrop}
+          title="Crop Profile Icon"
+          initialAspect={1}
+          hint="Use a square crop for best icon quality"
+          onClose={() => {
+            setIconToCrop(null);
+            setSourceIconPath(null);
+          }}
+          onCropComplete={(data) => {
+            void handleCustomIconCropComplete(data);
+          }}
         />
       )}
     </section>

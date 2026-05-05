@@ -93,7 +93,13 @@ pub(super) async fn run_merge_export(
     ];
 
     if runtime.remux_workflow {
-        args.extend(["-c:v".into(), "copy".into(), "-c:a".into(), "copy".into()]);
+        args.extend([
+            "-c:v".into(),
+            "copy".into(),
+            "-c:a".into(),
+            "copy".into(),
+            "-copyinkf".into(),
+        ]);
     } else {
         append_video_encode_args(&mut args, runtime.export_options.as_ref());
         append_audio_encode_args(&mut args, runtime.export_options.as_ref());

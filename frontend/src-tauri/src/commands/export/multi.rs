@@ -7,7 +7,7 @@ use crate::utils::logging::console_log;
 use crate::utils::paths::file_name_only;
 
 use super::encode::ffmpeg_reencode_args;
-use super::probe::{ffprobe_duration_ms, is_ae_copy_safe};
+use super::probe::{clip_starts_with_keyframe, ffprobe_duration_ms, is_ae_copy_safe};
 use super::progress::{
     emit_export_progress, export_canceled_error, is_canceled_error_text, is_export_cancel_requested,
 };
@@ -25,6 +25,7 @@ fn build_copy_args(input: &str, output: &str) -> Vec<String> {
         "make_zero".into(),
         "-c".into(),
         "copy".into(),
+        "-copyinkf".into(),
         "-movflags".into(),
         "+faststart".into(),
         output.to_string(),
@@ -261,7 +262,20 @@ pub(super) async fn run_multi_export(
         }
 
         let copy_safe = if runtime.remux_workflow {
-            true
+            match clip_starts_with_keyframe(runtime.ffprobe.clone(), clip.clone()).await {
+                Ok(Some(true)) => true,
+                Ok(Some(false)) => {
+                    console_log(
+                        "EXPORT|remux",
+                        &format!(
+                            "clip starts without keyframe; fallback re-encode (input={})",
+                            file_name_only(clip)
+                        ),
+                    );
+                    false
+                }
+                Ok(None) | Err(_) => true,
+            }
         } else if runtime.force_encode_workflow {
             false
         } else {

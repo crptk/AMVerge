@@ -176,11 +176,13 @@
     flex-direction: column;
     gap: 6px;
     flex: 1;
+    min-width: 0;
 }
 
 .export-profile-group {
     flex: 0 1 auto;
     width: min(320px, 100%);
+    min-width: 0;
 }
 
 .export-label {
@@ -349,10 +351,12 @@
     display: flex;
     gap: 8px;
     width: 100%;
+    align-items: stretch;
 }
 
 .export-dir-input {
     flex: 1;
+    min-width: 0;
     height: 36px;
     padding: 0 12px;
     background: rgba(255, 255, 255, 0.05);
@@ -837,5 +841,22 @@
         letter-spacing: 0.6px;
         gap: 4px;
         padding: 6px 4px;
+    }
+}
+
+@media (max-width: 480px) {
+    .export-dir-row {
+        flex-direction: column;
+    }
+
+    .export-dir-browse {
+        width: 100% !important;
+        min-width: 100%;
+    }
+
+    .export-main-button {
+        font-size: 0.92rem !important;
+        letter-spacing: 0.7px;
+        gap: 8px;
     }
 }
