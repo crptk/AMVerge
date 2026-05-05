@@ -5,6 +5,9 @@ import "react-image-crop/dist/ReactCrop.css";
 
 type CropModalProps = {
   image: string;
+  title?: string;
+  initialAspect?: number;
+  hint?: string;
   onClose: () => void;
   onCropComplete: (data: {
     x: number;
@@ -23,12 +26,19 @@ const ASPECT_RATIOS = [
   { label: "Free", value: undefined },
 ];
 
-export default function CropModal({ image, onClose, onCropComplete }: CropModalProps) {
+export default function CropModal({
+  image,
+  title = "Crop & Transform",
+  initialAspect = 16 / 9,
+  hint = "Drag corners to resize freely",
+  onClose,
+  onCropComplete,
+}: CropModalProps) {
   const [crop, setCrop] = useState<Crop>();
   const [completedCrop, setCompletedCrop] = useState<PixelCrop>();
   const [zoom, setZoom] = useState(1);
   const [rotation, setRotation] = useState(0);
-  const [aspect, setAspect] = useState<number | undefined>(16 / 9);
+  const [aspect, setAspect] = useState<number | undefined>(initialAspect);
   const [flip, setFlip] = useState({ horizontal: false, vertical: false });
   const [customRes, setCustomRes] = useState({ width: 0, height: 0 });
   const [loading, setLoading] = useState(false);
@@ -69,11 +79,11 @@ export default function CropModal({ image, onClose, onCropComplete }: CropModalP
   const handleReset = () => {
     setZoom(1);
     setRotation(0);
-    setAspect(16 / 9);
+    setAspect(initialAspect);
     setFlip({ horizontal: false, vertical: false });
     if (imgRef.current) {
       const { width, height } = imgRef.current;
-      setCrop(centerCrop(makeAspectCrop({ unit: "%", width: 90 }, 16 / 9, width, height), width, height));
+      setCrop(centerCrop(makeAspectCrop({ unit: "%", width: 90 }, initialAspect || 1, width, height), width, height));
     }
   };
 
@@ -87,17 +97,31 @@ export default function CropModal({ image, onClose, onCropComplete }: CropModalP
   };
 
   const handleSave = async () => {
-    if (!completedCrop || !imgRef.current || loading) return;
+    if (!imgRef.current || loading) return;
+
+    const activeCrop = completedCrop
+      ? completedCrop
+      : crop
+        ? {
+            unit: "px" as const,
+            x: crop.unit === "%" ? (crop.x / 100) * imgRef.current.width : crop.x,
+            y: crop.unit === "%" ? (crop.y / 100) * imgRef.current.height : crop.y,
+            width: crop.unit === "%" ? (crop.width / 100) * imgRef.current.width : crop.width,
+            height: crop.unit === "%" ? (crop.height / 100) * imgRef.current.height : crop.height,
+          }
+        : null;
+
+    if (!activeCrop) return;
 
     setLoading(true);
     const scaleX = imgRef.current.naturalWidth / imgRef.current.width;
     const scaleY = imgRef.current.naturalHeight / imgRef.current.height;
 
     onCropComplete({
-      x: completedCrop.x * scaleX,
-      y: completedCrop.y * scaleY,
-      width: completedCrop.width * scaleX,
-      height: completedCrop.height * scaleY,
+      x: activeCrop.x * scaleX,
+      y: activeCrop.y * scaleY,
+      width: activeCrop.width * scaleX,
+      height: activeCrop.height * scaleY,
       rotation,
       flip,
     });
@@ -109,7 +133,7 @@ export default function CropModal({ image, onClose, onCropComplete }: CropModalP
         <div className="crop-modal-header">
           <div className="header-left">
             <FaExpand className="header-icon" />
-            <h3>Crop & Transform</h3>
+            <h3>{title}</h3>
           </div>
           <button className="reset-btn" onClick={handleReset} title="Reset all changes">
             <FaSyncAlt /> Reset
@@ -224,7 +248,7 @@ export default function CropModal({ image, onClose, onCropComplete }: CropModalP
         </div>
 
         <div className="crop-modal-footer">
-          <p className="crop-hint">Drag corners to resize freely</p>
+          <p className="crop-hint">{hint}</p>
           <div className="footer-actions">
             <button className="footer-btn cancel" onClick={onClose} disabled={loading}>Cancel</button>
             <button className="footer-btn primary" onClick={handleSave} disabled={loading}>

@@ -7,11 +7,6 @@ import {
   FaFolder,
   FaRocket,
   FaTags,
-  FaVideo,
-  FaRandom,
-  FaFilm,
-  FaLayerGroup,
-  FaMicrochip,
 } from "react-icons/fa";
 import Dropdown from "../common/Dropdown";
 import { useAppStateStore } from "../../stores/appStore.ts";
@@ -19,11 +14,11 @@ import { useAppPersistedStore } from "../../stores/appStore.ts";
 import { useUIStateStore } from "../../stores/UIStore.ts";
 import { useGeneralSettingsStore } from "../../stores/settingsStore.ts";
 import useImportExport from "../../hooks/useImportExport";
+import { renderProfileIcon } from "../../features/export/profileIconUtils.tsx";
 import {
   getActiveExportProfile,
   getExportProfileSummary,
   supportsClipMerge,
-  type ExportProfileIcon,
 } from "../../features/export/profiles.ts";
 type PreviewContainerProps = {
   // Program (Timeline)
@@ -35,15 +30,6 @@ type PreviewContainerProps = {
   sourceClip: string | null;
   sourceClipThumbnail: string | null;
   onTimeUpdate?: (time: number) => void;
-};
-
-const PROFILE_ICON_COMPONENTS: Record<ExportProfileIcon, typeof FaVideo> = {
-  video: FaVideo,
-  remux: FaRandom,
-  premiere: FaFilm,
-  after_effects: FaLayerGroup,
-  resolve: FaMicrochip,
-  capcut: FaRocket,
 };
 
 export default function PreviewContainer (props: PreviewContainerProps) {
@@ -78,7 +64,7 @@ export default function PreviewContainer (props: PreviewContainerProps) {
         description: supportsClipMerge(profile.workflow)
           ? `${getExportProfileSummary(profile)} • ${profile.mergeEnabled ? "MERGE" : "CLIPS"}`
           : getExportProfileSummary(profile),
-        icon: React.createElement(PROFILE_ICON_COMPONENTS[profile.icon]),
+        icon: renderProfileIcon(profile),
       })),
     [generalSettings.exportProfiles]
   );
@@ -205,7 +191,7 @@ export default function PreviewContainer (props: PreviewContainerProps) {
               options={exportProfileOptions}
               value={activeExportProfile.id}
               onChange={setActiveExportProfileId}
-              preferredDirection="up"
+              preferredDirection="down"
             />
           </div>
         </div>

@@ -27,7 +27,6 @@ export default function Dropdown<T extends string | number>({
 }: DropdownProps<T>) {
   const [isOpen, setIsOpen] = useState(false);
   const [openUp, setOpenUp] = useState(false);
-  const [menuMaxHeight, setMenuMaxHeight] = useState<number>(220);
   const containerRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -71,12 +70,7 @@ export default function Dropdown<T extends string | number>({
       if (preferredDirection === "up") shouldOpenUp = true;
       if (preferredDirection === "down") shouldOpenUp = false;
 
-      const availableSpace = Math.max(0, Math.floor(shouldOpenUp ? spaceAbove : spaceBelow));
-      const computedMaxHeight =
-        availableSpace > 0 ? Math.min(preferredHeight, availableSpace) : preferredHeight;
-
       setOpenUp(shouldOpenUp);
-      setMenuMaxHeight(Math.max(1, computedMaxHeight));
     };
 
     recalculateDirection();
@@ -126,7 +120,7 @@ export default function Dropdown<T extends string | number>({
       </div>
 
       {isOpen && (
-        <div ref={menuRef} className="dropdown-menu" style={{ maxHeight: `${menuMaxHeight}px` }}>
+        <div ref={menuRef} className="dropdown-menu">
           {options.map((option) => (
             <div
               key={option.value}

@@ -57,9 +57,22 @@ def crop_image(source_path, dest_path, crop_data):
                     img = ImageOps.flip(img)
                 
                 img = img.crop((x, y, x + w, y + h))
-                if img.mode in ("RGBA", "P"):
-                    img = img.convert("RGB")
-                img.save(dest_path, "JPEG", quality=95)
+                ext = os.path.splitext(dest_path)[1].lower()
+
+                if ext in (".jpg", ".jpeg"):
+                    if img.mode in ("RGBA", "P", "LA"):
+                        img = img.convert("RGB")
+                    img.save(dest_path, "JPEG", quality=95)
+                elif ext == ".png":
+                    if img.mode == "P":
+                        img = img.convert("RGBA")
+                    img.save(dest_path, "PNG", optimize=True)
+                elif ext == ".gif":
+                    if img.mode not in ("P", "L"):
+                        img = img.convert("P", palette=Image.ADAPTIVE)
+                    img.save(dest_path, "GIF", optimize=True)
+                else:
+                    img.save(dest_path)
             
             return True
     except Exception as e:

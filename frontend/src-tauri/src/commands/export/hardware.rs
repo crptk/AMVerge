@@ -12,21 +12,35 @@ fn infer_nvidia_profile_from_name(gpu_name: &str) -> String {
     if name.contains("rtx 50") || name.contains("blackwell") {
         return "blackwell".to_string();
     }
-    if name.contains("rtx 40") || name.contains(" ada") {
+    if name.contains("rtx 40")
+        || name.contains(" ada")
+        || name.contains(" l40")
+        || name.contains(" l4")
+    {
         return "ada".to_string();
     }
     if name.contains("rtx 30")
-        || name.contains("rtx 20")
+        || name.contains("rtx a2000")
+        || name.contains("rtx a3000")
+        || name.contains("rtx a4000")
+        || name.contains("rtx a4500")
+        || name.contains("rtx a5000")
+        || name.contains("rtx a5500")
+        || name.contains("rtx a6000")
         || name.contains("a10")
         || name.contains("a16")
         || name.contains("a2")
+        || name.contains("a30")
+        || name.contains("a40")
         || name.contains("ampere")
     {
         return "ampere".to_string();
     }
-    if name.contains("gtx 16")
+    if name.contains("rtx 20")
+        || name.contains("gtx 16")
         || name.contains("titan rtx")
         || name.contains("quadro rtx")
+        || name.contains("t4")
         || name.contains("turing")
     {
         return "turing".to_string();

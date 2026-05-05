@@ -18,6 +18,7 @@ export type GeneralSettings = {
     exportFormat: "mp4" | "mkv" | "mov" | "avi" | "xml";
     exportPath: string | null;
     exportProfiles: ExportProfile[];
+    customProfileIcons: string[];
     activeExportProfileId: string;
     quickDownloadProfileId: string;
     audioPlaybackHover: boolean;
@@ -38,6 +39,8 @@ export type GeneralSettingsStore = GeneralSettings & {
     addExportProfile: () => void;
     deleteExportProfile: (profileId: string) => void;
     updateExportProfile: (profileId: string, changes: Partial<ExportProfile>) => void;
+    addCustomProfileIcon: (iconPath: string) => void;
+    removeCustomProfileIcon: (iconPath: string) => void;
     setAudioPlaybackHover: (enabled: boolean) => void;
     setPlaybackVolume: (volume: number) => void;
     setDiscordRPCEnabled: (enabled: boolean) => void;
@@ -53,6 +56,7 @@ export const DEFAULT_GENERAL_SETTINGS: GeneralSettings = {
     exportFormat: "mp4",
     exportPath: null,
     exportProfiles: DEFAULT_EXPORT_PROFILES.map((profile) => ({ ...profile })),
+    customProfileIcons: [],
     activeExportProfileId: DEFAULT_EXPORT_PROFILE_ID,
     quickDownloadProfileId: DEFAULT_EXPORT_PROFILE_ID,
     audioPlaybackHover: false,
@@ -126,6 +130,40 @@ export const useGeneralSettingsStore = create<GeneralSettingsStore>()(
                             : profile
                     ),
                 })),
+            addCustomProfileIcon: (iconPath) =>
+                set((state) => {
+                    const normalizedPath = iconPath.split("?")[0];
+                    if (!normalizedPath) return {};
+                    const alreadyExists = state.customProfileIcons.some(
+                        (path) => path.split("?")[0] === normalizedPath
+                    );
+                    if (alreadyExists) return {};
+                    return { customProfileIcons: [...state.customProfileIcons, normalizedPath] };
+                }),
+            removeCustomProfileIcon: (iconPath) =>
+                set((state) => {
+                    const normalizedPath = iconPath.split("?")[0];
+                    const customProfileIcons = state.customProfileIcons.filter(
+                        (path) => path.split("?")[0] !== normalizedPath
+                    );
+
+                    const exportProfiles = state.exportProfiles.map((profile) => {
+                        const profileCustomPath = (profile.customIconPath || "").split("?")[0];
+                        if (profile.icon === "custom" && profileCustomPath === normalizedPath) {
+                            return normalizeExportProfile({
+                                ...profile,
+                                icon: "video",
+                                customIconPath: null,
+                            });
+                        }
+                        return profile;
+                    });
+
+                    return {
+                        customProfileIcons,
+                        exportProfiles,
+                    };
+                }),
             setAudioPlaybackHover: (enabled) =>
                 set({ audioPlaybackHover: enabled }),
             setPlaybackVolume: (volume) => set({ playbackVolume: volume }),

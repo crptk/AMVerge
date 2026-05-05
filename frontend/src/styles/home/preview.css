@@ -261,27 +261,41 @@
 }
 
 .export-profile-select .dropdown-item-content {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
+    display: grid;
+    grid-template-columns: 26px minmax(0, 1fr);
+    grid-template-areas:
+        "icon label"
+        "icon desc";
+    column-gap: 6px;
+    row-gap: 2px;
+    align-items: center;
+}
+
+.export-profile-select .dropdown-item-main {
+    display: contents;
 }
 
 .export-profile-select .dropdown-item-label {
+    grid-area: label;
     font-size: 0.85rem;
     letter-spacing: 0.5px;
 }
 
 .export-profile-select .dropdown-item-description {
-    font-size: 0.68rem;
+    grid-area: desc;
+    font-size: 0.74rem;
     color: rgba(255, 255, 255, 0.58);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    line-height: 1.2;
+    line-height: 1.45;
+    letter-spacing: 0.22px;
 }
 
 .export-profile-select .dropdown-item-icon {
+    grid-area: icon;
     align-self: center;
+    justify-self: center;
 }
 
 .export-profile-select .dropdown-item {
@@ -290,13 +304,13 @@
 
 .export-profile-select .dropdown-item.active,
 .export-format-select .dropdown-item.active {
-    color: white !important;
+    color: var(--selector-active-fg) !important;
 }
 
 .export-profile-select .dropdown-item.active .dropdown-item-icon {
-    background: rgba(var(--accent-rgb), 0.22) !important;
-    border-color: rgba(var(--accent-rgb), 0.42) !important;
-    color: rgba(255, 255, 255, 0.95) !important;
+    background: rgb(0 240 122 / 0.12) !important;
+    border-color: rgb(0 240 122 / 0.38) !important;
+    color: var(--selector-active-fg) !important;
 }
 
 .export-profile-select .dropdown-menu {
@@ -801,7 +815,9 @@
     }
 
     .export-profile-select .dropdown-item-description {
-        font-size: 0.66rem;
+        font-size: 0.7rem;
+        line-height: 1.45;
+        letter-spacing: 0.2px;
     }
 
     .export-main-button {

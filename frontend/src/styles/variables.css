@@ -3,6 +3,10 @@
 :root {
     --accent: #22c55e;
     --accent-rgb: 34 197 94;
+    --selector-active-bg: #003a23;
+    --selector-active-fg: #00f07a;
+    --selector-active-border: #0b8f56;
+    --selector-active-desc: rgba(0, 240, 122, 0.82);
     --app-bg-image: none;
     --app-bg-opacity: 1;
     --app-bg-blur: 0px;

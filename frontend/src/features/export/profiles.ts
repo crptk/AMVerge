@@ -67,7 +67,13 @@ export type ExportProfileIcon =
   | "premiere"
   | "after_effects"
   | "resolve"
-  | "capcut";
+  | "capcut"
+  | "h264"
+  | "h265"
+  | "prores"
+  | "dnxhr"
+  | "uncompressed"
+  | "custom";
 export type NvidiaEncoderProfile =
   | "unknown"
   | "blackwell"
@@ -82,6 +88,7 @@ export type ExportProfile = {
   id: string;
   name: string;
   icon: ExportProfileIcon;
+  customIconPath?: string | null;
   workflow: ExportWorkflow;
   editorTarget: ExportEditorTarget;
   codec: ExportCodec;
@@ -163,21 +170,46 @@ export const EXPORT_HARDWARE_OPTIONS: { value: ExportHardwareMode; label: string
 ];
 
 export const EXPORT_EDITOR_TARGET_OPTIONS: { value: ExportEditorTarget; label: string }[] = [
-  { value: "none", label: "No editor target" },
   { value: "premiere_pro", label: "Premiere Pro" },
   { value: "after_effects", label: "After Effects" },
   { value: "davinci_resolve", label: "DaVinci Resolve" },
-  { value: "capcut", label: "CapCut media import" },
+  { value: "capcut", label: "CapCut" },
 ];
 
 export const EXPORT_PROFILE_ICON_OPTIONS: { value: ExportProfileIcon; label: string }[] = [
   { value: "video", label: "Video" },
   { value: "remux", label: "Remux" },
+  { value: "h264", label: "H.264" },
+  { value: "h265", label: "H.265" },
+  { value: "prores", label: "ProRes" },
+  { value: "dnxhr", label: "DNxHR" },
+  { value: "uncompressed", label: "Uncompressed" },
   { value: "premiere", label: "Premiere" },
   { value: "after_effects", label: "After Effects" },
   { value: "resolve", label: "Resolve" },
   { value: "capcut", label: "CapCut" },
+  { value: "custom", label: "Custom" },
 ];
+
+const EXPORT_PROFILE_ICON_VALUES: ExportProfileIcon[] = [
+  "video",
+  "remux",
+  "premiere",
+  "after_effects",
+  "resolve",
+  "capcut",
+  "h264",
+  "h265",
+  "prores",
+  "dnxhr",
+  "uncompressed",
+  "custom",
+];
+
+const LEGACY_PROFILE_ICON_MAP: Record<string, ExportProfileIcon> = {
+  av1: "h265",
+  cineform: "uncompressed",
+};
 
 export const NVIDIA_ENCODER_PROFILE_OPTIONS: {
   value: NvidiaEncoderProfile;
@@ -216,7 +248,7 @@ export const NVIDIA_ENCODER_PROFILE_OPTIONS: {
   {
     value: "ampere",
     label: "GeForce RTX 30 / Ampere",
-    maxParallelExports: 8,
+    maxParallelExports: 12,
     supportedCodecs: ["h264_main", "h264_high", "h265_main", "h265_main10"],
   },
   {
@@ -267,7 +299,7 @@ export const DEFAULT_EXPORT_PROFILES: ExportProfile[] = [
   {
     id: "h265-main10-master",
     name: "H.265 Main10",
-    icon: "video",
+    icon: "h265",
     workflow: "video_encode",
     editorTarget: "none",
     codec: "h265_main10",
@@ -281,7 +313,7 @@ export const DEFAULT_EXPORT_PROFILES: ExportProfile[] = [
   {
     id: "prores-422-hq-master",
     name: "ProRes 422 HQ",
-    icon: "premiere",
+    icon: "prores",
     workflow: "video_encode",
     editorTarget: "none",
     codec: "prores_422_hq",
@@ -295,7 +327,7 @@ export const DEFAULT_EXPORT_PROFILES: ExportProfile[] = [
   {
     id: "dnxhr-hqx-master",
     name: "DNxHR HQX",
-    icon: "resolve",
+    icon: "dnxhr",
     workflow: "video_encode",
     editorTarget: "none",
     codec: "dnxhr_hqx",
@@ -431,6 +463,14 @@ export function coerceExportCodec(codec: string | undefined | null): ExportCodec
     return codec as ExportCodec;
   }
   return LEGACY_CODEC_MAP[codec] ?? "h264_high";
+}
+
+export function coerceExportProfileIcon(icon: string | undefined | null): ExportProfileIcon {
+  if (!icon) return "video";
+  if ((EXPORT_PROFILE_ICON_VALUES as string[]).includes(icon)) {
+    return icon as ExportProfileIcon;
+  }
+  return LEGACY_PROFILE_ICON_MAP[icon] ?? "video";
 }
 
 export function coerceExportAudioMode(audioMode: string | undefined | null): ExportAudioMode {
@@ -625,11 +665,19 @@ export function getActiveExportProfile(
 export function normalizeExportProfile(profile: ExportProfile): ExportProfile {
   const workflow: ExportWorkflow = profile.workflow || "video_encode";
   const codec = coerceExportCodec(profile.codec);
-  const editorTarget = usesEditorTarget(workflow)
+  const icon = coerceExportProfileIcon((profile.icon as string | undefined) ?? null);
+  const customIconPath =
+    typeof profile.customIconPath === "string" && profile.customIconPath.trim() !== ""
+      ? profile.customIconPath
+      : null;
+  let editorTarget: ExportEditorTarget = usesEditorTarget(workflow)
     ? profile.editorTarget && profile.editorTarget !== "none"
       ? profile.editorTarget
       : "premiere_pro"
     : "none";
+  if (workflow === "editor_original_xml" && editorTarget === "capcut") {
+    editorTarget = "premiere_pro";
+  }
 
   const nvidiaEncoderProfile = profile.nvidiaEncoderProfile || "unknown";
 
@@ -651,6 +699,8 @@ export function normalizeExportProfile(profile: ExportProfile): ExportProfile {
 
   const normalized: ExportProfile = {
     ...profile,
+    icon: icon === "custom" && !customIconPath ? "video" : icon,
+    customIconPath,
     workflow,
     codec,
     editorTarget,

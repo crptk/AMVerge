@@ -58,6 +58,12 @@ struct SceneClipDescriptor {
     extension: String,
 }
 
+type TimeBounds = (f64, f64);
+type IndexedTimeBounds = std::collections::BTreeMap<u32, TimeBounds>;
+
+const ORIGINAL_CUT_DEFAULT_SEQUENCE_NAME: &str = "AMVerge Original Cut";
+const ORIGINAL_CUT_MIN_SEGMENT_LEN_SEC: f64 = 1.0 / 30.0;
+
 fn normalize_editor_media_paths(media_paths: Vec<String>) -> Result<Vec<String>, String> {
     if media_paths.is_empty() {
         return Err("No exported media was provided for editor import.".to_string());
@@ -348,40 +354,81 @@ fn is_windows_process_running(image_name: &str) -> bool {
 }
 
 #[cfg(target_os = "windows")]
-fn summarize_windows_import_error(raw: &str) -> String {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum WindowsImportErrorKind {
+    Canceled,
+    NoWindow,
+    NoProject,
+    FocusFailed,
+    Waiting,
+    InvalidFilename,
+    ResolveBridgeUnavailable,
+    ResolveProjectMissing,
+    Unknown,
+}
+
+#[cfg(target_os = "windows")]
+fn classify_windows_import_error(raw: &str) -> WindowsImportErrorKind {
     if raw.contains("AMVERGE_CANCELED") {
-        return "AMVERGE_CANCELED: Auto-import canceled by user.".to_string();
+        return WindowsImportErrorKind::Canceled;
     }
     if raw.contains("AMVERGE_NO_WINDOW") {
-        return "AMVERGE_NO_WINDOW: Editor window not found yet.".to_string();
+        return WindowsImportErrorKind::NoWindow;
     }
     if raw.contains("AMVERGE_NO_PROJECT") {
-        return "AMVERGE_NO_PROJECT: No project is open yet.".to_string();
+        return WindowsImportErrorKind::NoProject;
     }
     if raw.contains("AMVERGE_FOCUS_FAILED") {
-        return "AMVERGE_FOCUS_FAILED: Could not bring editor window to the foreground."
-            .to_string();
+        return WindowsImportErrorKind::FocusFailed;
     }
     if raw.contains("AMVERGE_WAITING") {
-        return "AMVERGE_WAITING: Editor is still loading.".to_string();
+        return WindowsImportErrorKind::Waiting;
     }
     if raw.contains("AMVERGE_INVALID_FILENAME") {
-        return "AMVERGE_INVALID_FILENAME: Imported file path was rejected by the editor dialog."
-            .to_string();
+        return WindowsImportErrorKind::InvalidFilename;
     }
     if raw.contains("Could not connect to DaVinci Resolve") {
-        return "DaVinci Resolve scripting bridge did not connect. In Resolve, enable External scripting using Local (Preferences > System > General), then retry.".to_string();
+        return WindowsImportErrorKind::ResolveBridgeUnavailable;
     }
     if raw.contains("No Resolve project is open") {
-        return "No DaVinci Resolve project is open. Open/create a project in Resolve, then retry."
-            .to_string();
+        return WindowsImportErrorKind::ResolveProjectMissing;
     }
 
-    raw.lines()
-        .map(str::trim)
-        .find(|line| !line.is_empty())
-        .map(str::to_string)
-        .unwrap_or_else(|| "Unknown import error.".to_string())
+    WindowsImportErrorKind::Unknown
+}
+
+#[cfg(target_os = "windows")]
+fn summarize_windows_import_error(raw: &str) -> String {
+    match classify_windows_import_error(raw) {
+        WindowsImportErrorKind::Canceled => {
+            "AMVERGE_CANCELED: Auto-import canceled by user.".to_string()
+        }
+        WindowsImportErrorKind::NoWindow => {
+            "AMVERGE_NO_WINDOW: Editor window not found yet.".to_string()
+        }
+        WindowsImportErrorKind::NoProject => {
+            "AMVERGE_NO_PROJECT: No project is open yet.".to_string()
+        }
+        WindowsImportErrorKind::FocusFailed => {
+            "AMVERGE_FOCUS_FAILED: Could not bring editor window to the foreground.".to_string()
+        }
+        WindowsImportErrorKind::Waiting => "AMVERGE_WAITING: Editor is still loading.".to_string(),
+        WindowsImportErrorKind::InvalidFilename => {
+            "AMVERGE_INVALID_FILENAME: Imported file path was rejected by the editor dialog."
+                .to_string()
+        }
+        WindowsImportErrorKind::ResolveBridgeUnavailable => "DaVinci Resolve scripting bridge did not connect. In Resolve, enable External scripting using Local (Preferences > System > General), then retry.".to_string(),
+        WindowsImportErrorKind::ResolveProjectMissing => {
+            "No DaVinci Resolve project is open. Open/create a project in Resolve, then retry."
+                .to_string()
+        }
+        WindowsImportErrorKind::Unknown => raw
+            .lines()
+            .map(str::trim)
+            .find(|line| !line.is_empty())
+            .map(str::to_string)
+            .unwrap_or_else(|| "Unknown import error.".to_string()),
+    }
 }
 
 #[cfg(target_os = "windows")]
@@ -390,65 +437,67 @@ fn should_retry_windows_import_error(
     attempt_index: u32,
     launched_this_call: bool,
 ) -> bool {
-    if raw.contains("AMVERGE_INVALID_FILENAME") {
-        return false;
+    match classify_windows_import_error(raw) {
+        WindowsImportErrorKind::NoWindow
+        | WindowsImportErrorKind::NoProject
+        | WindowsImportErrorKind::FocusFailed
+        | WindowsImportErrorKind::Waiting => {
+            let max_attempts = if launched_this_call { 12 } else { 4 };
+            attempt_index + 1 < max_attempts
+        }
+        // Resolve can take a bit of time to expose scripting after launch.
+        WindowsImportErrorKind::ResolveBridgeUnavailable => launched_this_call && attempt_index < 8,
+        WindowsImportErrorKind::Canceled
+        | WindowsImportErrorKind::InvalidFilename
+        | WindowsImportErrorKind::ResolveProjectMissing
+        | WindowsImportErrorKind::Unknown => false,
     }
-
-    if raw.contains("AMVERGE_NO_WINDOW")
-        || raw.contains("AMVERGE_NO_PROJECT")
-        || raw.contains("AMVERGE_FOCUS_FAILED")
-        || raw.contains("AMVERGE_WAITING")
-    {
-        let max_attempts = if launched_this_call { 12 } else { 4 };
-        return attempt_index + 1 < max_attempts;
-    }
-
-    // Resolve can take a bit of time to expose scripting after launch.
-    if raw.contains("Could not connect to DaVinci Resolve") {
-        return launched_this_call && attempt_index < 8;
-    }
-
-    false
 }
 
 #[cfg(target_os = "windows")]
 fn import_hint_for_error(editor_name: &str, raw: &str) -> String {
-    if raw.contains("AMVERGE_CANCELED") {
-        return "Canceling auto-import...".to_string();
-    }
-    if raw.contains("AMVERGE_NO_WINDOW") {
-        return format!("{editor_name} is still loading");
-    }
-    if raw.contains("AMVERGE_NO_PROJECT") {
-        if editor_name == "After Effects" {
-            return "Select an existing .aep project from the Home screen to continue auto-import"
-                .to_string();
+    match classify_windows_import_error(raw) {
+        WindowsImportErrorKind::Canceled => "Canceling auto-import...".to_string(),
+        WindowsImportErrorKind::NoWindow => format!("{editor_name} is still loading"),
+        WindowsImportErrorKind::NoProject => {
+            if editor_name == "After Effects" {
+                return "Select an existing .aep project from the Home screen to continue auto-import"
+                    .to_string();
+            }
+            format!("Open or create a project in {editor_name} to continue auto-import")
         }
-        return format!("Open or create a project in {editor_name} to continue auto-import");
+        WindowsImportErrorKind::FocusFailed => {
+            format!("Click the {editor_name} window to bring it to front")
+        }
+        WindowsImportErrorKind::Waiting => format!("Waiting for {editor_name}"),
+        WindowsImportErrorKind::InvalidFilename => {
+            format!("{editor_name} rejected imported file path")
+        }
+        WindowsImportErrorKind::ResolveBridgeUnavailable => {
+            "Waiting for DaVinci Resolve scripting bridge".to_string()
+        }
+        WindowsImportErrorKind::ResolveProjectMissing | WindowsImportErrorKind::Unknown => {
+            format!("Waiting for {editor_name}")
+        }
     }
-    if raw.contains("AMVERGE_FOCUS_FAILED") {
-        return format!("Click the {editor_name} window to bring it to front");
-    }
-    if raw.contains("AMVERGE_WAITING") {
-        return format!("Waiting for {editor_name}");
-    }
-    if raw.contains("AMVERGE_INVALID_FILENAME") {
-        return format!("{editor_name} rejected imported file path");
-    }
-    if raw.contains("Could not connect to DaVinci Resolve") {
-        return "Waiting for DaVinci Resolve scripting bridge".to_string();
+}
+
+fn parse_scene_suffix_index(suffix: &str) -> Option<u32> {
+    if suffix.is_empty() || !suffix.chars().all(|c| c.is_ascii_digit()) {
+        return None;
     }
 
-    format!("Waiting for {editor_name}")
+    suffix.parse::<u32>().ok()
+}
+
+fn split_scene_stem_and_index(stem: &str) -> Option<(&str, u32)> {
+    let (base, suffix) = stem.rsplit_once('_')?;
+    Some((base, parse_scene_suffix_index(suffix)?))
 }
 
 fn parse_scene_index_from_clip_path(path: &str) -> Option<u32> {
     let stem = Path::new(path).file_stem()?.to_str()?;
-    let (_, suffix) = stem.rsplit_once('_')?;
-    if suffix.is_empty() || !suffix.chars().all(|c| c.is_ascii_digit()) {
-        return None;
-    }
-    suffix.parse::<u32>().ok()
+    split_scene_stem_and_index(stem).map(|(_, index)| index)
 }
 
 fn parse_scene_descriptor_from_clip_path(path: &str) -> Option<SceneClipDescriptor> {
@@ -459,10 +508,7 @@ fn parse_scene_descriptor_from_clip_path(path: &str) -> Option<SceneClipDescript
         .extension()
         .and_then(|v| v.to_str())
         .map(|v| v.to_ascii_lowercase())?;
-    let (base, suffix) = stem.rsplit_once('_')?;
-    if suffix.is_empty() || !suffix.chars().all(|c| c.is_ascii_digit()) {
-        return None;
-    }
+    let (base, _) = split_scene_stem_and_index(stem)?;
 
     Some(SceneClipDescriptor {
         parent_dir,
@@ -525,7 +571,7 @@ fn build_scene_time_bounds_from_directory(
     app: &AppHandle,
     descriptor: &SceneClipDescriptor,
     min_segment_len: f64,
-) -> Result<std::collections::BTreeMap<u32, (f64, f64)>, String> {
+) -> Result<IndexedTimeBounds, String> {
     let ffprobe = resolve_bundled_tool(app, "ffprobe")?;
     let mut indexed_durations: std::collections::BTreeMap<u32, f64> =
         std::collections::BTreeMap::new();
@@ -559,12 +605,10 @@ fn build_scene_time_bounds_from_directory(
             continue;
         }
 
-        let suffix = &stem[descriptor.prefix.len()..];
-        if suffix.is_empty() || !suffix.chars().all(|c| c.is_ascii_digit()) {
+        let Some(suffix) = stem.strip_prefix(&descriptor.prefix) else {
             continue;
-        }
-
-        let Some(index) = suffix.parse::<u32>().ok() else {
+        };
+        let Some(index) = parse_scene_suffix_index(suffix) else {
             continue;
         };
 
@@ -589,7 +633,7 @@ fn build_scene_time_bounds_from_directory(
     }
 
     let mut running = 0.0_f64;
-    let mut bounds = std::collections::BTreeMap::new();
+    let mut bounds: IndexedTimeBounds = std::collections::BTreeMap::new();
     for (index, duration) in indexed_durations {
         let start = running;
         let end = start + duration.max(min_segment_len);
@@ -604,10 +648,10 @@ fn build_time_bounds_from_selected_order(
     app: &AppHandle,
     clips: &[OriginalCutClip],
     min_segment_len: f64,
-) -> Result<Vec<(f64, f64)>, String> {
+) -> Result<Vec<TimeBounds>, String> {
     let ffprobe = resolve_bundled_tool(app, "ffprobe")?;
     let mut running = 0.0_f64;
-    let mut bounds: Vec<(f64, f64)> = Vec::with_capacity(clips.len());
+    let mut bounds: Vec<TimeBounds> = Vec::with_capacity(clips.len());
 
     for clip in clips {
         let clip_path = Path::new(&clip.src);
@@ -628,16 +672,8 @@ fn build_time_bounds_from_selected_order(
     Ok(bounds)
 }
 
-fn normalize_original_cut_input(
-    app: &AppHandle,
-    clips: Vec<OriginalCutClip>,
-    sequence_name: Option<String>,
-) -> Result<(String, String, Vec<OriginalCutSegment>), String> {
-    if clips.is_empty() {
-        return Err("No clips selected for original-cut import.".to_string());
-    }
-
-    let original_path = clips
+fn extract_original_media_path(clips: &[OriginalCutClip]) -> Result<String, String> {
+    clips
         .iter()
         .find_map(|clip| {
             clip.original_path
@@ -649,9 +685,14 @@ fn normalize_original_cut_input(
         .ok_or(
             "Missing original media path in clip metadata. Re-import the episode and retry."
                 .to_string(),
-        )?;
+        )
+}
 
-    for clip in &clips {
+fn ensure_single_original_media_path(
+    clips: &[OriginalCutClip],
+    original_path: &str,
+) -> Result<(), String> {
+    for clip in clips {
         if let Some(candidate) = clip
             .original_path
             .as_deref()
@@ -666,29 +707,19 @@ fn normalize_original_cut_input(
         }
     }
 
-    if !Path::new(&original_path).exists() {
-        return Err(format!(
-            "Original media file no longer exists: {}",
-            original_path
-        ));
-    }
+    Ok(())
+}
 
-    let min_segment_len = 1.0 / 30.0;
-    let mut ordered = clips;
-    for clip in &mut ordered {
+fn infer_missing_scene_indexes(clips: &mut [OriginalCutClip]) {
+    for clip in clips {
         if clip.scene_index.is_none() {
             clip.scene_index = parse_scene_index_from_clip_path(&clip.src);
         }
     }
+}
 
-    let inferred_bounds = ordered
-        .iter()
-        .find_map(|clip| parse_scene_descriptor_from_clip_path(&clip.src))
-        .and_then(|descriptor| {
-            build_scene_time_bounds_from_directory(app, &descriptor, min_segment_len).ok()
-        });
-
-    ordered.sort_by(|a, b| {
+fn sort_original_cut_clips(clips: &mut [OriginalCutClip]) {
+    clips.sort_by(|a, b| {
         a.scene_index
             .unwrap_or(u32::MAX)
             .cmp(&b.scene_index.unwrap_or(u32::MAX))
@@ -701,22 +732,59 @@ fn normalize_original_cut_input(
             .then_with(|| a.src.cmp(&b.src))
             .then_with(|| a.id.cmp(&b.id))
     });
+}
 
-    let ordered_fallback_bounds =
-        build_time_bounds_from_selected_order(app, &ordered, min_segment_len).ok();
+fn infer_scene_time_bounds(
+    app: &AppHandle,
+    clips: &[OriginalCutClip],
+    min_segment_len: f64,
+) -> Option<IndexedTimeBounds> {
+    clips
+        .iter()
+        .find_map(|clip| parse_scene_descriptor_from_clip_path(&clip.src))
+        .and_then(|descriptor| {
+            build_scene_time_bounds_from_directory(app, &descriptor, min_segment_len).ok()
+        })
+}
 
+fn resolve_segment_name(clip: &OriginalCutClip) -> String {
+    let fallback_name = Path::new(&clip.src)
+        .file_stem()
+        .and_then(|v| v.to_str())
+        .unwrap_or("clip")
+        .to_string();
+    clip.original_name
+        .as_deref()
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+        .map(str::to_string)
+        .unwrap_or(fallback_name)
+}
+
+fn normalize_sequence_name(sequence_name: Option<String>) -> String {
+    sequence_name
+        .as_deref()
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+        .map(str::to_string)
+        .unwrap_or_else(|| ORIGINAL_CUT_DEFAULT_SEQUENCE_NAME.to_string())
+}
+
+fn build_original_cut_segments(
+    ordered: &[OriginalCutClip],
+    inferred_bounds: Option<&IndexedTimeBounds>,
+    ordered_fallback_bounds: Option<&[TimeBounds]>,
+    min_segment_len: f64,
+) -> Result<Vec<OriginalCutSegment>, String> {
     let mut timeline_cursor = 0.0_f64;
     let mut segments: Vec<OriginalCutSegment> = Vec::with_capacity(ordered.len());
 
     for (idx, clip) in ordered.iter().enumerate() {
         let inferred_for_clip = clip
             .scene_index
-            .and_then(|scene_idx| inferred_bounds.as_ref().and_then(|m| m.get(&scene_idx)))
+            .and_then(|scene_idx| inferred_bounds.and_then(|m| m.get(&scene_idx)))
             .copied();
-        let ordered_fallback_for_clip = ordered_fallback_bounds
-            .as_ref()
-            .and_then(|v| v.get(idx))
-            .copied();
+        let ordered_fallback_for_clip = ordered_fallback_bounds.and_then(|v| v.get(idx)).copied();
 
         let start_sec = clip
             .start_sec
@@ -742,21 +810,8 @@ fn normalize_original_cut_input(
         let timeline_end = timeline_start + duration;
         timeline_cursor = timeline_end;
 
-        let fallback_name = Path::new(&clip.src)
-            .file_stem()
-            .and_then(|v| v.to_str())
-            .unwrap_or("clip")
-            .to_string();
-        let name = clip
-            .original_name
-            .as_deref()
-            .map(str::trim)
-            .filter(|v| !v.is_empty())
-            .map(str::to_string)
-            .unwrap_or(fallback_name);
-
         segments.push(OriginalCutSegment {
-            name,
+            name: resolve_segment_name(clip),
             source_in_sec: start_sec,
             source_out_sec: end_sec,
             timeline_start_sec: timeline_start,
@@ -768,14 +823,48 @@ fn normalize_original_cut_input(
         return Err("No valid cut segments were generated.".to_string());
     }
 
-    let normalized_sequence_name = sequence_name
-        .as_deref()
-        .map(str::trim)
-        .filter(|v| !v.is_empty())
-        .map(str::to_string)
-        .unwrap_or_else(|| "AMVerge Original Cut".to_string());
+    Ok(segments)
+}
 
-    Ok((original_path, normalized_sequence_name, segments))
+fn normalize_original_cut_input(
+    app: &AppHandle,
+    clips: Vec<OriginalCutClip>,
+    sequence_name: Option<String>,
+) -> Result<(String, String, Vec<OriginalCutSegment>), String> {
+    if clips.is_empty() {
+        return Err("No clips selected for original-cut import.".to_string());
+    }
+
+    let original_path = extract_original_media_path(&clips)?;
+    ensure_single_original_media_path(&clips, &original_path)?;
+
+    if !Path::new(&original_path).exists() {
+        return Err(format!(
+            "Original media file no longer exists: {}",
+            original_path
+        ));
+    }
+
+    let min_segment_len = ORIGINAL_CUT_MIN_SEGMENT_LEN_SEC;
+    let mut ordered = clips;
+    infer_missing_scene_indexes(&mut ordered);
+    let inferred_bounds = infer_scene_time_bounds(app, &ordered, min_segment_len);
+    sort_original_cut_clips(&mut ordered);
+
+    let ordered_fallback_bounds =
+        build_time_bounds_from_selected_order(app, &ordered, min_segment_len).ok();
+    let segments = build_original_cut_segments(
+        &ordered,
+        inferred_bounds.as_ref(),
+        ordered_fallback_bounds.as_deref(),
+        min_segment_len,
+    )?;
+
+    Ok((
+        original_path,
+        normalize_sequence_name(sequence_name),
+        segments,
+    ))
 }
 
 async fn write_original_cut_timeline_xml(

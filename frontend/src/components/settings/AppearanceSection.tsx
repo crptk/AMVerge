@@ -28,7 +28,7 @@ export default function AppearanceSection({
       filters: [
         {
           name: "Image",
-          extensions: ["png", "jpg", "jpeg", "webp", "gif"],
+          extensions: ["png", "jpg", "jpeg", "webp", "gif", "bmp", "tif", "tiff"],
         },
       ],
     });

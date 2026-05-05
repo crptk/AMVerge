@@ -1,15 +1,11 @@
 import { invoke } from "@tauri-apps/api/core";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
-  FaFilm,
+  FaEllipsisH,
   FaInfoCircle,
-  FaLayerGroup,
-  FaMicrochip,
   FaPlus,
-  FaRandom,
-  FaRocket,
+  FaThumbtack,
   FaTrash,
-  FaVideo,
 } from "react-icons/fa";
 import Dropdown from "../common/Dropdown";
 import { useGeneralSettingsStore } from "../../stores/settingsStore";
@@ -46,15 +42,7 @@ import {
   type NvidiaDetectionResult,
   type NvidiaEncoderProfile,
 } from "../../features/export/profiles";
-
-const PROFILE_ICON_COMPONENTS: Record<ExportProfileIcon, typeof FaVideo> = {
-  video: FaVideo,
-  remux: FaRandom,
-  premiere: FaFilm,
-  after_effects: FaLayerGroup,
-  resolve: FaMicrochip,
-  capcut: FaRocket,
-};
+import { renderProfileIcon } from "../../features/export/profileIconUtils";
 
 type ExportSettingProps = {
   label: string;
@@ -79,6 +67,17 @@ const DEFAULT_DETECTION: NvidiaDetectionResult = {
   gpuName: null,
   profile: "unsupported",
 };
+const FEATURED_PROFILE_ICONS_KEY = "amverge.featuredProfileIcons";
+const INLINE_VISIBLE_ICON_COUNT = 8;
+const MAX_FEATURED_ICONS = 8;
+const INLINE_DEFAULT_ICONS: ExportProfileIcon[] = [
+  "video",
+  "remux",
+  "premiere",
+  "after_effects",
+  "resolve",
+  "capcut",
+];
 
 export default function ExportSection() {
   const exportProfiles = useGeneralSettingsStore((state) => state.exportProfiles);
@@ -92,6 +91,9 @@ export default function ExportSection() {
 
   const [nvidiaDetection, setNvidiaDetection] = useState<NvidiaDetectionResult>(DEFAULT_DETECTION);
   const [gpuProbeComplete, setGpuProbeComplete] = useState(false);
+  const [showIconPicker, setShowIconPicker] = useState(false);
+  const [featuredIcons, setFeaturedIcons] = useState<ExportProfileIcon[]>([]);
+  const iconPickerRef = useRef<HTMLDivElement | null>(null);
 
   const activeProfile = useMemo(
     () => getActiveExportProfile(exportProfiles, activeExportProfileId),
@@ -101,13 +103,12 @@ export default function ExportSection() {
   const profileOptions = useMemo(
     () =>
       exportProfiles.map((profile) => {
-        const Icon = PROFILE_ICON_COMPONENTS[profile.icon];
         const summary = getExportProfileSummary(profile).replace(/ • /g, " / ");
         return {
           value: profile.id,
           label: profile.name.trim() || "Untitled Profile",
           description: summary,
-          icon: <Icon />,
+          icon: renderProfileIcon(profile),
         };
       }),
     [exportProfiles]
@@ -174,6 +175,34 @@ export default function ExportSection() {
       }),
     [parallelLimit]
   );
+  const availableIconValues = useMemo(
+    () => EXPORT_PROFILE_ICON_OPTIONS.map((option) => option.value),
+    []
+  );
+  const inlineVisibleIcons = useMemo(() => {
+    const validFeatured = featuredIcons.filter((icon) => availableIconValues.includes(icon));
+    const defaultIcons = INLINE_DEFAULT_ICONS.filter((icon) => availableIconValues.includes(icon));
+    const rest = defaultIcons.filter((icon) => !validFeatured.includes(icon));
+    return [...validFeatured, ...rest].slice(0, INLINE_VISIBLE_ICON_COUNT);
+  }, [availableIconValues, featuredIcons]);
+
+  const saveFeaturedIcons = (nextIcons: ExportProfileIcon[]) => {
+    setFeaturedIcons(nextIcons);
+    try {
+      window.localStorage.setItem(FEATURED_PROFILE_ICONS_KEY, JSON.stringify(nextIcons));
+    } catch {
+      // Ignore storage failures and keep in-memory state.
+    }
+  };
+
+  const toggleFeaturedIcon = (icon: ExportProfileIcon) => {
+    if (featuredIcons.includes(icon)) {
+      saveFeaturedIcons(featuredIcons.filter((item) => item !== icon));
+      return;
+    }
+    if (featuredIcons.length >= MAX_FEATURED_ICONS) return;
+    saveFeaturedIcons([...featuredIcons, icon]);
+  };
 
   useEffect(() => {
     let canceled = false;
@@ -194,6 +223,42 @@ export default function ExportSection() {
       canceled = true;
     };
   }, []);
+
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(FEATURED_PROFILE_ICONS_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as ExportProfileIcon[];
+      if (!Array.isArray(parsed)) return;
+      const valid = parsed.filter((icon) => availableIconValues.includes(icon)).slice(0, MAX_FEATURED_ICONS);
+      setFeaturedIcons(valid);
+    } catch {
+      // Ignore invalid persisted values.
+    }
+  }, [availableIconValues]);
+
+  useEffect(() => {
+    if (!showIconPicker) return;
+
+    const onMouseDown = (event: MouseEvent) => {
+      if (!iconPickerRef.current?.contains(event.target as Node)) {
+        setShowIconPicker(false);
+      }
+    };
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setShowIconPicker(false);
+      }
+    };
+
+    document.addEventListener("mousedown", onMouseDown);
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", onMouseDown);
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [showIconPicker]);
 
   useEffect(() => {
     if (quickDownloadProfileId === resolvedQuickDownloadProfileId) return;
@@ -351,21 +416,86 @@ export default function ExportSection() {
         label="Profile Icon"
         description="Visual icon used in the profile selector."
         control={
-          <div className="profile-icon-grid">
-            {EXPORT_PROFILE_ICON_OPTIONS.map((option) => {
-              const Icon = PROFILE_ICON_COMPONENTS[option.value];
-              return (
-                <button
-                  key={option.value}
-                  type="button"
-                  className={`profile-icon-button${activeProfile.icon === option.value ? " active" : ""}`}
-                  title={option.label}
-                  onClick={() => updateActiveProfile({ icon: option.value })}
-                >
-                  <Icon />
-                </button>
-              );
-            })}
+          <div className="profile-icon-control-inline" ref={iconPickerRef}>
+            <div className="profile-icon-inline-list">
+              {inlineVisibleIcons.map((iconValue) => {
+                return (
+                  <button
+                    key={iconValue}
+                    type="button"
+                    className={`profile-icon-button${activeProfile.icon === iconValue ? " active" : ""}`}
+                    title={iconValue}
+                    onClick={() => updateActiveProfile({ icon: iconValue })}
+                  >
+                    {renderProfileIcon({
+                      icon: iconValue,
+                      customIconPath: iconValue === "custom" ? activeProfile.customIconPath : null,
+                    })}
+                  </button>
+                );
+              })}
+            </div>
+            <button
+              type="button"
+              className={`profile-icon-button profile-upload-tile${activeProfile.icon === "custom" ? " active" : ""}`}
+              title="Use custom icon slot"
+              aria-label="Use custom icon slot"
+              onClick={() => updateActiveProfile({ icon: "custom" })}
+            >
+              <FaPlus />
+            </button>
+            <button
+              type="button"
+              className="profile-icon-button profile-icon-more-trigger"
+              title="Choose icon"
+              aria-label="Choose icon"
+              aria-expanded={showIconPicker}
+              onClick={() => setShowIconPicker((current) => !current)}
+            >
+              <FaEllipsisH />
+            </button>
+            {showIconPicker && (
+              <div className="profile-icon-popover" role="dialog" aria-label="Choose Profile Icon">
+                <div className="profile-icon-modal-header">
+                  <h3>Choose Profile Icon</h3>
+                </div>
+                <div className="profile-icon-grid">
+                  {EXPORT_PROFILE_ICON_OPTIONS.map((option) => {
+                    const pinned = featuredIcons.includes(option.value);
+                    return (
+                      <div key={option.value} className="profile-icon-tile">
+                        <button
+                          type="button"
+                          className={`profile-icon-button${activeProfile.icon === option.value ? " active" : ""}`}
+                          title={option.label}
+                          onClick={() => {
+                            updateActiveProfile({ icon: option.value });
+                            setShowIconPicker(false);
+                          }}
+                        >
+                          {renderProfileIcon({
+                            icon: option.value,
+                            customIconPath: option.value === "custom" ? activeProfile.customIconPath : null,
+                          })}
+                        </button>
+                        <button
+                          type="button"
+                          className={`profile-icon-pin${pinned ? " pinned" : ""}`}
+                          title={pinned ? "Unpin from quick icons" : "Pin to quick icons"}
+                          aria-label={pinned ? "Unpin from quick icons" : "Pin to quick icons"}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            toggleFeaturedIcon(option.value);
+                          }}
+                        >
+                          <FaThumbtack />
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
         }
       />

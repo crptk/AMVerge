@@ -40,6 +40,8 @@ fn main() {
             commands::cache::clear_episode_panel_cache,
             commands::settings::save_background_image,
             commands::settings::crop_and_save_image,
+            commands::settings::crop_and_save_profile_icon,
+            commands::settings::delete_profile_icon_file,
             commands::settings::move_episodes_to_new_dir,
             commands::settings::get_default_episodes_dir,
             commands::discord::start_discord_rpc,
