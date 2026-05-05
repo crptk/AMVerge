@@ -1,4 +1,4 @@
-import { BgProgress } from "../hooks/useImportExport";
+type BgProgress = { done: number; total: number };
 
 export default function BgProgressBar({ done, total }: BgProgress) {
   const percent = total > 0 ? Math.round((done / total) * 100) : 0;

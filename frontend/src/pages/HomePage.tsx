@@ -251,6 +251,14 @@ export default function HomePage({
     }
 
     if (activeMode === "editor") return; // Timeline is master in editor mode
+    // Skip during active import: bgProgress is non-null while thumbnails are generating.
+    // Import-driven clips changes don't need timeline sync; only user-driven ones do.
+    // We read from getState() directly (not as a subscription) since this is just a guard.
+    if (useAppStateStore.getState().bgProgress !== null) {
+      console.log("[bumpClipSyncVersion] skipped — bgProgress is active (import in progress)");
+      return;
+    }
+    console.log("[bumpClipSyncVersion] firing — clips:", clips.length, "timelineClipIds:", timelineClipIds.size);
     setClipSyncVersion((v) => v + 1);
   }, [clips, timelineClipIds, activeMode]);
 

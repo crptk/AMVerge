@@ -6,6 +6,7 @@ export default function ImportButtons() {
   const selectedClips = useAppStateStore((s: any) => s.selectedClips);
   const setSelectedClips = useAppStateStore((s: any) => s.setSelectedClips);
   const loading = useAppStateStore((s: any) => s.loading);
+  const bgProgress = useAppStateStore((s: any) => s.bgProgress);
   const gridPreview = useUIStateStore((s: any) => s.gridPreview);
   const setGridPreview = useUIStateStore((s: any) => s.setGridPreview);
   const cols = useUIStateStore((s: any) => s.cols);
@@ -21,7 +22,7 @@ export default function ImportButtons() {
       <main className="clips-import">
         <div className="import-buttons-container">
           <button onClick={onImportClick}
-                  disabled={loading}
+                  disabled={loading || bgProgress !== null}
                   id="file-button"
           >
             {loading ? "Processing..." : "Import Episode"}

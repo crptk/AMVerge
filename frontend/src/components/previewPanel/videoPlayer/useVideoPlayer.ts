@@ -38,7 +38,6 @@ export function useVideoPlayer({
     const seekGenerationRef = useRef(0);
 
     const [effectiveClip, setEffectiveClip] = useState<string | null>(selectedClip);
-    const [mergedPreviewPath, setMergedPreviewPath] = useState<string | null>(null);
     const mergedSrcsKey = mergedSrcs ? mergedSrcs.join("|") : null;
     const [isVideoReady, setIsVideoReady] = useState(false);
     const [isPlaying, setIsPlaying] = useState(false);
@@ -226,6 +225,31 @@ export function useVideoPlayer({
         selectedClipRef.current = selectedClip;
     }, [selectedClip]);
 
+    // Merged preview: stream-copy concat for clips with mergedSrcs
+    useEffect(() => {
+        if (!mergedSrcs || mergedSrcs.length <= 1) return;
+        if (videoIsHEVC === true && !hasHevcSupport) return;
+
+        const key = mergedSrcs.join("|");
+        if (mergedPreviewFetchedKeyRef.current === key) return;
+        if (mergedPreviewInFlightRef.current) return;
+
+        mergedPreviewFetchedKeyRef.current = key;
+        mergedPreviewInFlightRef.current = true;
+
+        invoke<string>("ensure_merged_preview", { srcs: mergedSrcs })
+            .then((path) => {
+                mergedPreviewInFlightRef.current = false;
+                if (mergedPreviewFetchedKeyRef.current !== key) return;
+                setEffectiveClip(path);
+            })
+            .catch((err) => {
+                mergedPreviewInFlightRef.current = false;
+                mergedPreviewFetchedKeyRef.current = null;
+                if (import.meta.env.DEV) console.warn("ensure_merged_preview failed", err);
+            });
+    }, [mergedSrcsKey, videoIsHEVC, hasHevcSupport]);
+
     useEffect(() => {
         const video = videoRef.current;
         if (!video) return;
@@ -249,7 +273,6 @@ export function useVideoPlayer({
         hasFirstFrameRef.current = false;
         mergedPreviewInFlightRef.current = false;
         mergedPreviewFetchedKeyRef.current = null;
-        setMergedPreviewPath(null);
 
         if (videoFrameCallbackIdRef.current && (video as any).cancelVideoFrameCallback) {
             try {
