@@ -22,6 +22,7 @@ import useImportExport from "../../hooks/useImportExport";
 import {
   getActiveExportProfile,
   getExportProfileSummary,
+  supportsClipMerge,
   type ExportProfileIcon,
 } from "../../features/export/profiles.ts";
 type PreviewContainerProps = {
@@ -74,11 +75,15 @@ export default function PreviewContainer (props: PreviewContainerProps) {
       generalSettings.exportProfiles.map((profile) => ({
         value: profile.id,
         label: profile.name.trim() || "Untitled Profile",
-        description: `${getExportProfileSummary(profile)} • ${profile.mergeEnabled ? "MERGE" : "CLIPS"}`,
+        description: supportsClipMerge(profile.workflow)
+          ? `${getExportProfileSummary(profile)} • ${profile.mergeEnabled ? "MERGE" : "CLIPS"}`
+          : getExportProfileSummary(profile),
         icon: React.createElement(PROFILE_ICON_COMPONENTS[profile.icon]),
       })),
     [generalSettings.exportProfiles]
   );
+
+  const canMergeWithActiveProfile = supportsClipMerge(activeExportProfile.workflow) && activeExportProfile.mergeEnabled;
 
   const hasProgram = !!props.programClip;
   const hasSource = !!props.sourceClip;
@@ -112,7 +117,7 @@ export default function PreviewContainer (props: PreviewContainerProps) {
 
   const onExportClick = () => {
     const targetClips = activeView === "program" ? timelineClipIds : selectedClips;
-    if (activeExportProfile.mergeEnabled) {
+    if (canMergeWithActiveProfile) {
       setShowMergeNameModal(true);
     } else {
       handleExport(targetClips, false);

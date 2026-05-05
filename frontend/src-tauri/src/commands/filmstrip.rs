@@ -37,7 +37,14 @@ pub async fn generate_filmstrip(
 
     // Deterministic output name based on video path + params so we can cache
     let effective_start = start_time.unwrap_or(0.0);
-    let hash = simple_hash(&video_path, frame_count, thumb_width, thumb_height, effective_start, duration);
+    let hash = simple_hash(
+        &video_path,
+        frame_count,
+        thumb_width,
+        thumb_height,
+        effective_start,
+        duration,
+    );
     let output_path = Path::new(&output_dir).join(format!("filmstrip_{hash}.jpg"));
     let output_str = output_path.to_string_lossy().to_string();
 
@@ -74,9 +81,8 @@ pub async fn generate_filmstrip(
     // fps=N/duration extracts N frames evenly across the whole video.
     // scale=WxH resizes each frame.
     // tile=Nx1 stitches them into one horizontal image.
-    let filter = format!(
-        "thumbnail={frame_count},scale={thumb_width}:{thumb_height},tile={frame_count}x1"
-    );
+    let filter =
+        format!("thumbnail={frame_count},scale={thumb_width}:{thumb_height},tile={frame_count}x1");
 
     // Build args — optionally prepend -ss for start time and -t for duration
     let start_str = format!("{:.6}", effective_start);
@@ -89,14 +95,21 @@ pub async fn generate_filmstrip(
     }
 
     args.extend_from_slice(&[
-        "-i", &video_path,
-        "-t", &dur_str,
-        "-vf", &filter,
-        "-frames:v", "1",
-        "-q:v", "6",         // JPEG quality: 2=best, 31=worst. 6 is a good balance for small sprites
-        "-pix_fmt", "yuvj420p", // MJPEG requires yuvj420p for full range support in some versions
-        "-strict", "-2",      // Allow non-standard features
-        "-an",               // No audio
+        "-i",
+        &video_path,
+        "-t",
+        &dur_str,
+        "-vf",
+        &filter,
+        "-frames:v",
+        "1",
+        "-q:v",
+        "6", // JPEG quality: 2=best, 31=worst. 6 is a good balance for small sprites
+        "-pix_fmt",
+        "yuvj420p", // MJPEG requires yuvj420p for full range support in some versions
+        "-strict",
+        "-2",  // Allow non-standard features
+        "-an", // No audio
         &output_str,
     ]);
 

@@ -1,9 +1,11 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, type ReactNode } from "react";
 import { FaChevronDown } from "react-icons/fa";
 
-interface DropdownOption<T> {
+export interface DropdownOption<T> {
   value: T;
   label: string;
+  description?: string;
+  icon?: ReactNode;
 }
 
 interface DropdownProps<T> {
@@ -53,6 +55,16 @@ export default function Dropdown<T extends string | number>({
     setIsOpen(false);
   };
 
+  const renderOptionContent = (option: DropdownOption<T>) => (
+    <div className={`dropdown-item-content${option.description ? " has-description" : ""}`}>
+      <div className="dropdown-item-main">
+        {option.icon && <span className="dropdown-item-icon">{option.icon}</span>}
+        <span className="dropdown-item-label">{option.label}</span>
+      </div>
+      {option.description && <span className="dropdown-item-description">{option.description}</span>}
+    </div>
+  );
+
   return (
     <div
       ref={containerRef}
@@ -61,7 +73,13 @@ export default function Dropdown<T extends string | number>({
       }`}
     >
       <div className="dropdown-trigger" onClick={toggleDropdown}>
-        <span className="dropdown-value">{selectedOption?.label || value}</span>
+        {selectedOption ? (
+          <div className={`dropdown-value${selectedOption.description ? " rich" : ""}`}>
+            {renderOptionContent(selectedOption)}
+          </div>
+        ) : (
+          <span className="dropdown-value">{String(value)}</span>
+        )}
         <FaChevronDown className={`dropdown-icon ${isOpen ? "rotate" : ""}`} />
       </div>
 
@@ -75,7 +93,7 @@ export default function Dropdown<T extends string | number>({
               }`}
               onClick={() => handleSelect(option.value)}
             >
-              {option.label}
+              {renderOptionContent(option)}
             </div>
           ))}
         </div>

@@ -1,7 +1,8 @@
-import { useEffect, useMemo, type ReactNode } from "react";
+import { invoke } from "@tauri-apps/api/core";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
-  FaBolt,
   FaFilm,
+  FaInfoCircle,
   FaLayerGroup,
   FaMicrochip,
   FaPlus,
@@ -24,15 +25,25 @@ import {
   getCodecFamily,
   getCodecOptionsForFamily,
   getExportProfileSummary,
+  isCodecNvencEligible,
+  isCodecSupportedByNvidiaProfile,
+  isQuickDownloadCompatibleWorkflow,
+  isXmlTimelineWorkflow,
+  getNvidiaEncoderProfile,
   getParallelExportLimit,
-  NVIDIA_ENCODER_PROFILE_OPTIONS,
   normalizeExportProfile,
+  supportsAudioMode,
+  supportsClipMerge,
+  supportsContainerSelection,
   usesEditorTarget,
   usesEncoding,
+  NVIDIA_ENCODER_SUPPORT_MATRIX_URL,
   type ExportCodecFamily,
   type ExportProfile,
   type ExportProfileIcon,
   type ExportWorkflow,
+  type NvidiaDetectionResult,
+  type NvidiaEncoderProfile,
 } from "../../features/export/profiles";
 
 const PROFILE_ICON_COMPONENTS: Record<ExportProfileIcon, typeof FaVideo> = {
@@ -62,17 +73,24 @@ function ExportSetting({ label, description, control }: ExportSettingProps) {
   );
 }
 
+const DEFAULT_DETECTION: NvidiaDetectionResult = {
+  hasNvidiaGpu: false,
+  gpuName: null,
+  profile: "unsupported",
+};
+
 export default function ExportSection() {
   const exportProfiles = useGeneralSettingsStore((state) => state.exportProfiles);
   const activeExportProfileId = useGeneralSettingsStore((state) => state.activeExportProfileId);
+  const quickDownloadProfileId = useGeneralSettingsStore((state) => state.quickDownloadProfileId);
   const setActiveExportProfileId = useGeneralSettingsStore((state) => state.setActiveExportProfileId);
-  const quickDownloadProfileId = useGeneralSettingsStore(
-    (state) => state.quickDownloadProfileId || state.activeExportProfileId
-  );
   const setQuickDownloadProfileId = useGeneralSettingsStore((state) => state.setQuickDownloadProfileId);
   const addExportProfile = useGeneralSettingsStore((state) => state.addExportProfile);
   const deleteExportProfile = useGeneralSettingsStore((state) => state.deleteExportProfile);
   const updateExportProfile = useGeneralSettingsStore((state) => state.updateExportProfile);
+
+  const [nvidiaDetection, setNvidiaDetection] = useState<NvidiaDetectionResult>(DEFAULT_DETECTION);
+  const [gpuProbeComplete, setGpuProbeComplete] = useState(false);
 
   const activeProfile = useMemo(
     () => getActiveExportProfile(exportProfiles, activeExportProfileId),
@@ -94,17 +112,52 @@ export default function ExportSection() {
     [exportProfiles]
   );
 
+  const quickDownloadCompatibleIds = useMemo(
+    () =>
+      new Set(
+        exportProfiles
+          .filter((profile) => isQuickDownloadCompatibleWorkflow(profile.workflow))
+          .map((profile) => profile.id)
+      ),
+    [exportProfiles]
+  );
+
+  const quickDownloadProfileOptions = useMemo(
+    () => profileOptions.filter((option) => quickDownloadCompatibleIds.has(option.value)),
+    [profileOptions, quickDownloadCompatibleIds]
+  );
+
+  const resolvedQuickDownloadProfileId = useMemo(() => {
+    if (quickDownloadProfileOptions.some((option) => option.value === quickDownloadProfileId)) {
+      return quickDownloadProfileId;
+    }
+    if (quickDownloadProfileOptions.some((option) => option.value === activeProfile.id)) {
+      return activeProfile.id;
+    }
+    return quickDownloadProfileOptions[0]?.value ?? activeProfile.id;
+  }, [quickDownloadProfileId, quickDownloadProfileOptions, activeProfile.id]);
+
   const parallelLimit = getParallelExportLimit(activeProfile);
   const parallelLocked = parallelLimit <= 1;
   const effectiveParallelExports = Math.min(activeProfile.parallelExports, parallelLimit);
   const encodingWorkflow = usesEncoding(activeProfile.workflow);
   const editorWorkflow = usesEditorTarget(activeProfile.workflow);
+  const xmlTimelineWorkflow = isXmlTimelineWorkflow(activeProfile.workflow);
+  const showMergeSetting = supportsClipMerge(activeProfile.workflow);
+  const showAudioSetting = supportsAudioMode(activeProfile.workflow);
+  const showContainerSetting = supportsContainerSelection(activeProfile.workflow);
   const codecFamily = getCodecFamily(activeProfile.codec);
-
-  const codecProfileOptions = useMemo(
-    () => getCodecOptionsForFamily(codecFamily),
-    [codecFamily]
+  const nvidiaProfile = getNvidiaEncoderProfile(activeProfile.nvidiaEncoderProfile);
+  const codecNvencEligible = isCodecNvencEligible(activeProfile.codec);
+  const nvidiaSupportsSelectedCodec = isCodecSupportedByNvidiaProfile(
+    activeProfile.codec,
+    activeProfile.nvidiaEncoderProfile
   );
+  const gpuReadyForCodec = nvidiaDetection.hasNvidiaGpu && nvidiaSupportsSelectedCodec;
+  const encoderLockedToCpu =
+    encodingWorkflow && (!codecNvencEligible || (gpuProbeComplete && !gpuReadyForCodec));
+
+  const codecProfileOptions = useMemo(() => getCodecOptionsForFamily(codecFamily), [codecFamily]);
 
   const parallelExportOptions = useMemo(
     () =>
@@ -112,23 +165,80 @@ export default function ExportSection() {
         const value = i + 1;
         return {
           value,
-          label: `${value} Encode${value > 1 ? "s" : ""}`,
+          label: `${value} Export${value > 1 ? "s" : ""}`,
         };
       }),
     [parallelLimit]
   );
 
   useEffect(() => {
+    let canceled = false;
+
+    invoke<NvidiaDetectionResult>("detect_nvidia_encoder_profile")
+      .then((detected) => {
+        if (canceled) return;
+        setNvidiaDetection(detected);
+      })
+      .catch((error) => {
+        console.error("Failed to detect NVIDIA encoder profile:", error);
+      })
+      .finally(() => {
+        if (!canceled) setGpuProbeComplete(true);
+      });
+
+    return () => {
+      canceled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (quickDownloadProfileId === resolvedQuickDownloadProfileId) return;
+    setQuickDownloadProfileId(resolvedQuickDownloadProfileId);
+  }, [quickDownloadProfileId, resolvedQuickDownloadProfileId, setQuickDownloadProfileId]);
+
+  useEffect(() => {
+    if (!gpuProbeComplete || !encodingWorkflow) return;
+
+    const resolvedProfile: NvidiaEncoderProfile = nvidiaDetection.hasNvidiaGpu
+      ? nvidiaDetection.profile
+      : "unsupported";
+
+    if (activeProfile.nvidiaEncoderProfile !== resolvedProfile) {
+      updateExportProfile(activeProfile.id, {
+        nvidiaEncoderProfile: resolvedProfile,
+      });
+    }
+  }, [
+    activeProfile.id,
+    activeProfile.nvidiaEncoderProfile,
+    encodingWorkflow,
+    gpuProbeComplete,
+    nvidiaDetection.hasNvidiaGpu,
+    nvidiaDetection.profile,
+    updateExportProfile,
+  ]);
+
+  useEffect(() => {
+    if (!encoderLockedToCpu) return;
+    if (activeProfile.hardwareMode === "cpu") return;
+    updateExportProfile(activeProfile.id, { hardwareMode: "cpu" });
+  }, [activeProfile.hardwareMode, activeProfile.id, encoderLockedToCpu, updateExportProfile]);
+
+  useEffect(() => {
     const normalized = normalizeExportProfile(activeProfile);
     if (
       normalized.parallelExports !== activeProfile.parallelExports ||
       normalized.hardwareMode !== activeProfile.hardwareMode ||
-      normalized.editorTarget !== activeProfile.editorTarget
+      normalized.editorTarget !== activeProfile.editorTarget ||
+      normalized.codec !== activeProfile.codec ||
+      normalized.nvidiaEncoderProfile !== activeProfile.nvidiaEncoderProfile
     ) {
       updateExportProfile(activeProfile.id, {
         parallelExports: normalized.parallelExports,
         hardwareMode: normalized.hardwareMode,
         editorTarget: normalized.editorTarget,
+        codec: normalized.codec,
+        nvidiaEncoderProfile: normalized.nvidiaEncoderProfile,
       });
     }
   }, [activeProfile, updateExportProfile]);
@@ -164,23 +274,10 @@ export default function ExportSection() {
         description="Export Now uses this active profile (including newly created profiles)."
         control={
           <Dropdown
-            className="settings-wide-dropdown export-profile-selector-dropdown"
+            className="settings-wide-dropdown export-profile-dropdown"
             options={profileOptions}
             value={activeProfile.id}
             onChange={setActiveExportProfileId}
-          />
-        }
-      />
-
-      <ExportSetting
-        label="Quick Download Profile"
-        description="Clip download buttons use this video profile instead of the active export profile."
-        control={
-          <Dropdown
-            className="settings-wide-dropdown export-profile-selector-dropdown"
-            options={profileOptions}
-            value={quickDownloadProfileId}
-            onChange={setQuickDownloadProfileId}
           />
         }
       />
@@ -197,9 +294,26 @@ export default function ExportSection() {
           disabled={exportProfiles.length <= 1}
         >
           <FaTrash />
-          <span>Delete Active</span>
+          <span>Delete Profile</span>
         </button>
       </div>
+
+      <ExportSetting
+        label="Quick Download Profile"
+        description={
+          quickDownloadProfileOptions.length > 0
+            ? "Used by clip quick download buttons. XML timeline profiles are hidden because they do not export media files."
+            : "Used by clip quick download buttons."
+        }
+        control={
+          <Dropdown
+            className="settings-wide-dropdown export-profile-dropdown"
+            options={quickDownloadProfileOptions.length > 0 ? quickDownloadProfileOptions : profileOptions}
+            value={resolvedQuickDownloadProfileId}
+            onChange={setQuickDownloadProfileId}
+          />
+        }
+      />
 
       <ExportSetting
         label="Profile Name"
@@ -250,6 +364,34 @@ export default function ExportSection() {
         }
       />
 
+      {xmlTimelineWorkflow && (
+        <div className="export-profile-note">
+          <FaInfoCircle />
+          <span>
+            XML source workflow only uses timeline + editor target. Encode/file parameters are hidden because they do not
+            affect this export mode.
+          </span>
+        </div>
+      )}
+
+      {showMergeSetting && (
+        <ExportSetting
+          label="Merge Clips"
+          description="When enabled, selected clips are merged into a single output file."
+          control={
+            <label className="custom-checkbox">
+              <input
+                type="checkbox"
+                className="checkbox"
+                checked={activeProfile.mergeEnabled}
+                onChange={(event) => updateActiveProfile({ mergeEnabled: event.target.checked })}
+              />
+              <span className="checkmark"></span>
+            </label>
+          }
+        />
+      )}
+
       {editorWorkflow && (
         <ExportSetting
           label="Editor Target"
@@ -295,84 +437,88 @@ export default function ExportSection() {
         </>
       )}
 
-      <ExportSetting
-        label="Audio Codec"
-        description="Choose encoded audio, source audio copy, or no audio in exported video files."
-        control={
-          <Dropdown
-            className="settings-wide-dropdown"
-            options={EXPORT_AUDIO_OPTIONS}
-            value={activeProfile.audioMode}
-            onChange={(audioMode) => updateActiveProfile({ audioMode })}
-          />
-        }
-      />
-
-      <ExportSetting
-        label="Video Encoder"
-        description="H.264/H.265 use NVIDIA NVENC automatically when FFmpeg and GPU support it."
-        control={
-          <Dropdown
-            className="settings-wide-dropdown"
-            options={EXPORT_HARDWARE_OPTIONS}
-            value={activeProfile.hardwareMode}
-            onChange={(hardwareMode) => updateActiveProfile({ hardwareMode })}
-            disabled={!encodingWorkflow}
-          />
-        }
-      />
-
-      <ExportSetting
-        label="Parallel Encodes"
-        description={
-          parallelLocked
-            ? "Enabled only when codec and encoder mode can use GPU (NVENC available)."
-            : `GPU supports up to ${parallelLimit} parallel encodes for this configuration.`
-        }
-        control={
-          <Dropdown
-            className="settings-wide-dropdown"
-            options={parallelExportOptions}
-            value={effectiveParallelExports}
-            onChange={(parallelExports) => updateActiveProfile({ parallelExports })}
-            disabled={parallelLocked}
-          />
-        }
-      />
-
-      <ExportSetting
-        label="Container"
-        description="File format wrapper: MP4, MKV, MOV, AVI, or MXF."
-        control={
-          <Dropdown
-            className="settings-wide-dropdown"
-            options={EXPORT_CONTAINER_OPTIONS}
-            value={activeProfile.container}
-            onChange={(container) => updateActiveProfile({ container })}
-          />
-        }
-      />
-
-      {encodingWorkflow && (
+      {showAudioSetting && (
         <ExportSetting
-          label="NVIDIA Encoder Profile"
-          description="Match your GPU generation to unlock valid codecs and parallel export limits."
+          label="Audio Codec"
+          description="Choose encoded audio, source audio copy, or no audio in exported video files."
           control={
             <Dropdown
               className="settings-wide-dropdown"
-              options={NVIDIA_ENCODER_PROFILE_OPTIONS}
-              value={activeProfile.nvidiaEncoderProfile}
-              onChange={(nvidiaEncoderProfile) => updateActiveProfile({ nvidiaEncoderProfile })}
-              disabled={activeProfile.hardwareMode === "cpu"}
+              options={EXPORT_AUDIO_OPTIONS}
+              value={activeProfile.audioMode}
+              onChange={(audioMode) => updateActiveProfile({ audioMode })}
             />
           }
         />
       )}
 
-      <div className="export-profile-note">
-        <FaBolt />
-        <span>Parallel GPU export follows NVIDIA NVENC generation and codec support matrix limits.</span>
-      </div>
+      {encodingWorkflow && (
+        <>
+          <ExportSetting
+            label="Video Encoder"
+            description={
+              encoderLockedToCpu ? (
+                codecNvencEligible ? (
+                  "CPU only for this profile/codec on current machine."
+                ) : (
+                  "Selected codec is CPU-only (no NVENC path)."
+                )
+              ) : (
+                <>
+                  {nvidiaDetection.hasNvidiaGpu
+                    ? `Auto NVIDIA profile: ${nvidiaProfile.label}${nvidiaDetection.gpuName ? ` (${nvidiaDetection.gpuName})` : ""}.`
+                    : "No NVIDIA GPU detected. Auto mode falls back to CPU."}{" "}
+                  <a href={NVIDIA_ENCODER_SUPPORT_MATRIX_URL} target="_blank" rel="noreferrer">
+                    NVIDIA matrix
+                  </a>
+                </>
+              )
+            }
+            control={
+              <Dropdown
+                className="settings-wide-dropdown"
+                options={EXPORT_HARDWARE_OPTIONS}
+                value={encoderLockedToCpu ? "cpu" : activeProfile.hardwareMode}
+                onChange={(hardwareMode) => updateActiveProfile({ hardwareMode })}
+                disabled={encoderLockedToCpu}
+              />
+            }
+          />
+
+          <ExportSetting
+            label="Parallel Encodes"
+            description={
+              parallelLocked
+                ? "Enabled only when NVIDIA profile and codec support parallel NVENC sessions."
+                : `Detected limit: up to ${parallelLimit} parallel exports for this codec.`
+            }
+            control={
+              <Dropdown
+                className="settings-wide-dropdown"
+                options={parallelExportOptions}
+                value={effectiveParallelExports}
+                onChange={(parallelExports) => updateActiveProfile({ parallelExports })}
+                disabled={parallelLocked}
+              />
+            }
+          />
+        </>
+      )}
+
+      {showContainerSetting && (
+        <ExportSetting
+          label="Container"
+          description="File format wrapper: MP4, MKV, MOV, AVI, or MXF."
+          control={
+            <Dropdown
+              className="settings-wide-dropdown"
+              options={EXPORT_CONTAINER_OPTIONS}
+              value={activeProfile.container}
+              onChange={(container) => updateActiveProfile({ container })}
+            />
+          }
+        />
+      )}
     </section>
   );
 }

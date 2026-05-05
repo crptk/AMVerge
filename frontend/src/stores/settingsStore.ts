@@ -1,5 +1,12 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import {
+    createExportProfile,
+    DEFAULT_EXPORT_PROFILE_ID,
+    DEFAULT_EXPORT_PROFILES,
+    normalizeExportProfile,
+    type ExportProfile,
+} from "../features/export/profiles";
 
 /*====================
     GENERAL SETTINGS 
@@ -10,6 +17,9 @@ export type GeneralSettings = {
     episodesPath: string | null;
     exportFormat: "mp4" | "mkv" | "mov" | "avi" | "xml";
     exportPath: string | null;
+    exportProfiles: ExportProfile[];
+    activeExportProfileId: string;
+    quickDownloadProfileId: string;
     audioPlaybackHover: boolean;
     playbackVolume: number;
     discordRPCEnabled: boolean;
@@ -23,6 +33,11 @@ export type GeneralSettingsStore = GeneralSettings & {
     setEpisodesPath: (path: string | null) => void;
     setExportFormat: (format: ExportFormat) => void;
     setExportPath: (path: string | null) => void;
+    setActiveExportProfileId: (profileId: string) => void;
+    setQuickDownloadProfileId: (profileId: string) => void;
+    addExportProfile: () => void;
+    deleteExportProfile: (profileId: string) => void;
+    updateExportProfile: (profileId: string, changes: Partial<ExportProfile>) => void;
     setAudioPlaybackHover: (enabled: boolean) => void;
     setPlaybackVolume: (volume: number) => void;
     setDiscordRPCEnabled: (enabled: boolean) => void;
@@ -37,6 +52,9 @@ export const DEFAULT_GENERAL_SETTINGS: GeneralSettings = {
     episodesPath: null,
     exportFormat: "mp4",
     exportPath: null,
+    exportProfiles: DEFAULT_EXPORT_PROFILES.map((profile) => ({ ...profile })),
+    activeExportProfileId: DEFAULT_EXPORT_PROFILE_ID,
+    quickDownloadProfileId: DEFAULT_EXPORT_PROFILE_ID,
     audioPlaybackHover: false,
     playbackVolume: 0.2,
     discordRPCEnabled: true,
@@ -54,6 +72,60 @@ export const useGeneralSettingsStore = create<GeneralSettingsStore>()(
             setEpisodesPath: (path) => set({ episodesPath: path }),
             setExportFormat: (format) => set({ exportFormat: format }),
             setExportPath: (path) => set({ exportPath: path }),
+            setActiveExportProfileId: (profileId) =>
+                set((state) => {
+                    if (!state.exportProfiles.some((profile) => profile.id === profileId)) {
+                        return {};
+                    }
+                    return { activeExportProfileId: profileId };
+                }),
+            setQuickDownloadProfileId: (profileId) =>
+                set((state) => {
+                    if (!state.exportProfiles.some((profile) => profile.id === profileId)) {
+                        return {};
+                    }
+                    return { quickDownloadProfileId: profileId };
+                }),
+            addExportProfile: () =>
+                set((state) => {
+                    const profile = createExportProfile(state.exportProfiles.length + 1);
+                    return {
+                        exportProfiles: [...state.exportProfiles, profile],
+                        activeExportProfileId: profile.id,
+                        quickDownloadProfileId: profile.id,
+                    };
+                }),
+            deleteExportProfile: (profileId) =>
+                set((state) => {
+                    if (state.exportProfiles.length <= 1) {
+                        return {};
+                    }
+
+                    const exportProfiles = state.exportProfiles.filter((profile) => profile.id !== profileId);
+                    if (exportProfiles.length === state.exportProfiles.length) {
+                        return {};
+                    }
+
+                    return {
+                        exportProfiles,
+                        activeExportProfileId:
+                            state.activeExportProfileId === profileId
+                                ? exportProfiles[0].id
+                                : state.activeExportProfileId,
+                        quickDownloadProfileId:
+                            state.quickDownloadProfileId === profileId
+                                ? exportProfiles[0].id
+                                : state.quickDownloadProfileId || state.activeExportProfileId,
+                    };
+                }),
+            updateExportProfile: (profileId, changes) =>
+                set((state) => ({
+                    exportProfiles: state.exportProfiles.map((profile) =>
+                        profile.id === profileId
+                            ? normalizeExportProfile({ ...profile, ...changes, id: profile.id })
+                            : profile
+                    ),
+                })),
             setAudioPlaybackHover: (enabled) =>
                 set({ audioPlaybackHover: enabled }),
             setPlaybackVolume: (volume) => set({ playbackVolume: volume }),

@@ -47,11 +47,10 @@ pub fn move_episodes_to_new_dir(
         return Ok(old_path_string);
     }
 
-    fs::create_dir_all(&new_path)
-        .map_err(|e| format!("Failed to create new directory: {e}"))?;
+    fs::create_dir_all(&new_path).map_err(|e| format!("Failed to create new directory: {e}"))?;
 
-    for entry in fs::read_dir(&old_path)
-        .map_err(|e| format!("Failed to read old directory: {e}"))?
+    for entry in
+        fs::read_dir(&old_path).map_err(|e| format!("Failed to read old directory: {e}"))?
     {
         let entry = entry.map_err(|e| format!("Failed to read entry: {e}"))?;
 
@@ -72,11 +71,9 @@ pub fn move_episodes_to_new_dir(
                 fs::remove_dir_all(&src)
                     .map_err(|e| format!("Failed to remove old directory: {e}"))?;
             } else {
-                fs::copy(&src, &dest)
-                    .map_err(|e| format!("Failed to copy file: {e}"))?;
+                fs::copy(&src, &dest).map_err(|e| format!("Failed to copy file: {e}"))?;
 
-                fs::remove_file(&src)
-                    .map_err(|e| format!("Failed to remove old file: {e}"))?;
+                fs::remove_file(&src).map_err(|e| format!("Failed to remove old file: {e}"))?;
             }
 
             Ok::<(), String>(())
@@ -112,8 +109,7 @@ pub fn save_background_image(app: tauri::AppHandle, source_path: String) -> Resu
     let file_name = format!("background.{}", extension);
     let destination = backgrounds_dir.join(file_name);
 
-    fs::copy(source, &destination)
-        .map_err(|e| format!("Failed to copy background image: {e}"))?;
+    fs::copy(source, &destination).map_err(|e| format!("Failed to copy background image: {e}"))?;
 
     Ok(destination.to_string_lossy().to_string())
 }
@@ -159,11 +155,11 @@ pub async fn crop_and_save_image(
     };
 
     // Fast-path: If no transformation is needed, just copy the file
-    let is_no_op = crop.x == 0.0 && crop.y == 0.0 && 
-                  crop.rotation == 0 && !crop.flip_h && !crop.flip_v;
+    let is_no_op =
+        crop.x == 0.0 && crop.y == 0.0 && crop.rotation == 0 && !crop.flip_h && !crop.flip_v;
 
     // We can only skip if the width/height also match, but we need the image size first
-    
+
     // Offload to Python for better GIF handling
     tokio::task::spawn_blocking(move || {
         if is_no_op {
@@ -172,19 +168,27 @@ pub async fn crop_and_save_image(
         }
 
         let crop_json = serde_json::to_string(&crop).map_err(|e| e.to_string())?;
-        
+
         let current_dir = std::env::current_dir().unwrap_or_default();
-        
+
         // Detect project root (handle both root and src-tauri dirs)
         let project_root = if current_dir.ends_with("src-tauri") {
-            current_dir.parent().and_then(|p| p.parent()).map(|p| p.to_path_buf()).unwrap_or(current_dir)
+            current_dir
+                .parent()
+                .and_then(|p| p.parent())
+                .map(|p| p.to_path_buf())
+                .unwrap_or(current_dir)
         } else {
             current_dir
         };
 
         // Find python path (prefer venv)
         let python_path = if cfg!(windows) {
-            project_root.join("backend").join("venv").join("Scripts").join("python.exe")
+            project_root
+                .join("backend")
+                .join("venv")
+                .join("Scripts")
+                .join("python.exe")
         } else {
             Path::new("python3").to_path_buf()
         };
@@ -196,7 +200,10 @@ pub async fn crop_and_save_image(
             "python".to_string()
         };
 
-        let script_path = project_root.join("backend").join("utils").join("image_processor.py");
+        let script_path = project_root
+            .join("backend")
+            .join("utils")
+            .join("image_processor.py");
 
         let output = std::process::Command::new(python_cmd)
             .arg(script_path)

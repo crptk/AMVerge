@@ -29,7 +29,10 @@ pub async fn delete_episode_cache(
 }
 
 #[tauri::command]
-pub async fn clear_episode_panel_cache(app: AppHandle, custom_path: Option<String>) -> Result<(), String> {
+pub async fn clear_episode_panel_cache(
+    app: AppHandle,
+    custom_path: Option<String>,
+) -> Result<(), String> {
     let episodes_dir = if let Some(p) = custom_path {
         PathBuf::from(p)
     } else {

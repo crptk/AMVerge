@@ -150,10 +150,7 @@ pub async fn ensure_preview_proxy(
     let ffmpeg_output = tokio::task::spawn_blocking(move || {
         let mut cmd = Command::new(&ffmpeg_clone);
         apply_no_window(&mut cmd);
-        cmd.args([
-            "-y",
-            "-i",
-        ]);
+        cmd.args(["-y", "-i"]);
         cmd.arg(&input);
         cmd.args([
             "-c:v",
@@ -173,7 +170,7 @@ pub async fn ensure_preview_proxy(
             "+faststart",
         ]);
         cmd.arg(&output);
-        
+
         cmd.output()
             .map_err(|e| format!("Failed to run ffmpeg: {e}"))
     })
@@ -227,6 +224,9 @@ pub async fn ensure_preview_proxy(
     }
 
     let final_path = proxy_path.to_string_lossy().to_string();
-    console_log("PROXY|end", &format!("ok proxy={}", file_name_only(&final_path)));
+    console_log(
+        "PROXY|end",
+        &format!("ok proxy={}", file_name_only(&final_path)),
+    );
     Ok(final_path)
 }

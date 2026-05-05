@@ -27,15 +27,15 @@ export default function LoadingOverlay({
             style={{ width: `${progress}%` }}
           />
         </div>
+        <button className="abort-button" onClick={onAbort}>
+          Abort
+        </button>
         {batchTotal > 1 && (
           <div className="batch-progress">
             <div className="batch-counter">
               Cutting videos {batchDone + 1}/{batchTotal}...
             </div>
             <div className="batch-file-name">{batchCurrentFile}</div>
-            <button className="abort-button" onClick={onAbort}>
-              Abort
-            </button>
           </div>
         )}
       </div>

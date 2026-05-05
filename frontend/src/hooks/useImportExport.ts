@@ -3,15 +3,68 @@ import { invoke } from "@tauri-apps/api/core";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { ClipItem, EpisodeEntry } from "../types/domain"
 import { fileNameFromPath, truncateFileName, detectScenes } from "../utils/episodeUtils";
+import {
+  buildTimelineXmlClips,
+  buildXmlSavePath,
+  resolveTimelineName,
+} from "../features/export/xmlTimeline";
+import { editorLabel, type EditorTarget } from "../features/export/targets";
 
 import { useAppStateStore, useAppPersistedStore } from "../stores/appStore";
 import { useEpisodePanelRuntimeStore } from "../stores/episodeStore";
 import { useGeneralSettingsStore } from "../stores/settingsStore";
+import {
+  getActiveExportProfile,
+  isQuickDownloadCompatibleWorkflow,
+  supportsClipMerge,
+  type ExportProfile,
+} from "../features/export/profiles";
 
 type ImportExportProps = {
   abortedRef?: React.RefObject<boolean>;
   onRPCUpdate?: (data: any) => void;
 };
+
+function toExportOptions(profile: ExportProfile) {
+  return {
+    profileId: profile.id,
+    workflow: profile.workflow,
+    editorTarget: profile.editorTarget,
+    codec: profile.codec,
+    audioMode: profile.audioMode,
+    hardwareMode: profile.hardwareMode,
+    parallelExports: profile.parallelExports,
+  };
+}
+
+function resolveEditorTarget(editorTarget: ExportProfile["editorTarget"]): EditorTarget | null {
+  if (editorTarget === "premiere_pro") return "premier_pro";
+  if (editorTarget === "after_effects") return "after_effects";
+  if (editorTarget === "davinci_resolve") return "davinci_resolve";
+  if (editorTarget === "capcut") return "capcut";
+  return null;
+}
+
+function formatAutoImportFailureMessage(target: EditorTarget, rawError: unknown): string {
+  const details = String(rawError ?? "Unknown error")
+    .replace(/^Error:\s*/i, "")
+    .split("\n")[0]
+    .trim();
+
+  if (/AMVERGE_CANCELED/i.test(details) || /canceled by user/i.test(details)) {
+    return "Export completed. Auto-import canceled.";
+  }
+
+  if (/executable was not found/i.test(details)) {
+    return `Export complete. ${editorLabel(target)} was not detected.`;
+  }
+
+  if (details) {
+    return `Export completed. Auto-import failed: ${details}`;
+  }
+
+  return "Export completed. Auto-import failed (see Console).";
+}
 
 export default function useImportExport(props?: ImportExportProps) {
   const appState = useAppStateStore();
@@ -213,11 +266,19 @@ export default function useImportExport(props?: ImportExportProps) {
     }
   }, [appState, episodeState, generalSettings, abortedRef]);
 
-  const handleExport = useCallback(async (selectedClips: Set<string>, mergeEnabled: boolean, mergeFileName?: string) => {
+  const handleExport = useCallback(async (selectedClips: Set<string>, mergeEnabled?: boolean, mergeFileName?: string) => {
     if (selectedClips.size === 0) return;
 
     const selected = appState.clips.filter((c: ClipItem) => selectedClips.has(c.id));
     if (selected.length === 0) return;
+    const exportProfile = getActiveExportProfile(
+      generalSettings.exportProfiles,
+      generalSettings.activeExportProfileId
+    );
+    const resolvedMergeEnabled =
+      supportsClipMerge(exportProfile.workflow) && (mergeEnabled ?? exportProfile.mergeEnabled);
+    const editorTarget = resolveEditorTarget(exportProfile.editorTarget);
+    const workflow = exportProfile.workflow;
 
     // If no export directory is set, prompt the user to pick one first
     let dir = persistedState.exportDir;
@@ -230,14 +291,18 @@ export default function useImportExport(props?: ImportExportProps) {
 
     try {
       setLoading(true);
+      appState.setProgress(0);
+      appState.setProgressMsg("Preparing export...");
 
       const sep = dir.includes('\\') ? '\\' : '/';
       const clipArray = selected.map((c: ClipItem) => c.src);
-      const format = generalSettings.exportFormat || "mp4";
+      const format = exportProfile.container || generalSettings.exportFormat || "mp4";
+      const exportOptions = toExportOptions(exportProfile);
+      const shouldAutoImportMedia = workflow === "editor_encode" || workflow === "editor_remux";
 
       props?.onRPCUpdate?.({
         type: "update",
-        details: `Exporting ${selected.length} clips`,
+        details: `Exporting ${selected.length} clips (${exportProfile.name || "Export Profile"})`,
         state: "Saving Progress",
         large_image: "amverge_logo",
         small_image: generalSettings.rpcShowMiniIcons ? "save_icon_new" : undefined,
@@ -245,15 +310,56 @@ export default function useImportExport(props?: ImportExportProps) {
         buttons: generalSettings.rpcShowButtons,
       });
 
-      if (mergeEnabled) {
+      if (workflow === "editor_original_xml") {
+        if (!editorTarget) {
+          throw new Error("No editor target selected for XML export.");
+        }
+        if (editorTarget === "capcut") {
+          throw new Error("Original-cut timeline export is not supported for CapCut.");
+        }
+
+        const sequenceName = resolveTimelineName(
+          selected,
+          resolvedMergeEnabled ? mergeFileName : undefined
+        );
+        const timelineClips = buildTimelineXmlClips(selected, appState.importedVideoPath);
+        const savePath = buildXmlSavePath(dir, sequenceName);
+
+        appState.setProgress(96);
+        appState.setProgressMsg(`Generating XML timeline for ${editorLabel(editorTarget)}...`);
+
+        await invoke<void>("export_timeline_xml", {
+          clips: timelineClips,
+          savePath,
+          sequenceName,
+        });
+
+        appState.setProgress(99);
+        appState.setProgressMsg(`Importing timeline into ${editorLabel(editorTarget)}...`);
+
+        await invoke<string>("import_original_cut_to_editor", {
+          editorTarget,
+          clips: timelineClips,
+          sequenceName,
+        });
+      } else if (resolvedMergeEnabled) {
         const baseName = mergeFileName || ((selected[0]?.originalName || "episode") + "_merged");
         const savePath = `${dir}${sep}${baseName}.${format}`;
 
-        await invoke("export_clips", {
+        const exportedPaths = await invoke<string[]>("export_clips", {
           clips: clipArray,
           savePath: savePath,
-          mergeEnabled: mergeEnabled,
+          mergeEnabled: resolvedMergeEnabled,
+          exportOptions,
         });
+        if (shouldAutoImportMedia && editorTarget && exportedPaths.length > 0) {
+          appState.setProgress(99);
+          appState.setProgressMsg(`Importing media into ${editorLabel(editorTarget)}...`);
+          await invoke<string>("import_media_to_editor", {
+            editorTarget,
+            mediaPaths: exportedPaths,
+          });
+        }
       } else {
         const firstClipPath = selected[0]?.src || "";
         const firstFile = firstClipPath.split(/[/\\]/).pop() || `episode_0000.${format}`;
@@ -261,11 +367,20 @@ export default function useImportExport(props?: ImportExportProps) {
         const defaultBase = firstStem.replace(/_\d{4}$/, "");
         const savePath = `${dir}${sep}${defaultBase}_####.${format}`;
 
-        await invoke("export_clips", {
+        const exportedPaths = await invoke<string[]>("export_clips", {
           clips: clipArray,
           savePath: savePath,
           mergeEnabled: false,
+          exportOptions,
         });
+        if (shouldAutoImportMedia && editorTarget && exportedPaths.length > 0) {
+          appState.setProgress(99);
+          appState.setProgressMsg(`Importing media into ${editorLabel(editorTarget)}...`);
+          await invoke<string>("import_media_to_editor", {
+            editorTarget,
+            mediaPaths: exportedPaths,
+          });
+        }
       }
 
       props?.onRPCUpdate?.({
@@ -291,11 +406,16 @@ export default function useImportExport(props?: ImportExportProps) {
         });
       }, 10000);
     } catch (err) {
+      if (editorTarget) {
+        const msg = formatAutoImportFailureMessage(editorTarget, err);
+        appState.setProgress(100);
+        appState.setProgressMsg(msg);
+      }
       console.log("Export failed:", err)
     } finally {
       setLoading(false);
     }
-  }, [appState.clips, persistedState, generalSettings, props?.onRPCUpdate]);
+  }, [appState, persistedState, generalSettings, props?.onRPCUpdate]);
 
   const handlePickExportDir = useCallback(async () => {
     const dir = await open({ directory: true, multiple: false });
@@ -304,7 +424,15 @@ export default function useImportExport(props?: ImportExportProps) {
 
   const handleDownloadSingleClip = useCallback(async (clip: ClipItem) => {
     try {
-      const format = generalSettings.exportFormat || "mp4";
+      const quickProfiles = generalSettings.exportProfiles.filter((profile) =>
+        isQuickDownloadCompatibleWorkflow(profile.workflow)
+      );
+      const exportProfile =
+        quickProfiles.find((profile) => profile.id === generalSettings.quickDownloadProfileId) ||
+        quickProfiles.find((profile) => profile.id === generalSettings.activeExportProfileId) ||
+        quickProfiles[0] ||
+        getActiveExportProfile(generalSettings.exportProfiles, generalSettings.activeExportProfileId);
+      const format = exportProfile.container || generalSettings.exportFormat || "mp4";
       const fileName = clip.originalName || fileNameFromPath(clip.src);
       const defaultPath = `${fileName}.${format}`;
 
@@ -316,10 +444,11 @@ export default function useImportExport(props?: ImportExportProps) {
       if (!savePath) return;
 
       setLoading(true);
-      await invoke("export_clips", {
+      await invoke<string[]>("export_clips", {
         clips: [clip.src],
         savePath: savePath,
         mergeEnabled: false,
+        exportOptions: toExportOptions(exportProfile),
       });
       console.log("Single clip download complete");
     } catch (err) {
@@ -327,7 +456,7 @@ export default function useImportExport(props?: ImportExportProps) {
     } finally {
       setLoading(false);
     }
-  }, [generalSettings.exportFormat]);
+  }, [generalSettings]);
 
   return {
     loading,

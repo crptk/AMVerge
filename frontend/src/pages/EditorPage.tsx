@@ -82,7 +82,7 @@ export default function EditorPage({
   }, [timelineState.playheadSec, timelineState.isDraggingPlayhead, effectiveSegment?.id, effectiveSegment?.start, effectiveSegment?.sourceStart]);
 
   const onExportClick = () => {
-    handleExport(timelineClipIds, true, defaultMergedName);
+    handleExport(timelineClipIds, undefined, defaultMergedName);
   };
 
   const playheadRef = useRef(timelineState.playheadSec);

@@ -1,7 +1,9 @@
 pub mod cache;
+pub mod discord;
+pub mod editor_import;
 pub mod export;
+pub mod export_xml;
 pub mod filmstrip;
 pub mod preview;
 pub mod scenes;
 pub mod settings;
-pub mod discord;

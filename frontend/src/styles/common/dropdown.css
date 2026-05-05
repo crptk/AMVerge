@@ -4,7 +4,11 @@
   min-width: 80px;
   user-select: none;
   font-family: inherit;
-  z-index: 100;
+  z-index: 1;
+}
+
+.custom-dropdown.open {
+  z-index: 4000;
 }
 
 .dropdown-trigger {
@@ -35,10 +39,69 @@
 }
 
 .dropdown-value {
+  min-width: 0;
+  flex: 1;
+}
+
+.dropdown-value:not(.rich) {
   font-size: 0.85rem;
   font-weight: 500;
   text-transform: uppercase;
   letter-spacing: 0.5px;
+}
+
+.dropdown-value.rich {
+  display: flex;
+  align-items: center;
+}
+
+.dropdown-item-content {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.dropdown-item-main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.dropdown-item-label {
+  min-width: 0;
+  font-size: 0.85rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dropdown-item-description {
+  min-width: 0;
+  font-size: 0.68rem;
+  line-height: 1.15;
+  color: rgba(255, 255, 255, 0.62);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dropdown-item-icon {
+  width: 16px;
+  height: 16px;
+  border-radius: 5px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 16px;
+  color: var(--accent);
+  background: rgba(var(--accent-rgb), 0.1);
+  border: 1px solid rgba(var(--accent-rgb), 0.26);
+  font-size: 0.62rem;
 }
 
 .dropdown-icon {
@@ -81,23 +144,30 @@
 
 .dropdown-item {
   padding: 8px 12px;
-  font-size: 0.8rem;
   color: rgba(255, 255, 255, 0.7);
   cursor: pointer;
   transition: all 0.2s ease;
-  text-transform: uppercase;
 }
 
 .dropdown-item:hover {
   background: rgba(255, 255, 255, 0.1);
   color: white;
-  padding-left: 16px;
 }
 
 .dropdown-item.active {
   background: var(--accent);
   color: white;
   font-weight: 600;
+}
+
+.dropdown-item.active .dropdown-item-icon {
+  color: black;
+  background: rgba(0, 0, 0, 0.2);
+  border-color: rgba(0, 0, 0, 0.28);
+}
+
+.dropdown-item.active .dropdown-item-description {
+  color: rgba(0, 0, 0, 0.78);
 }
 
 .custom-dropdown.disabled {

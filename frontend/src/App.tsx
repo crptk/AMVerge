@@ -166,9 +166,13 @@ function App() {
     abortedRef.current = true;
 
     try {
-      await invoke("abort_detect_scenes");
+      await Promise.allSettled([
+        invoke("abort_detect_scenes"),
+        invoke("abort_export"),
+        invoke("abort_editor_import"),
+      ]);
     } catch (err) {
-      console.error("abort_detect_scenes failed:", err);
+      console.error("abort tasks failed:", err);
     }
   }
 
