@@ -361,6 +361,7 @@ enum WindowsImportErrorKind {
     NoProject,
     FocusFailed,
     Waiting,
+    FilenameFieldNotFound,
     InvalidFilename,
     ResolveBridgeUnavailable,
     ResolveProjectMissing,
@@ -383,6 +384,9 @@ fn classify_windows_import_error(raw: &str) -> WindowsImportErrorKind {
     }
     if raw.contains("AMVERGE_WAITING") {
         return WindowsImportErrorKind::Waiting;
+    }
+    if raw.contains("AMVERGE_FILENAME_FIELD_NOT_FOUND") {
+        return WindowsImportErrorKind::FilenameFieldNotFound;
     }
     if raw.contains("AMVERGE_INVALID_FILENAME") {
         return WindowsImportErrorKind::InvalidFilename;
@@ -413,6 +417,10 @@ fn summarize_windows_import_error(raw: &str) -> String {
             "AMVERGE_FOCUS_FAILED: Could not bring editor window to the foreground.".to_string()
         }
         WindowsImportErrorKind::Waiting => "AMVERGE_WAITING: Editor is still loading.".to_string(),
+        WindowsImportErrorKind::FilenameFieldNotFound => {
+            "AMVERGE_FILENAME_FIELD_NOT_FOUND: Could not access the editor dialog file-name field."
+                .to_string()
+        }
         WindowsImportErrorKind::InvalidFilename => {
             "AMVERGE_INVALID_FILENAME: Imported file path was rejected by the editor dialog."
                 .to_string()
@@ -441,7 +449,8 @@ fn should_retry_windows_import_error(
         WindowsImportErrorKind::NoWindow
         | WindowsImportErrorKind::NoProject
         | WindowsImportErrorKind::FocusFailed
-        | WindowsImportErrorKind::Waiting => {
+        | WindowsImportErrorKind::Waiting
+        | WindowsImportErrorKind::FilenameFieldNotFound => {
             let max_attempts = if launched_this_call { 12 } else { 4 };
             attempt_index + 1 < max_attempts
         }
@@ -470,6 +479,9 @@ fn import_hint_for_error(editor_name: &str, raw: &str) -> String {
             format!("Click the {editor_name} window to bring it to front")
         }
         WindowsImportErrorKind::Waiting => format!("Waiting for {editor_name}"),
+        WindowsImportErrorKind::FilenameFieldNotFound => {
+            format!("Re-targeting {editor_name} import field")
+        }
         WindowsImportErrorKind::InvalidFilename => {
             format!("{editor_name} rejected imported file path")
         }
@@ -1220,17 +1232,35 @@ public class Win32Focus {{
     public static extern bool AttachThreadInput(uint idAttach, uint idAttachTo, bool fAttach);
     [DllImport("user32.dll")]
     public static extern bool BringWindowToTop(IntPtr hWnd);
+    [DllImport("user32.dll")]
+    public static extern bool EnumChildWindows(IntPtr hWndParent, EnumWindowsProc lpEnumFunc, IntPtr lParam);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     public static extern int GetClassName(IntPtr hWnd, StringBuilder lpClassName, int nMaxCount);
     [DllImport("user32.dll")]
     public static extern bool GetWindowRect(IntPtr hWnd, out RECT rect);
+    [DllImport("user32.dll")]
+    public static extern int GetDlgCtrlID(IntPtr hWnd);
+    [DllImport("user32.dll")]
+    public static extern IntPtr GetDlgItem(IntPtr hDlg, int nIDDlgItem);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    public static extern bool SetDlgItemText(IntPtr hDlg, int nIDDlgItem, string lpString);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    public static extern IntPtr SendMessage(IntPtr hWnd, uint Msg, IntPtr wParam, string lParam);
     public const int SW_RESTORE = 9;
+    public const uint WM_SETTEXT = 0x000C;
+    public const uint WM_USER = 0x0400;
+    public const uint CDM_FIRST = WM_USER + 100;
+    public const uint CDM_SETCONTROLTEXT = CDM_FIRST + 4;
 }}
 '@ -ErrorAction SilentlyContinue
 
 $paths = @(
     __FILES__
 )
+
+$CDLG_CMB13 = 0x47C
+$CDLG_EDT1 = 0x480
+$COMMON_EDIT_CLASSES = @('edit', 'combobox', 'comboboxex32', 'richedit20w')
 
 function Get-EditorWindow([string]$processName) {{
     $procs = @(Get-Process -Name $processName -ErrorAction SilentlyContinue)
@@ -1419,6 +1449,69 @@ function Set-DialogFileName($dialog, [string]$value) {{
         return $false
     }}
 
+    # Explorer-style API contract way.
+    foreach ($controlId in @($CDLG_EDT1, $CDLG_CMB13)) {{
+        try {{
+            [void][Win32Focus]::SendMessage(
+                $dialog.Handle,
+                [Win32Focus]::CDM_SETCONTROLTEXT,
+                [IntPtr]$controlId,
+                $value
+            )
+        }} catch {{
+        }}
+    }}
+
+    # Prefer native Win32 control IDs for Explorer-style file dialogs:
+    # cmb13 (0x47C) and edt1 (0x480).
+    foreach ($controlId in @($CDLG_EDT1, $CDLG_CMB13)) {{
+        try {{
+            $ctrl = [Win32Focus]::GetDlgItem($dialog.Handle, $controlId)
+            if ($ctrl -ne [IntPtr]::Zero) {{
+                [void][Win32Focus]::SendMessage($ctrl, [Win32Focus]::WM_SETTEXT, [IntPtr]::Zero, $value)
+                if ([Win32Focus]::SetDlgItemText($dialog.Handle, $controlId, $value)) {{
+                    return $true
+                }}
+                return $true
+            }}
+        }} catch {{
+        }}
+    }}
+
+    # Fallback: scan child controls and write to Edit/Combo controls directly.
+    try {{
+        $script:candidateHandles = New-Object 'System.Collections.Generic.List[object]'
+        $enumChild = [Win32Focus+EnumWindowsProc] {{
+            param([IntPtr]$hWnd, [IntPtr]$lParam)
+            try {{
+                $classSb = New-Object System.Text.StringBuilder 256
+                [void][Win32Focus]::GetClassName($hWnd, $classSb, $classSb.Capacity)
+                $cls = $classSb.ToString().ToLowerInvariant()
+                if ($COMMON_EDIT_CLASSES -contains $cls) {{
+                    $script:candidateHandles.Add($hWnd) | Out-Null
+                }}
+            }} catch {{
+            }}
+            return $true
+        }}
+        [void][Win32Focus]::EnumChildWindows($dialog.Handle, $enumChild, [IntPtr]::Zero)
+
+        for ($i = 0; $i -lt $script:candidateHandles.Count; $i++) {{
+            $h = $script:candidateHandles.Item($i)
+            try {{
+                [void][Win32Focus]::SendMessage($h, [Win32Focus]::WM_SETTEXT, [IntPtr]::Zero, $value)
+                $id = [Win32Focus]::GetDlgCtrlID($h)
+                if ($id -gt 0) {{
+                    if ([Win32Focus]::SetDlgItemText($dialog.Handle, $id, $value)) {{
+                        return $true
+                    }}
+                }}
+            }} catch {{
+            }}
+        }}
+    }} catch {{
+    }}
+
     try {{
         $root = [System.Windows.Automation.AutomationElement]::FromHandle($dialog.Handle)
         if (-not $root) {{
@@ -1461,6 +1554,9 @@ function Set-DialogFileName($dialog, [string]$value) {{
 
             try {{
                 $automationId = ([string]$edit.Current.AutomationId).ToLowerInvariant()
+                if ($automationId -match '^(1148|1152)$') {{
+                    $score += 2000
+                }}
                 if ($automationId -match 'file|name') {{
                     $score += 400
                 }}
@@ -1506,13 +1602,7 @@ function Submit-DialogValue($dialog, [string]$value) {{
     Start-Sleep -Milliseconds 120
 
     if (-not (Set-DialogFileName $dialog $value)) {{
-        [System.Windows.Forms.SendKeys]::SendWait('%n')
-        Start-Sleep -Milliseconds 120
-        [System.Windows.Forms.Clipboard]::SetText($value)
-        [System.Windows.Forms.SendKeys]::SendWait('^a')
-        Start-Sleep -Milliseconds 80
-        [System.Windows.Forms.SendKeys]::SendWait('^v')
-        Start-Sleep -Milliseconds 180
+        throw ('AMVERGE_FILENAME_FIELD_NOT_FOUND: Unable to target "File name" field for path: ' + $value)
     }}
 
     [System.Windows.Forms.SendKeys]::SendWait('~')

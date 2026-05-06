@@ -37,6 +37,32 @@ function toExportOptions(profile: ExportProfile) {
   };
 }
 
+function resolveQuickDownloadProfile(settings: {
+  exportProfiles: ExportProfile[];
+  activeExportProfileId: string;
+  quickDownloadProfileId: string;
+}): ExportProfile {
+  const quickProfile = settings.exportProfiles.find(
+    (profile) => profile.id === settings.quickDownloadProfileId
+  );
+  if (quickProfile && isQuickDownloadCompatibleWorkflow(quickProfile.workflow)) {
+    return quickProfile;
+  }
+
+  const activeProfile = getActiveExportProfile(
+    settings.exportProfiles,
+    settings.activeExportProfileId
+  );
+  if (isQuickDownloadCompatibleWorkflow(activeProfile.workflow)) {
+    return activeProfile;
+  }
+
+  const firstCompatible = settings.exportProfiles.find((profile) =>
+    isQuickDownloadCompatibleWorkflow(profile.workflow)
+  );
+  return firstCompatible || activeProfile;
+}
+
 function resolveEditorTarget(editorTarget: ExportProfile["editorTarget"]): EditorTarget | null {
   if (editorTarget === "premiere_pro") return "premier_pro";
   if (editorTarget === "after_effects") return "after_effects";
@@ -455,15 +481,12 @@ export default function useImportExport(props?: ImportExportProps) {
 
   const handleDownloadSingleClip = useCallback(async (clip: ClipItem) => {
     try {
-      const quickProfiles = generalSettings.exportProfiles.filter((profile) =>
-        isQuickDownloadCompatibleWorkflow(profile.workflow)
-      );
-      const exportProfile =
-        quickProfiles.find((profile) => profile.id === generalSettings.quickDownloadProfileId) ||
-        quickProfiles.find((profile) => profile.id === generalSettings.activeExportProfileId) ||
-        quickProfiles[0] ||
-        getActiveExportProfile(generalSettings.exportProfiles, generalSettings.activeExportProfileId);
-      const format = exportProfile.container || generalSettings.exportFormat || "mp4";
+      const settings = useGeneralSettingsStore.getState();
+      const exportProfile = resolveQuickDownloadProfile(settings);
+      const workflow = exportProfile.workflow;
+      const editorTarget = resolveEditorTarget(exportProfile.editorTarget);
+      const shouldAutoImportMedia = workflow === "editor_encode" || workflow === "editor_remux";
+      const format = exportProfile.container || settings.exportFormat || "mp4";
       const fileName = clip.originalName || fileNameFromPath(clip.src);
       const defaultPath = `${fileName}.${format}`;
 
@@ -475,19 +498,27 @@ export default function useImportExport(props?: ImportExportProps) {
       if (!savePath) return;
 
       setLoading(true);
-      await invoke<string[]>("export_clips", {
+      const exportedPaths = await invoke<string[]>("export_clips", {
         clips: [clip.src],
         savePath: savePath,
         mergeEnabled: false,
         exportOptions: toExportOptions(exportProfile),
       });
+
+      if (shouldAutoImportMedia && editorTarget && exportedPaths.length > 0) {
+        const mediaPathsForImport = resolveAutoImportMediaPaths(editorTarget, [clip], exportedPaths);
+        await invoke<string>("import_media_to_editor", {
+          editorTarget,
+          mediaPaths: mediaPathsForImport,
+        });
+      }
       console.log("Single clip download complete");
     } catch (err) {
       console.error("Single clip download failed:", err);
     } finally {
       setLoading(false);
     }
-  }, [generalSettings]);
+  }, [setLoading]);
 
   return {
     loading,

@@ -42,6 +42,7 @@ pub(super) struct ClipExportJob {
     pub input: String,
     pub output: String,
     pub copy_ok: bool,
+    pub input_seek_ms: Option<u64>,
     pub clip_total: Option<u64>,
 }
 

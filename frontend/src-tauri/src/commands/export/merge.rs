@@ -4,7 +4,7 @@ use std::path::Path;
 use crate::utils::logging::{console_log, sanitize_for_console};
 
 use super::encode::{append_audio_encode_args, append_video_encode_args};
-use super::probe::ffprobe_duration_ms;
+use super::probe::{clip_video_start_ms, ffprobe_duration_ms};
 use super::progress::{
     emit_export_progress, export_canceled_error, is_canceled_error_text, is_export_cancel_requested,
 };
@@ -78,6 +78,25 @@ pub(super) async fn run_merge_export(
 
     emit_export_progress(&runtime.app, 50, "Merging...", runtime.export_start_time);
 
+    let needs_leading_gap_fix = if let Some(first_clip) = clips.first() {
+        clip_video_start_ms(runtime.ffprobe.clone(), first_clip.clone())
+            .await
+            .ok()
+            .flatten()
+            .is_some_and(|ms| ms >= 20)
+    } else {
+        false
+    };
+
+    let use_stream_copy = runtime.remux_workflow && !needs_leading_gap_fix;
+
+    if runtime.remux_workflow && needs_leading_gap_fix {
+        console_log(
+            "EXPORT|merge",
+            "leading gap detected; fallback merge re-encode for frame-accurate start",
+        );
+    }
+
     let mut args = vec![
         "-y".into(),
         "-f".into(),
@@ -90,17 +109,24 @@ pub(super) async fn run_merge_export(
         "+genpts".into(),
         "-avoid_negative_ts".into(),
         "make_zero".into(),
+        "-map".into(),
+        "0:v:0".into(),
+        "-map".into(),
+        "0:a?".into(),
+        "-map_metadata".into(),
+        "-1".into(),
     ];
 
-    if runtime.remux_workflow {
+    if use_stream_copy {
         args.extend([
             "-c:v".into(),
             "copy".into(),
             "-c:a".into(),
             "copy".into(),
-            "-copyinkf".into(),
         ]);
     } else {
+        args.extend(["-vf".into(), "setpts=PTS-STARTPTS".into()]);
+
         append_video_encode_args(&mut args, runtime.export_options.as_ref());
         append_audio_encode_args(&mut args, runtime.export_options.as_ref());
     }

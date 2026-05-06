@@ -446,17 +446,34 @@ pub(super) fn ffmpeg_reencode_args(
     input: &str,
     output: &str,
     options: Option<&ExportOptionsPayload>,
+    input_seek_ms: Option<u64>,
 ) -> Vec<String> {
+    let mut args = vec!["-y".to_string()];
+    if let Some(ms) = input_seek_ms.filter(|ms| *ms > 0) {
+        let seconds = ms as f64 / 1000.0;
+        let value = format!("{seconds:.6}");
+        let seek = value.trim_end_matches('0').trim_end_matches('.').to_string();
+        args.push("-ss".to_string());
+        args.push(seek);
+    }
+
     // Timestamp normalization to reduce editor import edge cases.
-    let mut args = vec![
-        "-y".to_string(),
+    args.extend([
         "-i".to_string(),
         input.to_string(),
+        "-map".to_string(),
+        "0:v:0".to_string(),
+        "-map".to_string(),
+        "0:a?".to_string(),
+        "-map_metadata".to_string(),
+        "-1".to_string(),
         "-fflags".to_string(),
         "+genpts".to_string(),
         "-avoid_negative_ts".to_string(),
         "make_zero".to_string(),
-    ];
+        "-vf".to_string(),
+        "setpts=PTS-STARTPTS".to_string(),
+    ]);
 
     append_video_encode_args(&mut args, options);
     append_audio_encode_args(&mut args, options);

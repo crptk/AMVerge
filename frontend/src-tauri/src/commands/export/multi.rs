@@ -7,29 +7,47 @@ use crate::utils::logging::console_log;
 use crate::utils::paths::file_name_only;
 
 use super::encode::ffmpeg_reencode_args;
-use super::probe::{clip_starts_with_keyframe, ffprobe_duration_ms, is_ae_copy_safe};
+use super::probe::{
+    clip_starts_with_keyframe, clip_video_start_ms, ffprobe_duration_ms, is_ae_copy_safe,
+};
 use super::progress::{
     emit_export_progress, export_canceled_error, is_canceled_error_text, is_export_cancel_requested,
 };
 use super::runner::run_ffmpeg_with_progress;
 use super::types::{ClipExportJob, ExportRuntime};
 
-fn build_copy_args(input: &str, output: &str) -> Vec<String> {
-    vec![
+fn format_seek_seconds(ms: u64) -> String {
+    let seconds = ms as f64 / 1000.0;
+    let value = format!("{seconds:.6}");
+    value.trim_end_matches('0').trim_end_matches('.').to_string()
+}
+
+fn build_copy_args(input: &str, output: &str, input_seek_ms: Option<u64>) -> Vec<String> {
+    let mut args = vec![
         "-y".into(),
+    ];
+
+    if let Some(ms) = input_seek_ms.filter(|ms| *ms > 0) {
+        args.extend(["-ss".into(), format_seek_seconds(ms)]);
+    }
+
+    args.extend([
         "-i".into(),
         input.to_string(),
-        "-fflags".into(),
-        "+genpts".into(),
-        "-avoid_negative_ts".into(),
-        "make_zero".into(),
+        "-map".into(),
+        "0:v:0".into(),
+        "-map".into(),
+        "0:a?".into(),
+        "-map_metadata".into(),
+        "-1".into(),
         "-c".into(),
         "copy".into(),
-        "-copyinkf".into(),
         "-movflags".into(),
         "+faststart".into(),
         output.to_string(),
-    ]
+    ]);
+
+    args
 }
 
 async fn run_one_job(
@@ -46,12 +64,17 @@ async fn run_one_job(
     let (mode_msg, args) = if job.copy_ok {
         (
             format!("{msg} (copy)"),
-            build_copy_args(&job.input, &job.output),
+            build_copy_args(&job.input, &job.output, job.input_seek_ms),
         )
     } else {
         (
             format!("{msg} (re-encode)"),
-            ffmpeg_reencode_args(&job.input, &job.output, runtime.export_options.as_ref()),
+            ffmpeg_reencode_args(
+                &job.input,
+                &job.output,
+                runtime.export_options.as_ref(),
+                job.input_seek_ms,
+            ),
         )
     };
 
@@ -114,8 +137,12 @@ async fn run_one_job(
             let app_for_ffmpeg = runtime.app.clone();
             let ffmpeg_clone = runtime.ffmpeg.clone();
             let run_msg = format!("{msg} (re-encode)");
-            let run_args =
-                ffmpeg_reencode_args(&job.input, &job.output, runtime.export_options.as_ref());
+            let run_args = ffmpeg_reencode_args(
+                &job.input,
+                &job.output,
+                runtime.export_options.as_ref(),
+                job.input_seek_ms,
+            );
             let start_time = runtime.export_start_time;
             let abort_requested_for_run = runtime.abort_requested.clone();
             let active_pids_for_run = runtime.active_pids.clone();
@@ -163,6 +190,7 @@ fn build_clip_jobs(
     user_stem: &str,
     ext: &str,
     per_copy_safe: &[bool],
+    per_input_seek_ms: &[Option<u64>],
     per_ms: &[Option<u64>],
     abort_requested: &Arc<AtomicBool>,
 ) -> Result<Vec<ClipExportJob>, String> {
@@ -208,6 +236,7 @@ fn build_clip_jobs(
             input: clip.clone(),
             output,
             copy_ok: per_copy_safe.get(index).copied().unwrap_or(false),
+            input_seek_ms: per_input_seek_ms.get(index).copied().flatten(),
             clip_total: per_ms.get(index).copied().flatten(),
         });
     }
@@ -243,6 +272,7 @@ pub(super) async fn run_multi_export(
     let mut per_ms: Vec<Option<u64>> = Vec::with_capacity(clips.len());
     let mut total_ms: Option<u64> = Some(0);
     let mut per_copy_safe: Vec<bool> = Vec::with_capacity(clips.len());
+    let mut per_input_seek_ms: Vec<Option<u64>> = Vec::with_capacity(clips.len());
 
     for clip in clips {
         if is_export_cancel_requested(&runtime.abort_requested) {
@@ -261,20 +291,40 @@ pub(super) async fn run_multi_export(
             total_ms = None;
         }
 
+        let video_start_ms = clip_video_start_ms(runtime.ffprobe.clone(), clip.clone())
+            .await
+            .ok()
+            .flatten();
+        let input_seek_ms = video_start_ms.filter(|ms| *ms >= 20);
+
         let copy_safe = if runtime.remux_workflow {
-            match clip_starts_with_keyframe(runtime.ffprobe.clone(), clip.clone()).await {
-                Ok(Some(true)) => true,
-                Ok(Some(false)) => {
+            let starts_with_keyframe =
+                match clip_starts_with_keyframe(runtime.ffprobe.clone(), clip.clone()).await {
+                    Ok(Some(v)) => v,
+                    Ok(None) | Err(_) => false,
+                };
+
+            if !starts_with_keyframe {
+                console_log(
+                    "EXPORT|remux",
+                    &format!(
+                        "clip starts without keyframe; fallback re-encode (input={})",
+                        file_name_only(clip)
+                    ),
+                );
+                false
+            } else {
+                if let Some(ms) = input_seek_ms {
                     console_log(
                         "EXPORT|remux",
                         &format!(
-                            "clip starts without keyframe; fallback re-encode (input={})",
+                            "normalizing leading gap via stream copy seek={}ms (input={})",
+                            ms,
                             file_name_only(clip)
                         ),
                     );
-                    false
                 }
-                Ok(None) | Err(_) => true,
+                true
             }
         } else if runtime.force_encode_workflow {
             false
@@ -284,7 +334,21 @@ pub(super) async fn run_multi_export(
                 .unwrap_or(false)
         };
 
+        if !runtime.remux_workflow {
+            if let Some(ms) = input_seek_ms {
+                console_log(
+                    "EXPORT|encode",
+                    &format!(
+                        "normalizing leading gap via input seek={}ms (input={})",
+                        ms,
+                        file_name_only(clip)
+                    ),
+                );
+            }
+        }
+
         per_copy_safe.push(copy_safe);
+        per_input_seek_ms.push(input_seek_ms);
     }
 
     let jobs = build_clip_jobs(
@@ -293,6 +357,7 @@ pub(super) async fn run_multi_export(
         &user_stem,
         &ext,
         &per_copy_safe,
+        &per_input_seek_ms,
         &per_ms,
         &runtime.abort_requested,
     )?;
@@ -373,7 +438,10 @@ pub(super) async fn run_multi_export(
                     let output_base = file_name_only(&job.output);
 
                     let (mode_msg, args) = if job.copy_ok {
-                        (format!("{msg} (copy)"), build_copy_args(&job.input, &job.output))
+                        (
+                            format!("{msg} (copy)"),
+                            build_copy_args(&job.input, &job.output, job.input_seek_ms),
+                        )
                     } else {
                         (
                             format!("{msg} (re-encode)"),
@@ -381,6 +449,7 @@ pub(super) async fn run_multi_export(
                                 &job.input,
                                 &job.output,
                                 export_options_for_run.as_ref(),
+                                job.input_seek_ms,
                             ),
                         )
                     };
@@ -428,6 +497,7 @@ pub(super) async fn run_multi_export(
                                 &job.input,
                                 &job.output,
                                 export_options_for_run.as_ref(),
+                                job.input_seek_ms,
                             );
 
                             let retry_result = run_ffmpeg_with_progress(

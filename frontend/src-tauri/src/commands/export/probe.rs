@@ -3,6 +3,20 @@ use std::process::Command;
 
 use crate::utils::process::apply_no_window;
 
+fn parse_seconds_to_ms(raw: &str) -> Option<u64> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    let secs: f64 = trimmed.parse().ok()?;
+    if !secs.is_finite() || secs < 0.0 {
+        return None;
+    }
+
+    Some((secs * 1000.0).round() as u64)
+}
+
 pub(super) async fn ffprobe_duration_ms(
     ffprobe: PathBuf,
     path: String,
@@ -27,18 +41,12 @@ pub(super) async fn ffprobe_duration_ms(
             return Ok(None);
         }
 
-        let s = String::from_utf8_lossy(&out.stdout).trim().to_string();
-        if s.is_empty() {
+        let s = String::from_utf8_lossy(&out.stdout);
+        let ms = parse_seconds_to_ms(&s).ok_or("ffprobe duration parse failed".to_string())?;
+        if ms == 0 {
             return Ok(None);
         }
-
-        let secs: f64 = s
-            .parse()
-            .map_err(|_| "ffprobe duration parse failed".to_string())?;
-        if !secs.is_finite() || secs <= 0.0 {
-            return Ok(None);
-        }
-        Ok(Some((secs * 1000.0).round() as u64))
+        Ok(Some(ms))
     })
     .await
     .map_err(|e| format!("ffprobe task panicked: {e}"))?
@@ -128,6 +136,44 @@ pub(super) async fn clip_starts_with_keyframe(
             .find(|line| !line.is_empty());
 
         Ok(first.map(|line| line == "1"))
+    })
+    .await
+    .map_err(|e| format!("ffprobe task panicked: {e}"))?
+}
+
+pub(super) async fn clip_video_start_ms(
+    ffprobe: PathBuf,
+    path: String,
+) -> Result<Option<u64>, String> {
+    tokio::task::spawn_blocking(move || {
+        let mut cmd = Command::new(&ffprobe);
+        apply_no_window(&mut cmd);
+        let out = cmd
+            .args([
+                "-v",
+                "error",
+                "-select_streams",
+                "v:0",
+                "-show_entries",
+                "stream=start_time",
+                "-of",
+                "default=nk=1:nw=1",
+                &path,
+            ])
+            .output()
+            .map_err(|e| format!("Failed to run ffprobe ({}): {e}", ffprobe.display()))?;
+
+        if !out.status.success() {
+            return Ok(None);
+        }
+
+        let stdout_text = String::from_utf8_lossy(&out.stdout);
+        let first = stdout_text
+            .lines()
+            .map(str::trim)
+            .find(|line| !line.is_empty());
+
+        Ok(first.and_then(parse_seconds_to_ms))
     })
     .await
     .map_err(|e| format!("ffprobe task panicked: {e}"))?

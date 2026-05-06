@@ -70,7 +70,7 @@ const DEFAULT_DETECTION: NvidiaDetectionResult = {
   profile: "unsupported",
 };
 const FEATURED_PROFILE_ICONS_KEY = "amverge.featuredProfileIcons";
-const INLINE_VISIBLE_ICON_COUNT = 8;
+const MAX_INLINE_VISIBLE_ICON_COUNT = 8;
 const MAX_FEATURED_ICONS = 8;
 const INLINE_DEFAULT_ICONS: ExportProfileIcon[] = [
   "video",
@@ -95,10 +95,36 @@ type CropModalPayload = {
   flip: { horizontal: boolean; vertical: boolean };
 };
 
+type ProfileIconGlyphProps = {
+  icon: ExportProfileIcon;
+  customIconPath: string | null | undefined;
+};
+
 function normalizeIconPath(path: string | null | undefined): string {
   return (path || "").split("?")[0];
 }
 
+function stampIconPath(path: string): string {
+  return `${normalizeIconPath(path)}?t=${Date.now()}`;
+}
+
+function getInlineVisibleIconCount(viewportWidth: number): number {
+  if (viewportWidth <= 960) return 5;
+  if (viewportWidth <= 1160) return 6;
+  if (viewportWidth <= 1360) return 7;
+  return MAX_INLINE_VISIBLE_ICON_COUNT;
+}
+
+function getCurrentInlineVisibleIconCount(): number {
+  if (typeof window === "undefined") return MAX_INLINE_VISIBLE_ICON_COUNT;
+  return getInlineVisibleIconCount(window.innerWidth);
+}
+
+function ProfileIconGlyph({ icon, customIconPath }: ProfileIconGlyphProps) {
+  return renderProfileIcon({ icon, customIconPath });
+}
+
+// eslint-disable-next-line react-doctor/no-giant-component, react-doctor/prefer-useReducer
 export default function ExportSection() {
   const exportProfiles = useGeneralSettingsStore((state) => state.exportProfiles);
   const activeExportProfileId = useGeneralSettingsStore((state) => state.activeExportProfileId);
@@ -113,11 +139,15 @@ export default function ExportSection() {
   const removeCustomProfileIcon = useGeneralSettingsStore((state) => state.removeCustomProfileIcon);
 
   const [nvidiaDetection, setNvidiaDetection] = useState<NvidiaDetectionResult>(DEFAULT_DETECTION);
+  // eslint-disable-next-line react-doctor/rerender-state-only-in-handlers
   const [gpuProbeComplete, setGpuProbeComplete] = useState(false);
   const [showIconPicker, setShowIconPicker] = useState(false);
   const [featuredIcons, setFeaturedIcons] = useState<ExportProfileIcon[]>([]);
   const [featuredCustomIcons, setFeaturedCustomIcons] = useState<string[]>([]);
+  // eslint-disable-next-line react-doctor/rerender-state-only-in-handlers
+  const [inlineVisibleIconCount, setInlineVisibleIconCount] = useState(getCurrentInlineVisibleIconCount);
   const [iconToCrop, setIconToCrop] = useState<string | null>(null);
+  // eslint-disable-next-line react-doctor/rerender-state-only-in-handlers
   const [sourceIconPath, setSourceIconPath] = useState<string | null>(null);
   const iconPickerRef = useRef<HTMLDivElement | null>(null);
 
@@ -140,15 +170,15 @@ export default function ExportSection() {
     [exportProfiles]
   );
 
-  const quickDownloadCompatibleIds = useMemo(
-    () =>
-      new Set(
-        exportProfiles
-          .filter((profile) => isQuickDownloadCompatibleWorkflow(profile.workflow))
-          .map((profile) => profile.id)
-      ),
-    [exportProfiles]
-  );
+  const quickDownloadCompatibleIds = useMemo(() => {
+    const compatibleIds = new Set<string>();
+    for (const profile of exportProfiles) {
+      if (isQuickDownloadCompatibleWorkflow(profile.workflow)) {
+        compatibleIds.add(profile.id);
+      }
+    }
+    return compatibleIds;
+  }, [exportProfiles]);
 
   const quickDownloadProfileOptions = useMemo(
     () => profileOptions.filter((option) => quickDownloadCompatibleIds.has(option.value)),
@@ -209,6 +239,7 @@ export default function ExportSection() {
     () => pickerIconOptions.map((option) => option.value),
     [pickerIconOptions]
   );
+  const availableIconSet = useMemo(() => new Set(availableIconValues), [availableIconValues]);
   const normalizedActiveCustomIconPath = useMemo(
     () => normalizeIconPath(activeProfile.customIconPath),
     [activeProfile.customIconPath]
@@ -225,6 +256,10 @@ export default function ExportSection() {
     }
     return deduped;
   }, [activeProfile.customIconPath, customProfileIcons]);
+  const normalizedCustomProfileIconSet = useMemo(
+    () => new Set(normalizedCustomProfileIcons),
+    [normalizedCustomProfileIcons]
+  );
 
   const saveFeaturedIcons = (nextBuiltIn: ExportProfileIcon[], nextCustom: string[]) => {
     const builtInSeen = new Set<ExportProfileIcon>();
@@ -233,7 +268,7 @@ export default function ExportSection() {
     const validCustom: string[] = [];
 
     for (const icon of nextBuiltIn) {
-      if (!availableIconValues.includes(icon) || builtInSeen.has(icon)) continue;
+      if (!availableIconSet.has(icon) || builtInSeen.has(icon)) continue;
       builtInSeen.add(icon);
       validBuiltIn.push(icon);
       if (validBuiltIn.length >= MAX_FEATURED_ICONS) break;
@@ -242,7 +277,7 @@ export default function ExportSection() {
     const remainingSlots = Math.max(0, MAX_FEATURED_ICONS - validBuiltIn.length);
     for (const rawPath of nextCustom) {
       const normalizedPath = normalizeIconPath(rawPath);
-      if (!normalizedPath || !normalizedCustomProfileIcons.includes(normalizedPath) || customSeen.has(normalizedPath)) {
+      if (!normalizedPath || !normalizedCustomProfileIconSet.has(normalizedPath) || customSeen.has(normalizedPath)) {
         continue;
       }
       customSeen.add(normalizedPath);
@@ -261,11 +296,12 @@ export default function ExportSection() {
   };
 
   const inlineVisibleIconItems = useMemo(() => {
-    const validFeatured = featuredIcons.filter((icon) => availableIconValues.includes(icon));
-    const defaultIcons = INLINE_DEFAULT_ICONS.filter((icon) => availableIconValues.includes(icon));
-    const rest = defaultIcons.filter((icon) => !validFeatured.includes(icon));
+    const validFeatured = featuredIcons.filter((icon) => availableIconSet.has(icon));
+    const validFeaturedSet = new Set(validFeatured);
+    const defaultIcons = INLINE_DEFAULT_ICONS.filter((icon) => availableIconSet.has(icon));
+    const rest = defaultIcons.filter((icon) => !validFeaturedSet.has(icon));
     const featuredCustom = featuredCustomIcons.filter((iconPath) =>
-      normalizedCustomProfileIcons.includes(iconPath)
+      normalizedCustomProfileIconSet.has(iconPath)
     );
     const customCandidates =
       activeProfile.icon === "custom" && normalizedActiveCustomIconPath
@@ -276,14 +312,14 @@ export default function ExportSection() {
       ...validFeatured.map((icon) => ({ type: "builtin" as const, value: icon })),
       ...rest.map((icon) => ({ type: "builtin" as const, value: icon })),
       ...customCandidates.map((path) => ({ type: "custom" as const, path })),
-    ].slice(0, INLINE_VISIBLE_ICON_COUNT);
+    ].slice(0, inlineVisibleIconCount);
 
     if (
       activeProfile.icon === "custom" &&
       normalizedActiveCustomIconPath &&
       !deduped.some((item) => item.type === "custom" && item.path === normalizedActiveCustomIconPath)
     ) {
-      if (deduped.length >= INLINE_VISIBLE_ICON_COUNT) {
+      if (deduped.length >= inlineVisibleIconCount) {
         deduped[deduped.length - 1] = { type: "custom", path: normalizedActiveCustomIconPath };
       } else {
         deduped.push({ type: "custom", path: normalizedActiveCustomIconPath });
@@ -293,12 +329,24 @@ export default function ExportSection() {
     return deduped;
   }, [
     activeProfile.icon,
-    availableIconValues,
+    availableIconSet,
     featuredCustomIcons,
     featuredIcons,
     normalizedActiveCustomIconPath,
-    normalizedCustomProfileIcons,
+    normalizedCustomProfileIconSet,
+    inlineVisibleIconCount,
   ]);
+
+  useEffect(() => {
+    const onResize = () => {
+      setInlineVisibleIconCount(getInlineVisibleIconCount(window.innerWidth));
+    };
+
+    window.addEventListener("resize", onResize);
+    return () => {
+      window.removeEventListener("resize", onResize);
+    };
+  }, []);
 
   const toggleFeaturedIcon = (icon: ExportProfileIcon) => {
     if (featuredIcons.includes(icon)) {
@@ -370,7 +418,7 @@ export default function ExportSection() {
       const validCustom: string[] = [];
 
       for (const icon of parsedBuiltIn) {
-        if (!availableIconValues.includes(icon) || builtInSeen.has(icon)) continue;
+        if (!availableIconSet.has(icon) || builtInSeen.has(icon)) continue;
         builtInSeen.add(icon);
         validBuiltIn.push(icon);
         if (validBuiltIn.length >= MAX_FEATURED_ICONS) break;
@@ -379,7 +427,7 @@ export default function ExportSection() {
       const remainingSlots = Math.max(0, MAX_FEATURED_ICONS - validBuiltIn.length);
       for (const iconPath of parsedCustom) {
         const normalizedPath = normalizeIconPath(iconPath);
-        if (!normalizedPath || !normalizedCustomProfileIcons.includes(normalizedPath) || customSeen.has(normalizedPath)) {
+        if (!normalizedPath || !normalizedCustomProfileIconSet.has(normalizedPath) || customSeen.has(normalizedPath)) {
           continue;
         }
         customSeen.add(normalizedPath);
@@ -392,7 +440,7 @@ export default function ExportSection() {
     } catch {
       // Ignore invalid persisted values.
     }
-  }, [availableIconValues, normalizedCustomProfileIcons]);
+  }, [availableIconSet, normalizedCustomProfileIconSet]);
 
   useEffect(() => {
     if (!showIconPicker) return;
@@ -535,6 +583,16 @@ export default function ExportSection() {
     }
   };
 
+  const applyCustomIconSelection = (iconPath: string, closePicker: boolean) => {
+    updateActiveProfile({
+      icon: "custom",
+      customIconPath: stampIconPath(iconPath),
+    });
+    if (closePicker) {
+      setShowIconPicker(false);
+    }
+  };
+
   const handleCustomIconCropComplete = async (cropData: CropModalPayload) => {
     if (!sourceIconPath) return;
 
@@ -554,8 +612,7 @@ export default function ExportSection() {
         },
       });
 
-      const normalizedStoredPath = storedPath.split("?")[0];
-      const stampedPath = `${normalizedStoredPath}?t=${Date.now()}`;
+      const stampedPath = stampIconPath(storedPath);
 
       addCustomProfileIcon(stampedPath);
       updateActiveProfile({
@@ -649,10 +706,10 @@ export default function ExportSection() {
                       title={item.value}
                       onClick={() => updateActiveProfile({ icon: item.value })}
                     >
-                      {renderProfileIcon({
-                        icon: item.value,
-                        customIconPath: item.value === "custom" ? activeProfile.customIconPath : null,
-                      })}
+                      <ProfileIconGlyph
+                        icon={item.value}
+                        customIconPath={item.value === "custom" ? activeProfile.customIconPath : null}
+                      />
                     </button>
                   );
                 }
@@ -665,12 +722,7 @@ export default function ExportSection() {
                       type="button"
                       className={`profile-icon-button${isActiveCustom ? " active" : ""}`}
                       title="Use custom icon"
-                      onClick={() =>
-                        updateActiveProfile({
-                          icon: "custom",
-                          customIconPath: `${item.path}?t=${Date.now()}`,
-                        })
-                      }
+                      onClick={() => applyCustomIconSelection(item.path, false)}
                     >
                       <img
                         className="profile-custom-icon"
@@ -734,7 +786,7 @@ export default function ExportSection() {
                             setShowIconPicker(false);
                           }}
                         >
-                          {renderProfileIcon({ icon: option.value, customIconPath: null })}
+                          <ProfileIconGlyph icon={option.value} customIconPath={null} />
                         </button>
                         <button
                           type="button"
@@ -778,11 +830,7 @@ export default function ExportSection() {
                           className={`profile-icon-button${isActiveCustom ? " active" : ""}`}
                           title="Use custom icon"
                           onClick={() => {
-                            updateActiveProfile({
-                              icon: "custom",
-                              customIconPath: `${iconPath}?t=${Date.now()}`,
-                            });
-                            setShowIconPicker(false);
+                            applyCustomIconSelection(iconPath, true);
                           }}
                         >
                           <img
@@ -853,7 +901,7 @@ export default function ExportSection() {
           label="Merge Clips"
           description="When enabled, selected clips are merged into a single output file."
           control={
-            <label className="custom-checkbox">
+            <label className="custom-checkbox" aria-label="Merge clips">
               <input
                 type="checkbox"
                 className="checkbox"

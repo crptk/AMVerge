@@ -110,10 +110,21 @@ pub(super) async fn import_into_premier_pro(
     #[cfg(target_os = "windows")]
     {
         emit_import_progress(Some(app), 98, "Preparing Premiere Pro auto-import...");
+        let import_paths = match stage_windows_editor_import_paths("premiere_pro", media_paths) {
+            Ok(paths) => paths,
+            Err(err) => {
+                console_log(
+                    "NLE|premiere",
+                    &format!("staging skipped (fallback to original paths): {err}"),
+                );
+                media_paths.to_vec()
+            }
+        };
+
         let script_path = write_temp_script(
             "amverge_premiere_import",
             "ps1",
-            &build_premier_pro_ui_import_ps(media_paths),
+            &build_premier_pro_ui_import_ps(&import_paths),
         )?;
 
         let premiere_already_running = is_windows_process_running("Adobe Premiere Pro.exe");
@@ -127,7 +138,7 @@ pub(super) async fn import_into_premier_pro(
 
         let max_attempts: u32 = 30;
 
-        run_windows_import_with_retries(
+        let first_attempt = run_windows_import_with_retries(
             Some(app),
             abort_requested,
             "NLE|premiere",
@@ -139,7 +150,47 @@ pub(super) async fn import_into_premier_pro(
             "Premiere Pro did not become ready in time. Make sure a project is open, then retry.",
             || run_editor_ui_import_ps(&script_path, "Premiere Pro"),
         )
-        .await
+        .await;
+
+        match first_attempt {
+            Ok(msg) => Ok(msg),
+            Err(err) => {
+                if err.contains("AMVERGE_INVALID_FILENAME") {
+                    console_log(
+                        "NLE|premiere",
+                        "dialog rejected path; retrying with forced staged filenames",
+                    );
+
+                    let forced_paths =
+                        stage_windows_editor_import_paths_forced("premiere_pro", media_paths)
+                            .map_err(|stage_err| {
+                                format!("{err}\nForced staging failed: {stage_err}")
+                            })?;
+
+                    let forced_script = write_temp_script(
+                        "amverge_premiere_import_forced_stage",
+                        "ps1",
+                        &build_premier_pro_ui_import_ps(&forced_paths),
+                    )?;
+
+                    return run_windows_import_with_retries(
+                        Some(app),
+                        abort_requested,
+                        "NLE|premiere",
+                        "Premiere Pro",
+                        12,
+                        false,
+                        Some("Adobe Premiere Pro.exe"),
+                        "Premiere Pro was closed before the import could complete.",
+                        "Premiere Pro did not become ready in time. Make sure a project is open, then retry.",
+                        || run_editor_ui_import_ps(&forced_script, "Premiere Pro"),
+                    )
+                    .await;
+                }
+
+                Err(err)
+            }
+        }
     }
 }
 

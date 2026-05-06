@@ -33,18 +33,24 @@ pub(super) async fn fast_merge_inner(
     }
 
     let filter_complex = format!(
-        "{}concat=n={}:v=1:a=1[v_raw][a];[v_raw]format=yuv420p[v]",
+        "{}concat=n={}:v=1:a=1[v_raw][a_raw];[v_raw]setpts=PTS-STARTPTS,format=yuv420p[v];[a_raw]anull[a]",
         filter_input,
         clips.len()
     );
 
     args.extend([
+        "-fflags".to_string(),
+        "+genpts".to_string(),
+        "-avoid_negative_ts".to_string(),
+        "make_zero".to_string(),
         "-filter_complex".to_string(),
         filter_complex,
         "-map".to_string(),
         "[v]".to_string(),
         "-map".to_string(),
         "[a]".to_string(),
+        "-map_metadata".to_string(),
+        "-1".to_string(),
         "-c:v".to_string(),
         "libx264".to_string(),
         "-crf".to_string(),
@@ -99,8 +105,16 @@ pub(super) async fn fast_split_inner(
             "-y",
             "-i",
             &input_path,
+            "-map",
+            "0:v:0",
+            "-map",
+            "0:a?",
+            "-map_metadata",
+            "-1",
             "-t",
             &split_time.to_string(),
+            "-vf",
+            "setpts=PTS-STARTPTS",
             "-c:v",
             "libx264",
             "-crf",
@@ -111,6 +125,8 @@ pub(super) async fn fast_split_inner(
             "aac",
             "-avoid_negative_ts",
             "make_zero",
+            "-movflags",
+            "+faststart",
             &output_path1,
         ])
         .output()
@@ -128,10 +144,18 @@ pub(super) async fn fast_split_inner(
     let out2 = cmd2
         .args([
             "-y",
-            "-ss",
-            &split_time.to_string(),
             "-i",
             &input_path,
+            "-ss",
+            &split_time.to_string(),
+            "-map",
+            "0:v:0",
+            "-map",
+            "0:a?",
+            "-map_metadata",
+            "-1",
+            "-vf",
+            "setpts=PTS-STARTPTS",
             "-c:v",
             "libx264",
             "-crf",
@@ -142,6 +166,8 @@ pub(super) async fn fast_split_inner(
             "aac",
             "-avoid_negative_ts",
             "make_zero",
+            "-movflags",
+            "+faststart",
             &output_path2,
         ])
         .output()
