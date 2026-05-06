@@ -20,11 +20,13 @@ type PreviewContainerProps = {
   // Program (Timeline)
   programClip: string | null;
   programClipThumbnail: string | null;
+  programClipMergedSrcs?: string[];
   programTime?: number;
 
   // Source (Grid)
   sourceClip: string | null;
   sourceClipThumbnail: string | null;
+  sourceClipMergedSrcs?: string[];
   onTimeUpdate?: (time: number) => void;
 };
 
@@ -119,8 +121,9 @@ export default function PreviewContainer (props: PreviewContainerProps) {
           <div className="preview-window-wrapper source" key="source-wrapper">
             <div className="preview-window">
               <VideoPlayer 
-                key={`source-player-${props.sourceClip}`}
+                key={`source-player-${props.sourceClip}-${props.sourceClipMergedSrcs?.join('|') ?? ''}`}
                 selectedClip={props.sourceClip!}
+                mergedSrcs={props.sourceClipMergedSrcs}
                 videoIsHEVC={videoIsHEVC}
                 userHasHEVC={userHasHEVC}
                 posterPath={props.sourceClipThumbnail}
@@ -135,8 +138,9 @@ export default function PreviewContainer (props: PreviewContainerProps) {
           <div className="preview-window-wrapper program" key="program-wrapper">
             <div className="preview-window">
               <VideoPlayer 
-                key={`program-player-${props.programClip}`}
+                key={`program-player-${props.programClip}-${props.programClipMergedSrcs?.join('|') ?? ''}`}
                 selectedClip={props.programClip!}
+                mergedSrcs={props.programClipMergedSrcs}
                 videoIsHEVC={videoIsHEVC}
                 userHasHEVC={userHasHEVC}
                 posterPath={props.programClipThumbnail}

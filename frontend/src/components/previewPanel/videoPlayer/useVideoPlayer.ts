@@ -39,8 +39,9 @@ export function useVideoPlayer({
 
     const [effectiveClip, setEffectiveClip] = useState<string | null>(selectedClip);
     const mergedSrcsKey = mergedSrcs ? mergedSrcs.join("|") : null;
+    const [mergedPreviewClip, setMergedPreviewClip] = useState<string | null>(null);
     const [isVideoReady, setIsVideoReady] = useState(false);
-    const [isPlaying, setIsPlaying] = useState(false);
+    const [isPlaying, setIsPlaying] = useState(true);
     const [isMuted, setIsMuted] = useState(false);
     const [currentTime, setCurrentTime] = useState(0);
     const [duration, setDuration] = useState(0);
@@ -227,7 +228,12 @@ export function useVideoPlayer({
 
     // Merged preview: stream-copy concat for clips with mergedSrcs
     useEffect(() => {
-        if (!mergedSrcs || mergedSrcs.length <= 1) return;
+        if (!mergedSrcs || mergedSrcs.length <= 1) {
+            mergedPreviewFetchedKeyRef.current = null;
+            mergedPreviewInFlightRef.current = false;
+            setMergedPreviewClip(null);
+            return;
+        }
         if (videoIsHEVC === true && !hasHevcSupport) return;
 
         const key = mergedSrcs.join("|");
@@ -241,11 +247,12 @@ export function useVideoPlayer({
             .then((path) => {
                 mergedPreviewInFlightRef.current = false;
                 if (mergedPreviewFetchedKeyRef.current !== key) return;
-                setEffectiveClip(path);
+                setMergedPreviewClip(path);
             })
             .catch((err) => {
                 mergedPreviewInFlightRef.current = false;
                 mergedPreviewFetchedKeyRef.current = null;
+                setMergedPreviewClip(null);
                 if (import.meta.env.DEV) console.warn("ensure_merged_preview failed", err);
             });
     }, [mergedSrcsKey, videoIsHEVC, hasHevcSupport]);
@@ -259,6 +266,7 @@ export function useVideoPlayer({
 
         // 1. Handle Empty State
         if (!selectedClip) {
+            setMergedPreviewClip(null);
             setEffectiveClip(null);
             setIsVideoReady(false);
             setCurrentTime(0);
@@ -271,8 +279,9 @@ export function useVideoPlayer({
         proxyInFlightRef.current = false;
         proxyAttemptedForClipRef.current = null;
         hasFirstFrameRef.current = false;
-        mergedPreviewInFlightRef.current = false;
-        mergedPreviewFetchedKeyRef.current = null;
+        // NOTE: do NOT reset mergedPreviewInFlightRef / mergedPreviewFetchedKeyRef here.
+        // The merged-preview effect manages those refs; clearing them here races with the
+        // in-flight invoke and causes the resolved path to be silently discarded.
 
         if (videoFrameCallbackIdRef.current && (video as any).cancelVideoFrameCallback) {
             try {
@@ -283,8 +292,9 @@ export function useVideoPlayer({
 
         // 3. Determine if we can use the source directly or need a proxy
         if (hasHevcSupport || videoIsHEVC === false) {
-            if (effectiveClip !== selectedClip) {
-                setEffectiveClip(selectedClip);
+            const nextClip = mergedPreviewClip ?? selectedClip;
+            if (effectiveClip !== nextClip) {
+                setEffectiveClip(nextClip);
                 setIsVideoReady(false);
             }
             return;
@@ -326,7 +336,7 @@ export function useVideoPlayer({
                 // Fallback to original even if proxy failed
                 setEffectiveClip(selectedClip);
             });
-    }, [selectedClip, videoIsHEVC, hasHevcSupport]);
+    }, [selectedClip, mergedPreviewClip, videoIsHEVC, hasHevcSupport]);
 
     // Keyboard shortcuts — use stable callbacks
     useEffect(() => {
@@ -427,6 +437,18 @@ export function useVideoPlayer({
             setCurrentTime(clampedTime);
         }
     }, [externalTime, duration, isVideoReady]);
+
+    useEffect(() => {
+        const video = videoRef.current;
+        if (!video || !effectiveClip) return;
+
+        setIsVideoReady(false);
+        video.load();
+
+        if (isPlaying) {
+            safePlay(video);
+        }
+    }, [effectiveClip]);
 
     return {
         videoRef,

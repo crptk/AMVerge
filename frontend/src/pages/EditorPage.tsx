@@ -58,6 +58,11 @@ export default function EditorPage({
       id: seg.id,
       clipId: seg.sourceClip.id,
       src: seg.sourceClip.src,
+      mergedSrcs:
+        seg.sourceClip.mergedSrcs ??
+        (seg.sourceClips && seg.sourceClips.length > 1
+          ? seg.sourceClips.map((clip) => clip.src)
+          : undefined),
       thumbnail: seg.sourceClip.thumbnail,
       start: seg.start,
       end: seg.end,
@@ -258,6 +263,7 @@ export default function EditorPage({
                   <EditorVideoPlayer
                       key={`editor-player-${effectiveSegment.src}`}
                       selectedClip={effectiveSegment.src}
+                      mergedSrcs={effectiveSegment.mergedSrcs}
                       externalTime={sourceTime}
                       isPlaying={timelineState.isPlaying}
                       isDragging={timelineState.isDraggingPlayhead}

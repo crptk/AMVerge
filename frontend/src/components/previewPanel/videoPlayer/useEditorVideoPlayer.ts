@@ -5,6 +5,7 @@ import { useAppStateStore } from "../../../stores/appStore";
 
 type UseEditorVideoPlayerArgs = {
     selectedClip: string;
+    mergedSrcs?: string[];
     externalTime?: number;
     onTimeUpdate?: (time: number, isEnded?: boolean) => void;
     isPlaying: boolean;
@@ -13,6 +14,7 @@ type UseEditorVideoPlayerArgs = {
 
 export function useEditorVideoPlayer({
     selectedClip,
+    mergedSrcs,
     externalTime,
     onTimeUpdate,
     isPlaying,
@@ -20,7 +22,10 @@ export function useEditorVideoPlayer({
 }: UseEditorVideoPlayerArgs) {
     const videoRef = useRef<HTMLVideoElement | null>(null);
     const scrubTimeoutRef = useRef<number | null>(null);
+    const mergedPreviewInFlightRef = useRef(false);
+    const mergedPreviewFetchedKeyRef = useRef<string | null>(null);
     const [effectiveClip, setEffectiveClip] = useState<string | null>(selectedClip);
+    const [mergedPreviewClip, setMergedPreviewClip] = useState<string | null>(null);
 
     
     const userHasHEVC = useAppStateStore((state) => state.userHasHEVC);
@@ -28,15 +33,50 @@ export function useEditorVideoPlayer({
 
     const hasHevcSupport = userHasHEVC === true;
 
+    useEffect(() => {
+        if (!mergedSrcs || mergedSrcs.length <= 1) {
+            mergedPreviewFetchedKeyRef.current = null;
+            mergedPreviewInFlightRef.current = false;
+            setMergedPreviewClip(null);
+            return;
+        }
+
+        if (videoIsHEVC === true && !hasHevcSupport) {
+            setMergedPreviewClip(null);
+            return;
+        }
+
+        const key = mergedSrcs.join("|");
+        if (mergedPreviewFetchedKeyRef.current === key) return;
+        if (mergedPreviewInFlightRef.current) return;
+
+        mergedPreviewFetchedKeyRef.current = key;
+        mergedPreviewInFlightRef.current = true;
+
+        invoke<string>("ensure_merged_preview", { srcs: mergedSrcs })
+            .then((path) => {
+                mergedPreviewInFlightRef.current = false;
+                if (mergedPreviewFetchedKeyRef.current !== key) return;
+                setMergedPreviewClip(path);
+            })
+            .catch((err) => {
+                mergedPreviewInFlightRef.current = false;
+                mergedPreviewFetchedKeyRef.current = null;
+                setMergedPreviewClip(null);
+                if (import.meta.env.DEV) console.warn("ensure_merged_preview failed", err);
+            });
+    }, [mergedSrcs, videoIsHEVC, hasHevcSupport]);
+
     // 1. Handle Clip Changes & Proxy Fallback
     useEffect(() => {
         if (!selectedClip) {
+            setMergedPreviewClip(null);
             setEffectiveClip(null);
             return;
         }
 
         if (hasHevcSupport || videoIsHEVC === false) {
-            setEffectiveClip(selectedClip);
+            setEffectiveClip(mergedPreviewClip ?? selectedClip);
             return;
         }
 
@@ -47,7 +87,7 @@ export function useEditorVideoPlayer({
             .catch(() => {
                 setEffectiveClip(selectedClip);
             });
-    }, [selectedClip, videoIsHEVC, hasHevcSupport]);
+    }, [selectedClip, mergedPreviewClip, videoIsHEVC, hasHevcSupport]);
 
     useEffect(() => {
         if (externalTime === undefined || !videoRef.current) return;

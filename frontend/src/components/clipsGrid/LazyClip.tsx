@@ -34,7 +34,7 @@ export const LazyClip = memo(function LazyClip({
   const importToken = useAppStateStore(s => s.importToken);
   const isExportSelected = useAppStateStore(s => s.timelineClipIds.has(clip.id));
   const isSelected = useAppStateStore(s => s.selectedClips.has(clip.id));
-  const isFocused = useAppStateStore(s => s.focusedClip === clip.src);
+  const isFocused = useAppStateStore(s => s.focusedClip === clip.id);
   const gridPreview = useUIStateStore(s => s.gridPreview);
   const videoIsHEVC = useAppStateStore(s => s.videoIsHEVC);
   const userHasHEVC = useAppStateStore(s => s.userHasHEVC);

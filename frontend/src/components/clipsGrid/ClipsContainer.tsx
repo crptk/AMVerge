@@ -65,7 +65,7 @@ export default function ClipsContainer({ cols }: { cols?: number }) {
       // Shift-click: select a range of clips
       if (isShift) {
         const anchorIndex = focusedClip
-          ? clips.findIndex((c) => c.src === focusedClip)
+          ? clips.findIndex((c) => c.id === focusedClip)
           : -1;
         const startIndex = anchorIndex !== -1 ? anchorIndex : index;
         const [start, end] = [startIndex, index].sort((a, b) => a - b);
@@ -79,7 +79,7 @@ export default function ClipsContainer({ cols }: { cols?: number }) {
 
       // Ctrl/Cmd-click: toggle this clip in the multi-selection
       if (isCtrlOrCmd) {
-        setFocusedClip(clipSrc);
+        setFocusedClip(clipId);
         startTransition(() => {
           setSelectedClips((prev) => {
             const next = new Set(prev);
@@ -91,7 +91,7 @@ export default function ClipsContainer({ cols }: { cols?: number }) {
       }
 
       // Single click: focus for preview only
-      setFocusedClip(clipSrc);
+      setFocusedClip(clipId);
     },
     [clips, focusedClip, setFocusedClip, setSelectedClips]
   );
@@ -114,7 +114,7 @@ export default function ClipsContainer({ cols }: { cols?: number }) {
   // Handles double-click on a clip tile: toggle timeline + multi-select toggle + focus
   const handleClipDoubleClick = useCallback(
     (clipId: string, clipSrc: string, _index: number, _e: React.MouseEvent<HTMLDivElement>) => {
-      setFocusedClip(clipSrc);
+      setFocusedClip(clipId);
       startTransition(() => {
         setTimelineClipIds((prev) => {
           const next = new Set(prev);

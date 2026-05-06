@@ -11,16 +11,15 @@ type LayoutProps = {
 
 export default function MainLayout(props: LayoutProps) {
     const [leftWidth, setLeftWidth] = useState(65);
-    const focusedClip = useAppStateStore(s => s.focusedClip);
+    const focusedClipId = useAppStateStore(s => s.focusedClip);
     const clips = useAppStateStore(s => s.clips);
 
-    const focusedClipThumbnail = useMemo(
-        () =>
-            focusedClip
-                ? clips.find((c) => c.src === focusedClip)?.thumbnail ?? null
-                : null,
-        [focusedClip, clips]
+    const focusedClipItem = useMemo(
+        () => (focusedClipId ? clips.find((clip) => clip.id === focusedClipId) ?? null : null),
+        [focusedClipId, clips]
     );
+
+    const focusedClipThumbnail = focusedClipItem?.thumbnail ?? null;
 
     // ── Timeline-Preview Link ────────────────────────────────────────
     const activeTimelineSource = useMemo(() => {
@@ -35,7 +34,12 @@ export default function MainLayout(props: LayoutProps) {
             id: seg.id,
             src: seg.sourceClip.src,
             time: sourceTime,
-            thumbnail: seg.sourceClip.thumbnail
+            thumbnail: seg.sourceClip.thumbnail,
+            mergedSrcs:
+                seg.sourceClip.mergedSrcs ??
+                (seg.sourceClips && seg.sourceClips.length > 1
+                    ? seg.sourceClips.map((clip) => clip.src)
+                    : undefined),
         };
     }, [props.timeline.state.playheadSec, props.timeline.state.segments]);
 
@@ -88,9 +92,11 @@ export default function MainLayout(props: LayoutProps) {
                     <PreviewContainer
                         programClip={activeTimelineSource?.src ?? null}
                         programClipThumbnail={activeTimelineSource?.thumbnail ?? null}
+                        programClipMergedSrcs={activeTimelineSource?.mergedSrcs}
                         programTime={activeTimelineSource?.time}
-                        sourceClip={focusedClip}
+                        sourceClip={focusedClipItem?.src ?? null}
                         sourceClipThumbnail={focusedClipThumbnail}
+                        sourceClipMergedSrcs={focusedClipItem?.mergedSrcs}
                         onTimeUpdate={(time) => {
                             if (!props.timelineEnabled) return;
                             const { segments, playheadSec } = props.timeline.state;
