@@ -16,3 +16,12 @@ def emit_progress(percent: int, message: str) -> None:
 
     with _progress_lock:
         print(f"PROGRESS|{clamped}|{message}", file=sys.stderr, flush=True)
+
+
+def emit_event(event_type: str, data: str = "") -> None:
+    """Emit a structured event to stderr for Rust to forward as a Tauri event."""
+    with _progress_lock:
+        if data:
+            print(f"{event_type}|{data}", file=sys.stderr, flush=True)
+        else:
+            print(event_type, file=sys.stderr, flush=True)

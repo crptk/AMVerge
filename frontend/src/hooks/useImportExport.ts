@@ -1,5 +1,6 @@
 import { useRef, startTransition, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { ClipItem, EpisodeEntry } from "../types/domain"
 import { fileNameFromPath, truncateFileName, detectScenes } from "../utils/episodeUtils";
@@ -139,15 +140,135 @@ export default function useImportExport(props?: ImportExportProps) {
   const setBatchCurrentFile = appState.setBatchCurrentFile;
 
   const importGenRef = useRef(0);
+  const positionToIdRef = useRef(new Map<number, string>());
   const localAbortedRef = useRef(false);
   const abortedRef = props?.abortedRef || localAbortedRef;
 
+  function parseInitialClips(clipsJson: string): ClipItem[] {
+    const scenes: any[] = JSON.parse(clipsJson);
+    return scenes.map((s, pos) => {
+      const id = crypto.randomUUID();
+      positionToIdRef.current.set(pos, id);
+      return {
+        id,
+        src: s.path,
+        thumbnail: s.thumbnail,
+        originalName: s.original_file,
+        start: s.start,
+        end: s.end,
+        thumbnailReady: s.thumbnail_ready !== false,
+      };
+    });
+  }
+
+  function finalizeClips(clips: ClipItem[]): ClipItem[] {
+    return clips.map(({ thumbnailReady: _, ...rest }) => rest as ClipItem);
+  }
+
   const handleImport = useCallback(async (file: string | null) => {
-    // This opens the file dialog to select a video file
     if (!file) return;
 
     const episodeId = crypto.randomUUID();
     const gen = ++importGenRef.current;
+    positionToIdRef.current = new Map();
+
+    // Tracks clip IDs whose thumbnail_ready arrived before clips were committed to the store.
+    const pendingThumbnailReadyIds = new Set<string>();
+
+    let thumbReadyCount = 0;
+    let thumbReadyBeforeStore = 0;
+    let pairResultCount = 0;
+    let pairResultBeforeStore = 0;
+
+    // Batched updates: instead of one Zustand setState per event (which triggers a
+    // synchronous React re-render via useSyncExternalStore each time), we accumulate
+    // all thumbnail_ready and pair_result changes and flush them once per animation frame.
+    const batchedThumbIds = new Set<string>();
+    const batchedMerges: Array<{ clipAId: string; clipBId: string }> = [];
+    let batchRafId: number | null = null;
+
+    const applyBatchedUpdates = (activeEpisodeId: string) => {
+      if (importGenRef.current !== gen) return;
+
+      const thumbIds = new Set(batchedThumbIds);
+      batchedThumbIds.clear();
+      const merges = batchedMerges.splice(0);
+
+      if (thumbIds.size === 0 && merges.length === 0) return;
+
+      console.log(`[batch flush] thumbIds=${thumbIds.size} merges=${merges.length}`);
+
+      useAppStateStore.setState(s => {
+        let clips = s.clips;
+        let bgProgress = s.bgProgress;
+        let changed = false;
+
+        // Apply merges sequentially so chained merges (A→B then B→C) work correctly.
+        for (const { clipAId, clipBId } of merges) {
+          const removed = clips.find(c => c.id === clipAId);
+          if (!removed) continue;
+          const removedSrcs = removed.mergedSrcs ?? [removed.src];
+          const mergeInto = (c: ClipItem) =>
+            c.id !== clipBId ? c : { ...c, mergedSrcs: [...removedSrcs, ...(c.mergedSrcs ?? [c.src])] };
+          clips = clips.filter(c => c.id !== clipAId).map(mergeInto);
+          changed = true;
+        }
+
+        // Apply thumbnail ready flags.
+        if (thumbIds.size > 0) {
+          let thumbsApplied = 0;
+          const newClips = clips.map(c => {
+            if (thumbIds.has(c.id) && !c.thumbnailReady) { thumbsApplied++; return { ...c, thumbnailReady: true }; }
+            return c;
+          });
+          if (thumbsApplied > 0) {
+            clips = newClips;
+            changed = true;
+            if (bgProgress) {
+              bgProgress = { ...bgProgress, done: Math.min(bgProgress.done + thumbsApplied, bgProgress.total) };
+            }
+          }
+        }
+
+        return changed ? { ...s, clips, bgProgress } : s;
+      });
+
+      if (merges.length > 0) {
+        useEpisodePanelRuntimeStore.setState(s => ({
+          episodes: s.episodes.map(ep => {
+            if (ep.id !== activeEpisodeId) return ep;
+            let epClips = ep.clips;
+            for (const { clipAId, clipBId } of merges) {
+              const removed = epClips.find(c => c.id === clipAId);
+              if (!removed) continue;
+              const removedSrcs = removed.mergedSrcs ?? [removed.src];
+              const mergeInto = (c: ClipItem) =>
+                c.id !== clipBId ? c : { ...c, mergedSrcs: [...removedSrcs, ...(c.mergedSrcs ?? [c.src])] };
+              epClips = epClips.filter(c => c.id !== clipAId).map(mergeInto);
+            }
+            return epClips === ep.clips ? ep : { ...ep, clips: epClips };
+          }),
+        }));
+      }
+    };
+
+    const scheduleBatch = (activeEpisodeId: string) => {
+      if (batchRafId !== null) return;
+      batchRafId = requestAnimationFrame(() => {
+        batchRafId = null;
+        applyBatchedUpdates(activeEpisodeId);
+      });
+    };
+
+    // Flag set by processing_complete to detect the race where it fires before
+    // the initial_clips_ready setTimeout has committed clips to the store.
+    let processingCompleted = false;
+
+    // pair_result events that arrived before clips were in the store — replayed after commit.
+    const pendingMerges: Array<{ clipAId: string; clipBId: string }> = [];
+
+    const unlisteners: Array<() => void> = [];
+    let uiUnblocked = false;
 
     try {
       appState.setProgress(0);
@@ -159,12 +280,6 @@ export default function useImportExport(props?: ImportExportProps) {
       appState.setVideoIsHEVC(null);
       setImportToken(Date.now().toString());
 
-      const rpcButtons = [];
-      if (generalSettings.rpcShowButtons) {
-        rpcButtons.push({ label: "Discord Server", url: "https://discord.gg/asJkqwqb" });
-        rpcButtons.push({ label: "Website", url: "https://amverge.app/" });
-      }
-
       props?.onRPCUpdate?.({
         type: "update",
         details: `Detecting: ${generalSettings.rpcShowFilename ? fileNameFromPath(file) : "Video"}`,
@@ -175,59 +290,190 @@ export default function useImportExport(props?: ImportExportProps) {
         buttons: generalSettings.rpcShowButtons,
       });
 
-      const formatted = await detectScenes(file, episodeId, generalSettings.episodesPath);
+      const activeEpisodeId = episodeId;
 
-      // A newer import started while we were waiting - discard stale results.
-      if (importGenRef.current !== gen) return;
+      // ── initial_clips_ready: first batch of clips ready, unblock UI ─────────
+      const ul1 = await listen<{ clips_json: string }>("initial_clips_ready", (event) => {
+        if (importGenRef.current !== gen) return;
 
-      const inferredName = formatted[0]?.originalName || fileNameFromPath(file);
+        const clips = parseInitialClips(event.payload.clips_json);
+        const inferredName = clips[0]?.originalName || fileNameFromPath(file);
 
-      const episodeEntry: EpisodeEntry = {
-        id: episodeId,
-        displayName: inferredName,
-        videoPath: file,
-        folderId: episodeState.selectedFolderId,
-        importedAt: Date.now(),
-        clips: formatted,
-      };
+        const episodeEntry: EpisodeEntry = {
+          id: activeEpisodeId,
+          displayName: inferredName,
+          videoPath: file,
+          folderId: useEpisodePanelRuntimeStore.getState().selectedFolderId,
+          importedAt: Date.now(),
+          clips: finalizeClips(clips),
+        };
 
-      episodeState.setEpisodes((prev) => [episodeEntry, ...prev]);
-      episodeState.setSelectedEpisodeId(episodeId);
-      episodeState.setOpenedEpisodeId(episodeId);
-      startTransition(() => {
-        appState.setClips(formatted);
+        const notReady = clips.filter(c => c.thumbnailReady === false).length;
+        console.log(`[initial_clips_ready] clips=${clips.length} notReady=${notReady} pendingThumbIds=${pendingThumbnailReadyIds.size} uiUnblocked=${uiUnblocked}`);
+
+        // Unblock the UI immediately before any expensive state updates.
+        if (!uiUnblocked) {
+          uiUnblocked = true;
+          setLoading(false);
+          if (notReady > 0) {
+            useAppStateStore.setState({ bgProgress: { done: clips.length - notReady, total: clips.length } });
+          }
+          console.log(`[initial_clips_ready] setLoading(false), bgProgress set to ${notReady > 0 ? `{done:${clips.length - notReady}, total:${clips.length}}` : 'null'}`);
+        }
+
+        // Add rAF probe to check if paint fires before or after the setTimeout
+        const t0 = performance.now();
+        requestAnimationFrame(() => {
+          console.log(`[rAF probe] first rAF fired at +${(performance.now() - t0).toFixed(1)}ms after setLoading(false)`);
+        });
+
+        // Defer expensive updates so React can paint the loading=false frame first.
+        setTimeout(() => {
+          console.log(`[initial_clips_ready:setTimeout] fired at +${(performance.now() - t0).toFixed(1)}ms after setLoading(false), processingCompleted=${processingCompleted}`);
+          if (importGenRef.current !== gen) return;
+
+          // Merge any thumbnail_ready events that fired before clips were in the store.
+          const clipsWithPendingThumbs = pendingThumbnailReadyIds.size > 0
+            ? clips.map(c => pendingThumbnailReadyIds.has(c.id) ? { ...c, thumbnailReady: true } : c)
+            : clips;
+
+          // If processing_complete already ran before this setTimeout, it stripped thumbnailReady
+          // from an empty store (race condition). Strip it here so clips are immediately clickable.
+          // Also queue any pre-store pair_result merges to be applied after commit.
+          const clipsToCommit = processingCompleted ? finalizeClips(clipsWithPendingThumbs) : clipsWithPendingThumbs;
+          if (processingCompleted && pendingMerges.length > 0) {
+            batchedMerges.push(...pendingMerges);
+            pendingMerges.length = 0;
+          }
+
+          console.log(`[initial_clips_ready:setTimeout] committing ${clipsToCommit.length} clips to store, pendingIds=${pendingThumbnailReadyIds.size}, pendingMerges=${batchedMerges.length}`);
+          const t1 = performance.now();
+          useEpisodePanelRuntimeStore.setState(s => ({
+            episodes: [episodeEntry, ...s.episodes],
+            selectedEpisodeId: activeEpisodeId,
+            openedEpisodeId: activeEpisodeId,
+          }));
+          useAppStateStore.setState({ clips: clipsToCommit });
+          console.log(`[initial_clips_ready:setTimeout] setState took ${(performance.now() - t1).toFixed(1)}ms — store now has ${useAppStateStore.getState().clips.length} clips, bgProgress=${JSON.stringify(useAppStateStore.getState().bgProgress)}`);
+
+          // If processing_complete already ran, apply any pending merges now that clips are in the store.
+          if (processingCompleted && batchedMerges.length > 0) {
+            applyBatchedUpdates(activeEpisodeId);
+          }
+        }, 0);
       });
+      unlisteners.push(ul1);
+
+      // ── thumbnail_ready: one more clip thumbnail is on disk ─────────────────
+      const ul2 = await listen<{ position: number }>("thumbnail_ready", (event) => {
+        if (importGenRef.current !== gen) return;
+
+        const clipId = positionToIdRef.current.get(event.payload.position);
+        if (!clipId) return;
+
+        thumbReadyCount++;
+        const inStore = useAppStateStore.getState().clips.some(c => c.id === clipId);
+
+        if (!inStore) {
+          // Clip not yet committed to store; track for later and update bgProgress immediately.
+          thumbReadyBeforeStore++;
+          if (thumbReadyCount <= 10) {
+            console.log(`[thumbnail_ready #${thumbReadyCount}] clip NOT in store (beforeStore=${thumbReadyBeforeStore})`);
+          }
+          pendingThumbnailReadyIds.add(clipId);
+          useAppStateStore.setState(s => {
+            if (!s.bgProgress) return s;
+            return { ...s, bgProgress: { ...s.bgProgress, done: Math.min(s.bgProgress.done + 1, s.bgProgress.total) } };
+          });
+          return;
+        }
+
+        if (thumbReadyCount <= 10) {
+          console.log(`[thumbnail_ready #${thumbReadyCount}] clip in store, batching`);
+        }
+        batchedThumbIds.add(clipId);
+        scheduleBatch(activeEpisodeId);
+      });
+      unlisteners.push(ul2);
+
+      // ── pair_result: merge decision for two adjacent clips ──────────────────
+      const ul3 = await listen<{ pos_a: number; pos_b: number; should_merge: boolean }>(
+        "pair_result",
+        (event) => {
+          if (importGenRef.current !== gen) return;
+          if (!event.payload.should_merge) return;
+
+          const clipAId = positionToIdRef.current.get(event.payload.pos_a);
+          const clipBId = positionToIdRef.current.get(event.payload.pos_b);
+          if (!clipAId || !clipBId) return;
+
+          pairResultCount++;
+          const clipAInStore = useAppStateStore.getState().clips.some(c => c.id === clipAId);
+          if (!clipAInStore) pairResultBeforeStore++;
+          if (pairResultCount <= 10) {
+            console.log(`[pair_result #${pairResultCount}] clipA in store: ${clipAInStore} (store=${useAppStateStore.getState().clips.length}, beforeStore=${pairResultBeforeStore})`);
+          }
+
+          if (!clipAInStore) {
+            // Store not populated yet — save for replay after the setTimeout commits clips.
+            pendingMerges.push({ clipAId, clipBId });
+            return;
+          }
+
+          batchedMerges.push({ clipAId, clipBId });
+          scheduleBatch(activeEpisodeId);
+        }
+      );
+      unlisteners.push(ul3);
+
+      // ── processing_complete: all thumbnails and pairs done ──────────────────
+      const ul4 = await listen<void>("processing_complete", () => {
+        if (importGenRef.current !== gen) return;
+
+        processingCompleted = true;
+
+        // Flush any events still waiting in the batch before we finalize.
+        if (batchRafId !== null) {
+          cancelAnimationFrame(batchRafId);
+          batchRafId = null;
+        }
+        applyBatchedUpdates(activeEpisodeId);
+
+        console.log(`[processing_complete] thumbReady=${thumbReadyCount} (beforeStore=${thumbReadyBeforeStore}), pairResult=${pairResultCount} (beforeStore=${pairResultBeforeStore}), store=${useAppStateStore.getState().clips.length} clips`);
+
+        const finalClips = useAppStateStore.getState().clips.map(c => {
+          const { thumbnailReady: _, ...rest } = c;
+          return rest as ClipItem;
+        });
+        useAppStateStore.setState({ clips: finalClips, bgProgress: null });
+        useEpisodePanelRuntimeStore.setState(s => ({
+          episodes: s.episodes.map(ep =>
+            ep.id === activeEpisodeId ? { ...ep, clips: finalClips } : ep
+          ),
+        }));
+      });
+      unlisteners.push(ul4);
+
+      // Fire the backend — blocks until the sidecar exits.
+      await invoke("detect_scenes", {
+        videoPath: file,
+        episodeCacheId: episodeId,
+        customPath: generalSettings.episodesPath,
+      });
+
     } catch (err) {
       if (importGenRef.current !== gen) return;
       console.error("Detection failed:", err);
+      useAppStateStore.setState({ bgProgress: null });
     } finally {
-      if (importGenRef.current === gen) setLoading(false);
+      if (batchRafId !== null) {
+        cancelAnimationFrame(batchRafId);
+        batchRafId = null;
+      }
+      unlisteners.forEach(ul => ul());
+      if (importGenRef.current === gen && !uiUnblocked) setLoading(false);
     }
   }, [appState, episodeState, generalSettings, props?.onRPCUpdate]);
-
-  const onImportClick = useCallback(async () => {
-    const files = await open({
-      multiple: true,
-      filters: [
-        {
-          name: "Video",
-          extensions: ["mp4", "mkv", "mov", "avi"]
-        }
-      ]
-    });
-
-    if (!files) return;
-
-    // open() with multiple:true returns string[] | null
-    const fileList = Array.isArray(files) ? files : [files];
-    if (fileList.length === 0) return;
-
-    if (fileList.length === 1) {
-      handleImport(fileList[0]);
-    } else {
-      handleBatchImport(fileList);
-    }
-  }, [handleImport]);
 
   const handleBatchImport = useCallback(async (files: string[]) => {
     const gen = ++importGenRef.current;
@@ -263,7 +509,6 @@ export default function useImportExport(props?: ImportExportProps) {
           const formatted = await detectScenes(file, episodeId, generalSettings.episodesPath);
 
           if (abortedRef.current || importGenRef.current !== gen) {
-            // Aborted or superseded mid-flight — clean up this episode's cache
             invoke("delete_episode_cache", {
               episodeCacheId: episodeId,
               customPath: generalSettings.episodesPath,
@@ -300,7 +545,6 @@ export default function useImportExport(props?: ImportExportProps) {
         }
       }
 
-      // Open the first completed episode
       if (completedEpisodes.length > 0 && importGenRef.current === gen) {
         const first = completedEpisodes[0];
         episodeState.setSelectedEpisodeId(first.id);
@@ -325,6 +569,7 @@ export default function useImportExport(props?: ImportExportProps) {
     if (selectedClips.size === 0) return;
 
     const selected = appState.clips.filter((c: ClipItem) => selectedClips.has(c.id));
+    console.log(`[handleExport] matched ${selected.length} clips from store`);
     if (selected.length === 0) return;
     const exportProfile = getActiveExportProfile(
       generalSettings.exportProfiles,
@@ -335,7 +580,6 @@ export default function useImportExport(props?: ImportExportProps) {
     const editorTarget = resolveEditorTarget(exportProfile.editorTarget);
     const workflow = exportProfile.workflow;
 
-    // If no export directory is set, prompt the user to pick one first
     let dir = persistedState.exportDir;
     if (!dir) {
       const picked = await open({ directory: true, multiple: false });
@@ -450,7 +694,6 @@ export default function useImportExport(props?: ImportExportProps) {
         buttons: generalSettings.rpcShowButtons,
       });
 
-      // Revert back to normal state after 10 seconds
       setTimeout(() => {
         props?.onRPCUpdate?.({
           type: "update",
@@ -532,6 +775,6 @@ export default function useImportExport(props?: ImportExportProps) {
     handleExport,
     handlePickExportDir,
     handleBatchImport,
-    handleDownloadSingleClip
+    handleDownloadSingleClip,
   };
 }

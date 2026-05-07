@@ -37,6 +37,7 @@ fn main() {
             commands::preview::check_hevc,
             commands::preview::hover_preview_error,
             commands::preview::ensure_preview_proxy,
+            commands::preview::ensure_merged_preview,
             commands::cache::delete_episode_cache,
             commands::cache::clear_episode_panel_cache,
             commands::settings::save_background_image,

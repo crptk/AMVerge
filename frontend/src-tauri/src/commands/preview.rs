@@ -230,3 +230,145 @@ pub async fn ensure_preview_proxy(
     );
     Ok(final_path)
 }
+
+#[tauri::command]
+pub async fn ensure_merged_preview(
+    app: AppHandle,
+    proxy_locks: State<'_, PreviewProxyLocks>,
+    srcs: Vec<String>,
+) -> Result<String, String> {
+    if srcs.is_empty() {
+        return Err("srcs is empty".to_string());
+    }
+    if srcs.len() == 1 {
+        return Ok(srcs[0].clone());
+    }
+
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+    let mut hasher = DefaultHasher::new();
+    srcs.hash(&mut hasher);
+    let hash = hasher.finish();
+
+    let first_path = PathBuf::from(&srcs[0]);
+    let parent = first_path
+        .parent()
+        .ok_or("Invalid src path (no parent directory)")?;
+    let stem = first_path
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .ok_or("Invalid src filename")?;
+
+    let preview_path = parent.join(format!("{stem}.merged.{hash:016x}.preview.mp4"));
+    let preview_tmp_path = parent.join(format!("{stem}.merged.{hash:016x}.preview.tmp.mp4"));
+    let list_path = parent.join(format!("{stem}.merged.{hash:016x}.concat.txt"));
+
+    let lock_key = preview_path.to_string_lossy().to_string();
+    let clip_lock = {
+        let mut map = proxy_locks.inner.lock().await;
+        map.retain(|_, v| Arc::strong_count(v) > 1);
+        map.entry(lock_key)
+            .or_insert_with(|| Arc::new(tokio::sync::Mutex::new(())))
+            .clone()
+    };
+    let _guard = clip_lock.lock().await;
+
+    if let Ok(meta) = std::fs::metadata(&preview_path) {
+        if meta.is_file() && meta.len() > 0 {
+            return Ok(preview_path.to_string_lossy().to_string());
+        }
+    }
+
+    let ffmpeg = resolve_bundled_tool(&app, "ffmpeg")?;
+    console_log(
+        "MERGED_PREVIEW|start",
+        &format!("clips={} first={}", srcs.len(), file_name_only(&srcs[0])),
+    );
+
+    let content: String = srcs
+        .iter()
+        .map(|s| format!("file '{}'\n", s.replace('\'', "'\\''")))
+        .collect();
+    std::fs::write(&list_path, &content)
+        .map_err(|e| format!("Failed to write concat list: {e}"))?;
+
+    let _ = std::fs::remove_file(&preview_tmp_path);
+
+    let ffmpeg_clone = ffmpeg.clone();
+    let list_clone = list_path.clone();
+    let output_clone = preview_tmp_path.clone();
+
+    let ffmpeg_result = tokio::task::spawn_blocking(move || {
+        let mut cmd = Command::new(&ffmpeg_clone);
+        apply_no_window(&mut cmd);
+        cmd.args([
+            "-y",
+            "-f",
+            "concat",
+            "-safe",
+            "0",
+            "-i",
+            list_clone
+                .to_str()
+                .ok_or_else(|| "Invalid list path".to_string())?,
+            "-c",
+            "copy",
+            output_clone
+                .to_str()
+                .ok_or_else(|| "Invalid output path".to_string())?,
+        ])
+        .output()
+        .map_err(|e| format!("Failed to run ffmpeg: {e}"))
+    })
+    .await
+    .map_err(|e| format!("ffmpeg task panicked: {e}"))?;
+
+    let _ = std::fs::remove_file(&list_path);
+    let ffmpeg_output = ffmpeg_result?;
+
+    if !ffmpeg_output.status.success() {
+        let _ = std::fs::remove_file(&preview_tmp_path);
+        let stderr = String::from_utf8_lossy(&ffmpeg_output.stderr)
+            .trim()
+            .to_string();
+        console_log(
+            "ERROR|merged_preview",
+            &if stderr.is_empty() {
+                "FFmpeg merged preview failed".to_string()
+            } else {
+                stderr.clone()
+            },
+        );
+        return Err(if stderr.is_empty() {
+            "FFmpeg merged preview failed".to_string()
+        } else {
+            format!("FFmpeg merged preview failed: {stderr}")
+        });
+    }
+
+    let meta = std::fs::metadata(&preview_tmp_path).map_err(|e| e.to_string())?;
+    if meta.len() == 0 {
+        let _ = std::fs::remove_file(&preview_tmp_path);
+        return Err("Merged preview produced empty file".to_string());
+    }
+
+    match std::fs::remove_file(&preview_path) {
+        Ok(_) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => return Err(format!("Failed to remove existing merged preview: {e}")),
+    }
+
+    if let Err(e) = std::fs::rename(&preview_tmp_path, &preview_path) {
+        std::fs::copy(&preview_tmp_path, &preview_path).map_err(|copy_err| {
+            format!("Failed to publish merged preview (rename={e}, copy={copy_err})")
+        })?;
+        let _ = std::fs::remove_file(&preview_tmp_path);
+    }
+
+    let final_path = preview_path.to_string_lossy().to_string();
+    console_log(
+        "MERGED_PREVIEW|end",
+        &format!("ok file={}", file_name_only(&final_path)),
+    );
+    Ok(final_path)
+}

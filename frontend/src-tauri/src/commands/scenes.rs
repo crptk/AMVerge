@@ -5,7 +5,7 @@ use std::sync::{Arc, Mutex};
 
 use tauri::{AppHandle, Emitter, Manager, State};
 
-use crate::payloads::ProgressPayload;
+use crate::payloads::{InitialClipsPayload, PairResultPayload, ProgressPayload, ThumbnailReadyPayload};
 use crate::state::ActiveSidecar;
 use crate::utils::logging::{
     console_log, emit_console_log, sanitize_for_console, sanitize_line_with_known_paths,
@@ -189,6 +189,31 @@ pub async fn detect_scenes(
                         &format!("PROGRESS {p}% - {msg}"),
                     );
                 }
+            } else if let Some(clips_json) = line.strip_prefix("INITIAL_CLIPS_READY|") {
+                let _ = app_for_stderr.emit(
+                    "initial_clips_ready",
+                    InitialClipsPayload { clips_json: clips_json.to_string() },
+                );
+            } else if let Some(pos_str) = line.strip_prefix("THUMBNAIL_READY|") {
+                if let Ok(position) = pos_str.trim().parse::<u32>() {
+                    let _ = app_for_stderr.emit(
+                        "thumbnail_ready",
+                        ThumbnailReadyPayload { position },
+                    );
+                }
+            } else if let Some(rest) = line.strip_prefix("PAIR_RESULT|") {
+                let parts: Vec<&str> = rest.splitn(3, '|').collect();
+                if parts.len() == 3 {
+                    if let (Ok(pos_a), Ok(pos_b)) = (parts[0].parse::<u32>(), parts[1].parse::<u32>()) {
+                        let should_merge = parts[2].trim() == "1";
+                        let _ = app_for_stderr.emit(
+                            "pair_result",
+                            PairResultPayload { pos_a, pos_b, should_merge },
+                        );
+                    }
+                }
+            } else if line.trim() == "PROCESSING_COMPLETE" {
+                let _ = app_for_stderr.emit("processing_complete", ());
             } else {
                 emit_console_log(&app_for_stderr, "python", "log", &sanitized);
             }
@@ -239,7 +264,12 @@ pub async fn detect_scenes(
                 &output_dir_str,
                 &output_dir_base,
             );
-            if !sanitized.trim().is_empty() && !sanitized.starts_with("PROGRESS|") {
+            let is_event_line = sanitized.starts_with("PROGRESS|")
+                || sanitized.starts_with("INITIAL_CLIPS_READY|")
+                || sanitized.starts_with("THUMBNAIL_READY|")
+                || sanitized.starts_with("PAIR_RESULT|")
+                || sanitized.trim() == "PROCESSING_COMPLETE";
+            if !sanitized.trim().is_empty() && !is_event_line {
                 emit_console_log(&app_for_stdout, "python", "log", &sanitized);
             }
         }
