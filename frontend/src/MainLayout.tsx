@@ -92,11 +92,9 @@ export default function MainLayout(props: LayoutProps) {
                     <PreviewContainer
                         programClip={activeTimelineSource?.src ?? null}
                         programClipThumbnail={activeTimelineSource?.thumbnail ?? null}
-                        programClipMergedSrcs={activeTimelineSource?.mergedSrcs}
                         programTime={activeTimelineSource?.time}
                         sourceClip={focusedClipItem?.src ?? null}
                         sourceClipThumbnail={focusedClipThumbnail}
-                        sourceClipMergedSrcs={focusedClipItem?.mergedSrcs}
                         onTimeUpdate={(time) => {
                             if (!props.timelineEnabled) return;
                             const { segments, playheadSec } = props.timeline.state;

@@ -73,6 +73,7 @@ export default function ClipsContainer({ cols }: { cols?: number }) {
 
         startTransition(() => {
           setSelectedClips(new Set(rangeIds));
+          setTimelineClipIds(new Set(rangeIds));
         });
         return;
       }
@@ -82,6 +83,11 @@ export default function ClipsContainer({ cols }: { cols?: number }) {
         setFocusedClip(clipId);
         startTransition(() => {
           setSelectedClips((prev) => {
+            const next = new Set(prev);
+            next.has(clipId) ? next.delete(clipId) : next.add(clipId);
+            return next;
+          });
+          setTimelineClipIds((prev) => {
             const next = new Set(prev);
             next.has(clipId) ? next.delete(clipId) : next.add(clipId);
             return next;
@@ -106,9 +112,14 @@ export default function ClipsContainer({ cols }: { cols?: number }) {
           next.has(clipId) ? next.delete(clipId) : next.add(clipId);
           return next;
         });
+        setSelectedClips((prev) => {
+          const next = new Set(prev);
+          next.has(clipId) ? next.delete(clipId) : next.add(clipId);
+          return next;
+        });
       });
     },
-    [setTimelineClipIds]
+    [setTimelineClipIds, setSelectedClips]
   );
 
   // Handles double-click on a clip tile: toggle timeline + multi-select toggle + focus

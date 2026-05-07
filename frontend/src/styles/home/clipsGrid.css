@@ -68,14 +68,12 @@
 }
 
 .clip-wrapper.selected {
-    box-shadow: 0 0 0 3px var(--accent), 0 8px 24px rgba(0, 0, 0, 0.4);
     z-index: 4;
 }
 
 .clip-wrapper.focused.selected {
-    outline: 3px solid white;
-    outline-offset: -6px;
     box-shadow: 0 0 0 4px var(--accent);
+    z-index: 5;
 }
 
 .clip {
