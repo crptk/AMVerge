@@ -566,6 +566,20 @@ export default function ExportSection() {
   }, [activeProfile.hardwareMode, activeProfile.id, encoderLockedToCpu, updateExportProfile]);
 
   useEffect(() => {
+    if (!encodingWorkflow) return;
+    const codecFamily = getCodecFamily(activeProfile.codec);
+    if (codecFamily !== "h264" && codecFamily !== "h265") return;
+    if (activeProfile.hardwareMode !== "cpu") return;
+    updateExportProfile(activeProfile.id, { hardwareMode: "auto" });
+  }, [
+    activeProfile.codec,
+    activeProfile.hardwareMode,
+    activeProfile.id,
+    encodingWorkflow,
+    updateExportProfile,
+  ]);
+
+  useEffect(() => {
     const normalized = normalizeExportProfile(activeProfile);
     if (
       normalized.parallelExports !== activeProfile.parallelExports ||
@@ -588,6 +602,15 @@ export default function ExportSection() {
     updateExportProfile(activeProfile.id, changes);
   };
 
+  const forceAutoHardwareForH26x = (
+    nextCodec: ExportProfile["codec"],
+    currentHardwareMode: ExportProfile["hardwareMode"]
+  ): Partial<ExportProfile> =>
+    (getCodecFamily(nextCodec) === "h264" || getCodecFamily(nextCodec) === "h265") &&
+    currentHardwareMode === "cpu"
+      ? { hardwareMode: "auto" }
+      : {};
+
   const handleWorkflowChange = (workflow: ExportWorkflow) => {
     updateActiveProfile({
       workflow,
@@ -603,7 +626,11 @@ export default function ExportSection() {
 
   const handleCodecFamilyChange = (family: ExportCodecFamily) => {
     const options = getCodecOptionsForFamily(family);
-    updateActiveProfile({ codec: options[0]?.value ?? activeProfile.codec });
+    const nextCodec = options[0]?.value ?? activeProfile.codec;
+    updateActiveProfile({
+      codec: nextCodec,
+      ...forceAutoHardwareForH26x(nextCodec, activeProfile.hardwareMode),
+    });
   };
 
   const handlePickCustomIcon = async () => {
@@ -1004,7 +1031,12 @@ export default function ExportSection() {
                 className="settings-wide-dropdown"
                 options={codecProfileOptions}
                 value={activeProfile.codec}
-                onChange={(codec) => updateActiveProfile({ codec })}
+                onChange={(codec) =>
+                  updateActiveProfile({
+                    codec,
+                    ...forceAutoHardwareForH26x(codec, activeProfile.hardwareMode),
+                  })
+                }
               />
             }
           />
