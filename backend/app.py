@@ -156,6 +156,7 @@ def generate_thumbnails_streaming(output_dir: str, scenes: list[dict[str, Any]],
             sa = scenes[pa]
             sb = scenes[pb]
             should_merge = check_pair_similar(thumb_path_for(sa), thumb_path_for(sb))
+            
             emit_event("PAIR_RESULT", f"{pa}|{pb}|{'1' if should_merge else '0'}")
             next_pair_pos[0] += 1
 

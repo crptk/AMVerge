@@ -1,42 +1,38 @@
 import numpy as np
 from PIL import Image
+import os
+
+DISSIM_THRESHOLD = 0.10  # tune this for the dissimilarity threshold for a cut, less = more strict
+POOL_DIM         = 8     # mosaic block size, larger = more blurry image to scan for scene similarity
+
+def pooling(arr: np.ndarray, dim: int) -> np.ndarray:
+    """Average-pool (H, W, C) or (H, W) by block size `dim`."""
+    h = (arr.shape[0] // dim) * dim
+    w = (arr.shape[1] // dim) * dim
+    arr = arr[:h, :w]
+    if arr.ndim == 3:
+        c = arr.shape[2]
+        return arr.reshape(h // dim, dim, w // dim, dim, c).mean(axis=(1, 3))
+    return arr.reshape(h // dim, dim, w // dim, dim).mean(axis=(1, 3))
 
 
-def cosine_similarity(a, b):
-    a_flat = a.flatten().astype(float)
-    b_flat = b.flatten().astype(float)
-    return np.dot(a_flat, b_flat) / (
-        np.linalg.norm(a_flat) * np.linalg.norm(b_flat) + 1e-8
-    )
+def cosine_similarity(a: np.ndarray, b: np.ndarray) -> float:
+    a_f = a.flatten().astype(np.float32)
+    b_f = b.flatten().astype(np.float32)
+    denom = np.linalg.norm(a_f) * np.linalg.norm(b_f)
+    if denom == 0:
+        return 1.0
+    return float(np.dot(a_f, b_f) / denom)
 
 
-def shifted_mse(a, b, max_shift=2):
-    h, w = a.shape
-    best = float("inf")
-    
-    for dy in range(-max_shift, max_shift + 1):
-        for dx in range(-max_shift, max_shift + 1):
-            y1, y2 = max(0, dy), min(h, h + dy)
-            x1, x2 = max(0, dx), min(w, w + dx)
-
-            a_crop = a[y1:y2, x1:x2]
-            b_crop = b[y1-dy:y2-dy, x1-dx:x2-dx]
-
-            if a_crop.size == 0:
-                continue
-
-            best = min(best, np.mean((a_crop - b_crop) ** 2))
-    
-    return best
-
-
-
-
-def check_pair_similar(path_a: str, path_b: str, threshold: float = 0.91) -> bool:
+def check_pair_similar(path_a: str, path_b: str, threshold: float = DISSIM_THRESHOLD) -> bool:
     try:
         img_a = np.array(Image.open(path_a).convert("RGB"))
         img_b = np.array(Image.open(path_b).convert("RGB"))
     except Exception:
         return False
-    sim = cosine_similarity(img_a, img_b)
-    return sim >= threshold
+
+    sim    = cosine_similarity(pooling(img_a, POOL_DIM), pooling(img_b, POOL_DIM))
+    dissim = 1.0 - sim
+
+    return dissim < threshold
