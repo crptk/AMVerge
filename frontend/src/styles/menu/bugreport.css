@@ -90,6 +90,7 @@
 .bugreport-row input[type="file"] {
     width: 100%;
     color: rgb(255 255 255 / 0.8);
+    font-family: 'Jersey 10', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
 }
 
 .bugreport-row input[type="file"]::file-selector-button {
@@ -101,6 +102,8 @@
     padding: 7px 11px;
     cursor: pointer;
     transition: border-color 0.15s ease, color 0.15s ease;
+    letter-spacing: 0.7px;
+    font-family: 'Jersey 10', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
 }
 
 .bugreport-row input[type="file"]::file-selector-button:hover {

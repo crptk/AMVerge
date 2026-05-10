@@ -1,4 +1,3 @@
-````md id="yg79gm"
 # Contributing to AMVerge
 
 Thanks for your interest in contributing to AMVerge.

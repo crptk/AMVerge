@@ -1,4 +1,4 @@
-import GeneralSection from "../components/settings/GeneralSection";
+import GeneralSettings from "../components/settings/GeneralSettings";
 import AppearanceSection from "../components/settings/AppearanceSection";
 import DiscordRPCSection from "../components/settings/DiscordRPCSection";
 import ExportSection from "../components/settings/exportSettings/ExportSection";
@@ -45,7 +45,7 @@ export default function Settings({
         <div className="menu-section">
           <div className="settings-tab-content">
             {activeTab === "general" && (
-              <GeneralSection
+              <GeneralSettings
                 onGeneralSettingsReset={onGeneralSettingsReset}
                 onEpisodesPathChanged={onEpisodesPathChanged}
               />
