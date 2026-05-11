@@ -28,6 +28,7 @@ fn main() {
         .manage(ActiveFfmpegPids::default())
         .invoke_handler(tauri::generate_handler![
             commands::bug_report::submit_bug_report,
+            commands::notifications::fetch_startup_notification,
             commands::scenes::detect_scenes,
             commands::scenes::abort_detect_scenes,
             commands::export::export_clips,

@@ -7,10 +7,10 @@ import {
     type ConsoleEntry,
 } from "../../utils/appConsole"
 
-// Dev toggle: set to false to disable submit cooldown locally.
-const ENABLE_SUBMIT_COOLDOWN = true
+const ENABLE_SUBMIT_COOLDOWN = false
 const BUG_REPORT_COOLDOWN_MS = 60 * 60 * 1000
 const BUG_REPORT_COOLDOWN_STORAGE_KEY = "amverge_bug_report_last_submitted_at"
+const MAX_SCREENSHOT_BYTES = 8 * 1024 * 1024
 
 function readLastSubmittedAt(): number | null {
     if (typeof window === "undefined") return null
@@ -32,6 +32,40 @@ function formatCooldown(remainingMs: number): string {
     return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`
 }
 
+async function fileToBase64Data(file: File): Promise<string> {
+    return await new Promise((resolve, reject) => {
+        const reader = new FileReader()
+        reader.onload = () => {
+            const result = reader.result
+            if (typeof result !== "string") {
+                reject(new Error(`Failed to read ${file.name}`))
+                return
+            }
+
+            const commaIndex = result.indexOf(",")
+            if (commaIndex === -1) {
+                reject(new Error(`Invalid data URL for ${file.name}`))
+                return
+            }
+
+            resolve(result.slice(commaIndex + 1))
+        }
+
+        reader.onerror = () => {
+            reject(reader.error ?? new Error(`Failed to read ${file.name}`))
+        }
+
+        reader.readAsDataURL(file)
+    })
+}
+
+type ScreenshotAttachment = {
+    name: string;
+    mimeType: string;
+    sizeBytes: number;
+    dataBase64: string;
+};
+
 type BugReportRequest = {
     bugType: string;
     issueText: string;
@@ -39,6 +73,7 @@ type BugReportRequest = {
     contact?: string | null;
     videoReference?: string | null;
     screenshotNames: string[];
+    screenshots: ScreenshotAttachment[];
     consoleLogs: string;
     consoleLogCount: number;
     redactionApplied: boolean;
@@ -96,7 +131,6 @@ export default function BugReport() {
 
     const isCooldownActive = cooldownRemainingMs > 0
 
-
     async function onSubmit(e: SubmitEvent<HTMLFormElement>) {
         e.preventDefault()
         setSubmitError(null)
@@ -104,13 +138,33 @@ export default function BugReport() {
 
         if (!issueText.trim()) {
             setSubmitError("Please describe the issue before submitting.")
-            return;
+            return
         }
 
         if (isCooldownActive) {
             setSubmitError(`Please wait ${formatCooldown(cooldownRemainingMs)} before submitting another report.`)
-            return;
+            return
         }
+
+        const screenshotFiles = screenShots ? Array.from(screenShots) : []
+        if (screenshotFiles.some((file) => !file.type.startsWith("image/"))) {
+            setSubmitError("Only image files are allowed for screenshots.")
+            return
+        }
+
+        if (screenshotFiles.some((file) => file.size > MAX_SCREENSHOT_BYTES)) {
+            setSubmitError("One or more screenshots exceed the 8MB limit.")
+            return
+        }
+
+        const screenshotPayload = await Promise.all(
+            screenshotFiles.map(async (file) => ({
+                name: file.name,
+                mimeType: file.type || "application/octet-stream",
+                sizeBytes: file.size,
+                dataBase64: await fileToBase64Data(file),
+            }))
+        )
 
         const request: BugReportRequest = {
             bugType,
@@ -118,18 +172,19 @@ export default function BugReport() {
             pcSpecs: PCSpecs.trim() || null,
             contact: contact.trim() || null,
             videoReference: videoReference.trim() || null,
-            screenshotNames: screenShots ? Array.from(screenShots).map((f) => f.name) : [],
+            screenshotNames: screenshotFiles.map((file) => file.name),
+            screenshots: screenshotPayload,
             consoleLogs: redactedConsoleLogs,
             consoleLogCount: logs.length,
             redactionApplied: true,
-        };
+        }
 
-        try { 
+        try {
             setIsSubmitting(true)
-            const res = await invoke<BugReportResponse>("submit_bug_report", { request });
+            const res = await invoke<BugReportResponse>("submit_bug_report", { request })
             if (!res.ok) {
                 setSubmitError(res.message || "Failed to submit bug report.")
-                return;
+                return
             }
 
             setSubmitSuccess(res.message || "Bug report submitted.")
@@ -149,7 +204,7 @@ export default function BugReport() {
                 }
             }
         } catch (err) {
-            console.error(err);
+            console.error(err)
             setSubmitError("Could not submit bug report. Please try again.")
         } finally {
             setIsSubmitting(false)

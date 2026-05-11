@@ -1,0 +1,154 @@
+/* --------------------
+   STARTUP NOTIFICATION
+-------------------- */
+
+.startup-notification-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 12000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 18px;
+    background: rgba(0, 0, 0, 0.72);
+    backdrop-filter: blur(4px);
+}
+
+.startup-notification-modal {
+    width: min(700px, 100%);
+    max-height: min(88vh, 860px);
+    display: flex;
+    flex-direction: column;
+    background: rgba(0, 0, 0, 0.9);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 12px;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
+    overflow: hidden;
+}
+
+.startup-notification-banner {
+    width: 100%;
+    max-height: 220px;
+    object-fit: cover;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.startup-notification-title {
+    margin: 0;
+    padding: 14px 18px 10px;
+    text-align: center;
+    font-size: clamp(1.1rem, 2.2vw, 1.5rem);
+    color: #fff;
+    letter-spacing: 1px;
+    font-weight: 1;
+}
+
+.startup-notification-body {
+    margin: 0 14px;
+    padding: 10px 12px;
+    min-height: 120px;
+    max-height: 45vh;
+    overflow-y: auto;
+    border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: rgba(255, 255, 255, 0.03);
+    color: rgba(255, 255, 255, 0.95);
+    line-height: 1.4;
+    scrollbar-width: thin;
+    scrollbar-color: var(--accent) transparent;
+}
+
+.startup-notification-body::-webkit-scrollbar {
+    width: 10px;
+}
+
+.startup-notification-body::-webkit-scrollbar-thumb {
+    background: var(--accent);
+    border-radius: 8px;
+}
+
+.startup-notification-body p {
+    margin: 0 0 10px;
+}
+
+.startup-notification-body p:last-child {
+    margin-bottom: 0;
+}
+
+.startup-notification-body h1,
+.startup-notification-body h2,
+.startup-notification-body h3,
+.startup-notification-body h4 {
+    margin: 0 0 8px;
+}
+
+.startup-notification-body ul,
+.startup-notification-body ol {
+    margin: 0 0 10px 20px;
+}
+
+.startup-notification-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    padding: 12px 16px 16px;
+}
+
+.startup-notification-checkbox {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    color: rgba(255, 255, 255, 0.85);
+}
+
+.startup-notification-checkbox input {
+    width: 16px;
+    height: 16px;
+    accent-color: var(--accent);
+}
+
+.startup-notification-close {
+    min-width: 120px;
+    min-height: 36px;
+    padding: 0 16px;
+    border-radius: 9px;
+    border: 1px solid rgb(var(--accent-rgb) / 0.88);
+    background: #000;
+    color: #fff;
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+    font-size: 20px;
+    font-family: 'Jersey 10', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+.startup-notification-close:hover {
+    background: var(--accent);
+    color: #000;
+    border-color: #000;
+}
+
+@media (max-width: 720px) {
+    .startup-notification-overlay {
+        padding: 8px;
+    }
+
+    .startup-notification-modal {
+        max-height: 94vh;
+    }
+
+    .startup-notification-body {
+        max-height: 52vh;
+        margin: 0 10px;
+        padding: 8px 10px;
+    }
+
+    .startup-notification-actions {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .startup-notification-close {
+        width: 100%;
+    }
+}

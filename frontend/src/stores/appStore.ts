@@ -95,17 +95,28 @@ export const useAppStateStore = create<AppStateStore>()((set) => ({
 
 type AppPersistedState = {
   exportDir: string | null;
+  dismissedNotificationIds: string[];
 };
 
 type AppPersistedStore = AppPersistedState & {
   setExportDir: (dir: SetterValue<string | null>) => void;
+  dismissNotificationId: (notificationId: string) => void;
 };
 
 export const useAppPersistedStore = create<AppPersistedStore>()(
   persist(
     (set) => ({
       exportDir: null,
+      dismissedNotificationIds: [],
       setExportDir: (val) => set((s) => ({ exportDir: resolveSetterValue(s.exportDir, val) })),
+      dismissNotificationId: (notificationId) =>
+        set((s) => {
+          const id = notificationId.trim();
+          if (!id || s.dismissedNotificationIds.includes(id)) {
+            return s;
+          }
+          return { dismissedNotificationIds: [...s.dismissedNotificationIds, id] };
+        }),
     }),
     {
       name: "amverge_export_dir_v1",

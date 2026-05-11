@@ -199,11 +199,19 @@ export default function useEpisodePanelState() {
 	};
 
 	const handleDeleteEpisode = (episodeId: string) => {
+		const wasOpenedEpisode = episodeRuntimeState.openedEpisodeId === episodeId;
 		episodeRuntimeState.setEpisodes((prev) => prev.filter((e) => e.id !== episodeId));
 		if (episodeRuntimeState.selectedEpisodeId === episodeId) episodeRuntimeState.setSelectedEpisodeId(null);
 		if (episodeRuntimeState.openedEpisodeId === episodeId) episodeRuntimeState.setOpenedEpisodeId(null);
 		if (episodeMetadataState.lastOpenedEpisodeId === episodeId) {
 			episodeMetadataState.setLastOpenedEpisodeId(null);
+		}
+
+		if (wasOpenedEpisode) {
+			appState.setClips([]);
+			appState.setSelectedClips(new Set());
+			appState.setFocusedClip(null);
+			appState.setImportedVideoPath(null);
 		}
 	};
 

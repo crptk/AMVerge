@@ -9,6 +9,7 @@ import Menu from "./pages/Menu";
 import Settings from "./pages/Settings";
 import LoadingOverlay from "./components/LoadingOverlay";
 import BgProgressBar from "./components/BgProgressBar";
+import StartupNotificationModal, { type StartupNotification } from "./components/StartupNotificationModal";
 
 import useDiscordRPC from "./hooks/useDiscordRPC";
 import useHEVCSupport from "./hooks/useHEVCSupport";
@@ -17,7 +18,7 @@ import useImportExport from "./hooks/useImportExport";
 
 import { remapPathRoot } from "./utils/episodeUtils";
 
-import { useAppStateStore } from "./stores/appStore";
+import { useAppPersistedStore, useAppStateStore } from "./stores/appStore";
 import { useUIStateStore } from "./stores/UIStore";
 import { applyThemeSettings, useGeneralSettingsStore, useThemeSettingsStore } from "./stores/settingsStore";
 import { useEpisodePanelRuntimeStore } from "./stores/episodeStore";
@@ -36,6 +37,7 @@ function App() {
   const setVideoIsHEVC = useAppStateStore((s) => s.setVideoIsHEVC);
   const importedVideoPath = useAppStateStore((s) => s.importedVideoPath);
   const importToken = useAppStateStore((s) => s.importToken);
+  const dismissNotificationId = useAppPersistedStore((s) => s.dismissNotificationId);
 
 
   // Refs
@@ -75,6 +77,8 @@ function App() {
   }
 
   const [dividerOffsetPx, setDividerOffsetPx] = useState(0);
+  const [startupNotification, setStartupNotification] = useState<StartupNotification | null>(null);
+  const [showStartupNotification, setShowStartupNotification] = useState(false);
 
   const parseThumbnailProgress = (message: string): { done: number; total: number } | null => {
     const match = message.match(/generating thumbnails\.\.\.\s*(\d+)\s*\/\s*(\d+)/i);
@@ -181,6 +185,49 @@ function App() {
   useEffect(() => {
     applyThemeSettings(themeSettings);
   }, [themeSettings]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      console.log("[notification] startup fetch begin");
+      try {
+        const notification = await invoke<StartupNotification | null>("fetch_startup_notification");
+        if (cancelled) return;
+
+        if (!notification) {
+          console.log("[notification] no active notification for this version");
+          return;
+        }
+
+        const dismissedIds = useAppPersistedStore.getState().dismissedNotificationIds;
+        const isDismissed = dismissedIds.includes(notification.id);
+        console.log(
+          `[notification] received id=${notification.id}, dismissed=${isDismissed}, versionTarget=${notification.targetVersion ?? "n/a"}`
+        );
+
+        setStartupNotification(notification);
+        setShowStartupNotification(!isDismissed);
+      } catch (error) {
+        console.error("[notification] startup fetch failed:", error);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const handleCloseStartupNotification = (doNotShowAgain: boolean) => {
+    if (!startupNotification) return;
+    console.log(
+      `[notification] close id=${startupNotification.id} doNotShowAgain=${doNotShowAgain}`
+    );
+    if (doNotShowAgain) {
+      dismissNotificationId(startupNotification.id);
+    }
+    setShowStartupNotification(false);
+  };
 
   useEffect(() => {
     let unlisten: (() => void) | null = null;
@@ -333,6 +380,12 @@ function App() {
           />
         )}
       </div>
+      {showStartupNotification && startupNotification ? (
+        <StartupNotificationModal
+          notification={startupNotification}
+          onClose={handleCloseStartupNotification}
+        />
+      ) : null}
       </AppLayout>
   );
 }

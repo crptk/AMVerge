@@ -23,9 +23,19 @@ pub struct BugReportRequest {
     pub contact: Option<String>,
     pub video_reference: Option<String>,
     pub screenshot_names: Vec<String>,
+    pub screenshots: Option<Vec<ScreenshotAttachment>>,
     pub console_logs: Option<String>,
     pub console_log_count: Option<usize>,
     pub redaction_applied: Option<bool>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ScreenshotAttachment {
+    pub name: String,
+    pub mime_type: String,
+    pub size_bytes: usize,
+    pub data_base64: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -46,6 +56,7 @@ struct DashboardBugReportPayload {
     video_reference: Option<String>,
     video_url: Option<String>,
     screenshot_names: Vec<String>,
+    screenshots: Vec<ScreenshotAttachment>,
     console_logs: Option<String>,
     console_log_count: Option<usize>,
     redaction_applied: bool,
@@ -135,6 +146,7 @@ pub async fn submit_bug_report(
         video_reference: video_reference.clone(),
         video_url: video_reference,
         screenshot_names: request.screenshot_names,
+        screenshots: request.screenshots.unwrap_or_default(),
         console_logs,
         console_log_count: request.console_log_count,
         redaction_applied: request.redaction_applied.unwrap_or(false),
