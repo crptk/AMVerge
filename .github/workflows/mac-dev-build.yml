@@ -169,7 +169,23 @@ jobs:
           security list-keychains -d user -s "$KEYCHAIN_PATH"
           security default-keychain -d user -s "$KEYCHAIN_PATH"
           security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+          echo "Available code-signing identities:"
           security find-identity -v -p codesigning "$KEYCHAIN_PATH"
+
+          if [ -n "$APPLE_SIGNING_IDENTITY" ] && security find-identity -v -p codesigning "$KEYCHAIN_PATH" | grep -Fq "$APPLE_SIGNING_IDENTITY"; then
+            EFFECTIVE_SIGNING_IDENTITY="$APPLE_SIGNING_IDENTITY"
+            echo "Using configured identity from secret."
+          else
+            EFFECTIVE_SIGNING_IDENTITY="$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" | sed -n 's/.*"\(Developer ID Application:.*\)"/\1/p' | head -n 1)"
+            if [ -z "$EFFECTIVE_SIGNING_IDENTITY" ]; then
+              echo "No Developer ID Application identity found in keychain"
+              exit 1
+            fi
+            echo "Configured APPLE_SIGNING_IDENTITY was not found; using detected identity."
+          fi
+
+          echo "EFFECTIVE_SIGNING_IDENTITY=$EFFECTIVE_SIGNING_IDENTITY" >> "$GITHUB_ENV"
 
       - name: Download arm64 app artifact
         uses: actions/download-artifact@v4
@@ -211,7 +227,7 @@ jobs:
             --armApp "$ARM_APP_PATH" \
             --x64App "$X64_APP_PATH" \
             --outApp "$UNIVERSAL_APP_PATH" \
-            --signIdentity "$APPLE_SIGNING_IDENTITY" \
+            --signIdentity "$EFFECTIVE_SIGNING_IDENTITY" \
             --config frontend/src-tauri/tauri.macos.universal.conf.json
 
       - name: Create universal DMG
@@ -227,7 +243,7 @@ jobs:
       - name: Sign universal DMG
         run: |
           DMG_PATH="frontend/src-tauri/target/universal-apple-darwin/release/bundle/dmg/AMVerge-macos-universal.dmg"
-          codesign --force --sign "$APPLE_SIGNING_IDENTITY" --timestamp "$DMG_PATH"
+          codesign --force --sign "$EFFECTIVE_SIGNING_IDENTITY" --timestamp "$DMG_PATH"
 
       - name: Notarize and staple universal DMG
         run: |
