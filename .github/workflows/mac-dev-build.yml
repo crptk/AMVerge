@@ -91,12 +91,16 @@ jobs:
           openssl x509 -in extracted-cert.pem -noout -subject -issuer -serial -dates
           openssl x509 -in extracted-cert.pem -noout -fingerprint -sha256
 
+          echo "Re-exporting as legacy PKCS#12 for macOS keychain compatibility..."
+          openssl pkcs12 -in certificate.p12 -passin "pass:$APPLE_CERTIFICATE_PASSWORD" -nodes -out extracted-full.pem
+          openssl pkcs12 -export -legacy -in extracted-full.pem -out certificate-legacy.p12 -passout "pass:$APPLE_CERTIFICATE_PASSWORD"
+
           KEYCHAIN_PATH="$RUNNER_TEMP/build-signing.keychain-db"
           KEYCHAIN_PASSWORD="$(openssl rand -base64 24)"
           security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
           security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
           security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-          security import certificate.p12 -k "$KEYCHAIN_PATH" -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security
+          security import certificate-legacy.p12 -k "$KEYCHAIN_PATH" -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security
           security list-keychains -d user -s "$KEYCHAIN_PATH"
           security default-keychain -d user -s "$KEYCHAIN_PATH"
           security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
@@ -193,12 +197,16 @@ jobs:
           openssl x509 -in extracted-cert.pem -noout -subject -issuer -serial -dates
           openssl x509 -in extracted-cert.pem -noout -fingerprint -sha256
 
+          echo "Re-exporting as legacy PKCS#12 for macOS keychain compatibility..."
+          openssl pkcs12 -in certificate.p12 -passin "pass:$APPLE_CERTIFICATE_PASSWORD" -nodes -out extracted-full.pem
+          openssl pkcs12 -export -legacy -in extracted-full.pem -out certificate-legacy.p12 -passout "pass:$APPLE_CERTIFICATE_PASSWORD"
+
           KEYCHAIN_PATH="$RUNNER_TEMP/universal-signing.keychain-db"
           KEYCHAIN_PASSWORD="$(openssl rand -base64 24)"
           security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
           security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
           security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-          security import certificate.p12 -k "$KEYCHAIN_PATH" -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security
+          security import certificate-legacy.p12 -k "$KEYCHAIN_PATH" -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security
           security list-keychains -d user -s "$KEYCHAIN_PATH"
           security default-keychain -d user -s "$KEYCHAIN_PATH"
           security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
