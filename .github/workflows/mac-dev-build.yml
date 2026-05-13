@@ -129,6 +129,10 @@ jobs:
       APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
       APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
       APPLE_NOTARY_TEAM_ID: ${{ secrets.APPLE_NOTARY_TEAM_ID }}
+      APPLE_ASC_KEY_ID: ${{ secrets.APPLE_ASC_KEY_ID }}
+      APPLE_ASC_ISSUER_ID: ${{ secrets.APPLE_ASC_ISSUER_ID }}
+      APPLE_ASC_API_KEY: ${{ secrets.APPLE_ASC_API_KEY }}
+      APPLE_ASC_API_KEY_BASE64: ${{ secrets.APPLE_ASC_API_KEY_BASE64 }}
 
     steps:
       - name: Checkout repo
@@ -275,36 +279,56 @@ jobs:
       - name: Notarize and staple universal DMG
         run: |
           DMG_PATH="frontend/src-tauri/target/universal-apple-darwin/release/bundle/dmg/AMVerge-macos-universal.dmg"
-          NOTARY_PASSWORD="${APPLE_APP_SPECIFIC_PASSWORD:-$APPLE_PASSWORD}"
+          NOTARY_PASSWORD="$(printf '%s' "${APPLE_APP_SPECIFIC_PASSWORD:-$APPLE_PASSWORD}" | tr -d '[:space:]')"
+          APPLE_ID_CLEAN="$(printf '%s' "$APPLE_ID" | tr -d '[:space:]')"
           SIGNING_TEAM_ID="$(printf '%s' "$EFFECTIVE_SIGNING_IDENTITY" | sed -n 's/.*(\([A-Z0-9]\{10\}\)).*/\1/p')"
-          NOTARY_TEAM_ID="${APPLE_NOTARY_TEAM_ID:-${APPLE_TEAM_ID:-$SIGNING_TEAM_ID}}"
+          NOTARY_TEAM_ID="$(printf '%s' "${APPLE_NOTARY_TEAM_ID:-${APPLE_TEAM_ID:-$SIGNING_TEAM_ID}}" | tr -d '[:space:]')"
 
-          if [ -z "$NOTARY_PASSWORD" ]; then
-            echo "Missing notarization password. Set APPLE_APP_SPECIFIC_PASSWORD (preferred) or APPLE_PASSWORD to an Apple app-specific password."
-            exit 1
+          if [ -n "$APPLE_ASC_KEY_ID" ] && [ -n "$APPLE_ASC_ISSUER_ID" ] && { [ -n "$APPLE_ASC_API_KEY" ] || [ -n "$APPLE_ASC_API_KEY_BASE64" ]; }; then
+            echo "Using App Store Connect API key auth for notarization."
+            KEY_DIR="$RUNNER_TEMP/private_keys"
+            KEY_PATH="$KEY_DIR/AuthKey_${APPLE_ASC_KEY_ID}.p8"
+            mkdir -p "$KEY_DIR"
+
+            if [ -n "$APPLE_ASC_API_KEY_BASE64" ]; then
+              printf '%s' "$APPLE_ASC_API_KEY_BASE64" | base64 --decode > "$KEY_PATH" 2>/dev/null || printf '%s' "$APPLE_ASC_API_KEY_BASE64" | base64 -D > "$KEY_PATH"
+            else
+              printf '%s' "$APPLE_ASC_API_KEY" > "$KEY_PATH"
+            fi
+
+            chmod 600 "$KEY_PATH"
+
+            xcrun notarytool submit "$DMG_PATH" \
+              --key "$KEY_PATH" \
+              --key-id "$APPLE_ASC_KEY_ID" \
+              --issuer "$APPLE_ASC_ISSUER_ID" \
+              --wait
+          else
+            if [ -z "$NOTARY_PASSWORD" ]; then
+              echo "Missing notarization password. Set APPLE_APP_SPECIFIC_PASSWORD (preferred) or APPLE_PASSWORD to an Apple app-specific password."
+              echo "Or configure API key auth via APPLE_ASC_KEY_ID, APPLE_ASC_ISSUER_ID, and APPLE_ASC_API_KEY(_BASE64)."
+              exit 1
+            fi
+
+            if [ -z "$APPLE_ID_CLEAN" ]; then
+              echo "Missing APPLE_ID secret."
+              exit 1
+            fi
+
+            if [ -z "$NOTARY_TEAM_ID" ]; then
+              echo "Missing Team ID for notarization. Set APPLE_NOTARY_TEAM_ID or APPLE_TEAM_ID."
+              exit 1
+            fi
+
+            echo "Using Apple ID auth for notarization with Team ID: ${NOTARY_TEAM_ID}"
+
+            xcrun notarytool submit "$DMG_PATH" \
+              --apple-id "$APPLE_ID_CLEAN" \
+              --password "$NOTARY_PASSWORD" \
+              --team-id "$NOTARY_TEAM_ID" \
+              --wait
           fi
 
-          if [ -z "$APPLE_ID" ]; then
-            echo "Missing APPLE_ID secret."
-            exit 1
-          fi
-
-          if [ -z "$NOTARY_TEAM_ID" ]; then
-            echo "Missing Team ID for notarization. Set APPLE_NOTARY_TEAM_ID or APPLE_TEAM_ID."
-            exit 1
-          fi
-
-          echo "Using notarization Team ID: ${NOTARY_TEAM_ID}"
-
-          # Validate credentials before submit to surface auth issues clearly.
-          xcrun notarytool store-credentials "amverge-notary" \
-            --apple-id "$APPLE_ID" \
-            --password "$NOTARY_PASSWORD" \
-            --team-id "$NOTARY_TEAM_ID"
-
-          xcrun notarytool submit "$DMG_PATH" \
-            --keychain-profile "amverge-notary" \
-            --wait
           xcrun stapler staple "$DMG_PATH"
           xcrun stapler validate "$DMG_PATH"
 
