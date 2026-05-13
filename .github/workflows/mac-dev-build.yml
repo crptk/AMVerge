@@ -305,9 +305,13 @@ jobs:
               --wait
           else
             if [ -z "$NOTARY_PASSWORD" ]; then
-              echo "Missing notarization password. Set APPLE_APP_SPECIFIC_PASSWORD (preferred) or APPLE_PASSWORD to an Apple app-specific password."
+              echo "Missing notarization password. Set APPLE_APP_SPECIFIC_PASSWORD (preferred) or APPLE_PASSWORD to an Apple app-specific password from appleid.apple.com."
               echo "Or configure API key auth via APPLE_ASC_KEY_ID, APPLE_ASC_ISSUER_ID, and APPLE_ASC_API_KEY(_BASE64)."
               exit 1
+            fi
+
+            if [ -z "$APPLE_APP_SPECIFIC_PASSWORD" ] && [ -n "$APPLE_PASSWORD" ]; then
+              echo "APPLE_APP_SPECIFIC_PASSWORD is not set; falling back to APPLE_PASSWORD for notarization."
             fi
 
             if [ -z "$APPLE_ID_CLEAN" ]; then
