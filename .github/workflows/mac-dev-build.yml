@@ -279,6 +279,7 @@ jobs:
       - name: Notarize and staple universal DMG
         run: |
           DMG_PATH="frontend/src-tauri/target/universal-apple-darwin/release/bundle/dmg/AMVerge-macos-universal.dmg"
+          NOTARY_SUBMIT_JSON="$RUNNER_TEMP/notary-submit.json"
           NOTARY_PASSWORD="$(printf '%s' "${APPLE_APP_SPECIFIC_PASSWORD:-$APPLE_PASSWORD}" | tr -d '[:space:]')"
           APPLE_ID_CLEAN="$(printf '%s' "$APPLE_ID" | tr -d '[:space:]')"
           SIGNING_TEAM_ID="$(printf '%s' "$EFFECTIVE_SIGNING_IDENTITY" | sed -n 's/.*(\([A-Z0-9]\{10\}\)).*/\1/p')"
@@ -302,7 +303,8 @@ jobs:
               --key "$KEY_PATH" \
               --key-id "$APPLE_ASC_KEY_ID" \
               --issuer "$APPLE_ASC_ISSUER_ID" \
-              --wait
+              --output-format json \
+              --wait > "$NOTARY_SUBMIT_JSON"
           else
             if [ -z "$NOTARY_PASSWORD" ]; then
               echo "Missing notarization password. Set APPLE_APP_SPECIFIC_PASSWORD (preferred) or APPLE_PASSWORD to an Apple app-specific password from appleid.apple.com."
@@ -330,7 +332,42 @@ jobs:
               --apple-id "$APPLE_ID_CLEAN" \
               --password "$NOTARY_PASSWORD" \
               --team-id "$NOTARY_TEAM_ID" \
-              --wait
+              --output-format json \
+              --wait > "$NOTARY_SUBMIT_JSON"
+          fi
+
+          if [ ! -s "$NOTARY_SUBMIT_JSON" ]; then
+            echo "Notary submission did not produce JSON output."
+            exit 1
+          fi
+
+          cat "$NOTARY_SUBMIT_JSON"
+
+          NOTARY_ID="$(sed -n 's/.*"id"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$NOTARY_SUBMIT_JSON" | head -n 1)"
+          NOTARY_STATUS="$(sed -n 's/.*"status"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$NOTARY_SUBMIT_JSON" | head -n 1)"
+
+          if [ -z "$NOTARY_ID" ] || [ -z "$NOTARY_STATUS" ]; then
+            echo "Unable to parse notary id/status from JSON output."
+            exit 1
+          fi
+
+          if [ "$NOTARY_STATUS" != "Accepted" ]; then
+            echo "Notarization status is '$NOTARY_STATUS' (expected Accepted)."
+            echo "Fetching detailed notary log for submission id: $NOTARY_ID"
+
+            if [ -n "$APPLE_ASC_KEY_ID" ] && [ -n "$APPLE_ASC_ISSUER_ID" ] && { [ -n "$APPLE_ASC_API_KEY" ] || [ -n "$APPLE_ASC_API_KEY_BASE64" ]; }; then
+              xcrun notarytool log "$NOTARY_ID" \
+                --key "$KEY_PATH" \
+                --key-id "$APPLE_ASC_KEY_ID" \
+                --issuer "$APPLE_ASC_ISSUER_ID" || true
+            else
+              xcrun notarytool log "$NOTARY_ID" \
+                --apple-id "$APPLE_ID_CLEAN" \
+                --password "$NOTARY_PASSWORD" \
+                --team-id "$NOTARY_TEAM_ID" || true
+            fi
+
+            exit 1
           fi
 
           xcrun stapler staple "$DMG_PATH"
