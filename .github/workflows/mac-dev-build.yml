@@ -236,6 +236,26 @@ jobs:
             --signIdentity "$EFFECTIVE_SIGNING_IDENTITY" \
             --config frontend/src-tauri/tauri.macos.universal.conf.json
 
+      - name: Re-sign embedded Python sidecar binaries
+        run: |
+          SIDECAR_ROOT="$UNIVERSAL_APP_PATH/Contents/Resources/bin"
+          if [ ! -d "$SIDECAR_ROOT" ]; then
+            echo "Sidecar bin directory not found at $SIDECAR_ROOT"
+            exit 1
+          fi
+
+          echo "Signing Mach-O files under sidecar bin directories..."
+          find "$SIDECAR_ROOT" -type f -print0 | while IFS= read -r -d '' f; do
+            if file -b "$f" | grep -q 'Mach-O'; then
+              codesign --force --sign "$EFFECTIVE_SIGNING_IDENTITY" --timestamp --options runtime "$f"
+            fi
+          done
+
+      - name: Re-sign universal app bundle (final)
+        run: |
+          codesign --force --sign "$EFFECTIVE_SIGNING_IDENTITY" --timestamp --options runtime "$UNIVERSAL_APP_PATH"
+          codesign --verify --strict --deep --verbose=2 "$UNIVERSAL_APP_PATH"
+
       - name: Create universal DMG
         run: |
           mkdir -p frontend/src-tauri/target/universal-apple-darwin/release/bundle/dmg
