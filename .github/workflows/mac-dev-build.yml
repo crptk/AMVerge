@@ -252,6 +252,14 @@ jobs:
             codesign --force --sign "$EFFECTIVE_SIGNING_IDENTITY" --timestamp --options runtime "$pybin"
           done
 
+          echo "Sealing Python.framework version bundles..."
+          find "$SIDECAR_ROOT" -type d -path '*/Python.framework/Versions/*' -print0 | while IFS= read -r -d '' fwver; do
+            case "$fwver" in
+              */Python.framework/Versions/Current) continue ;;
+            esac
+            codesign --force --sign "$EFFECTIVE_SIGNING_IDENTITY" --timestamp --options runtime "$fwver"
+          done
+
           echo "Signing Mach-O files under sidecar bin directories..."
           find "$SIDECAR_ROOT" -type f -print0 | while IFS= read -r -d '' f; do
             case "$f" in
@@ -265,7 +273,7 @@ jobs:
 
       - name: Re-sign universal app bundle (final)
         run: |
-          codesign --force --sign "$EFFECTIVE_SIGNING_IDENTITY" --timestamp --options runtime "$UNIVERSAL_APP_PATH"
+          codesign --force --deep --sign "$EFFECTIVE_SIGNING_IDENTITY" --timestamp --options runtime "$UNIVERSAL_APP_PATH"
           codesign --verify --strict --deep --verbose=2 "$UNIVERSAL_APP_PATH"
 
       - name: Create universal DMG
