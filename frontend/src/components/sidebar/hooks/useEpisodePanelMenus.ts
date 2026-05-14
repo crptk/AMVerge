@@ -200,8 +200,10 @@ export default function useEpisodePanelMenus({
     setConfirmModal({
       title: "Clear Episode Panel Cache",
       message:
-        "Are you sure you want to clear the episode panel cache? This will remove cached episodes and free disk space.",
-      confirmLabel: "Yes",
+        "Are you sure you want to clear the episode panel cache? This will remove ALL episodes and free up disk space.",
+      note: "If you'd like to delete a single episode or folder, you can do so by right clicking them in the panel.",
+      confirmLabel: "Delete all episodes",
+      confirmTone: "danger",
       onConfirm: () => {
         void onClearEpisodePanelCache();
       },

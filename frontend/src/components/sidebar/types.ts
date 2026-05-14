@@ -94,6 +94,8 @@ export type TextModalState = {
 export type ConfirmModalState = {
   title: string;
   message: string;
+  note?: string;
+  confirmTone?: "default" | "danger";
   confirmLabel: string;
   onConfirm: () => void;
 };

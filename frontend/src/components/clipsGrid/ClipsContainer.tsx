@@ -166,7 +166,34 @@ export default function ClipsContainer({ cols }: { cols?: number }) {
   // Ref for the main container (for scroll-to-top on import)
   const containerRef = useRef<HTMLElement>(null);
 
+  // Preserve scroll position across loading-state toggles that don't come from
+  // an import (e.g. exporting). When importToken changes we still want the
+  // scroll-to-top behaviour below.
+  const savedScrollRef = useRef<number | null>(null);
+  const prevLoadingRef = useRef(loading);
   useEffect(() => {
+    const el = containerRef.current;
+    if (!el) {
+      prevLoadingRef.current = loading;
+      return;
+    }
+    if (loading && !prevLoadingRef.current) {
+      // Loading just started — remember where we were so we can restore.
+      savedScrollRef.current = el.scrollTop;
+    } else if (!loading && prevLoadingRef.current && savedScrollRef.current !== null) {
+      // Loading finished — restore scroll after the grid re-renders.
+      const target = savedScrollRef.current;
+      savedScrollRef.current = null;
+      requestAnimationFrame(() => {
+        containerRef.current?.scrollTo({ top: target });
+      });
+    }
+    prevLoadingRef.current = loading;
+  }, [loading]);
+
+  useEffect(() => {
+    // New import — discard any pending scroll restore and go to the top.
+    savedScrollRef.current = null;
     containerRef.current?.scrollTo({ top: 0 });
   }, [importToken]);
 

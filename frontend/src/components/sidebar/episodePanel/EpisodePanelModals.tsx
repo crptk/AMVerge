@@ -74,6 +74,9 @@ export default function EpisodePanelModals({
           <div className="episode-modal" onMouseDown={(e) => e.stopPropagation()}>
             <div className="episode-modal-title">{confirmModal.title}</div>
             <div className="episode-modal-message">{confirmModal.message}</div>
+            {confirmModal.note && (
+              <div className="episode-modal-note">{confirmModal.note}</div>
+            )}
 
             <div className="episode-modal-actions">
               <button
@@ -86,7 +89,9 @@ export default function EpisodePanelModals({
 
               <button
                 type="button"
-                className="episode-modal-btn primary"
+                className={`episode-modal-btn primary${
+                  confirmModal.confirmTone === "danger" ? " danger" : ""
+                }`}
                 onClick={() => {
                   confirmModal.onConfirm();
                   setConfirmModal(null);

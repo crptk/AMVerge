@@ -278,15 +278,13 @@ function App() {
 
     (async () => {
       try {
-        const hevc = await invoke<boolean>("check_hevc", {
-          videoPath: importedVideoPath,
-        });
+        const hevc = await invoke<boolean>("check_hevc", { videoPath: importedVideoPath });
 
         if (!cancelled) {
           setVideoIsHEVC(hevc);
         }
       } catch (err) {
-        console.error("check_hevc failed:", err);
+        console.error("codec probe failed:", err);
 
         if (!cancelled) {
           setVideoIsHEVC(false);

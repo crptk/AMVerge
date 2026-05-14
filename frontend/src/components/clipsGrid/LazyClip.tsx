@@ -83,7 +83,7 @@ export const LazyClip = memo(function LazyClip({
 
   const [downloadTone, setDownloadTone] = useState<"light" | "dark">("light");
 
-  // determine if we need a proxy (HEVC not supported)
+  // determine if we need a proxy:
   const needsHevcProxy = videoIsHEVC === true && userHasHEVC === false;
   const waitingForCodecInfo = videoIsHEVC === null && userHasHEVC === false;
 
@@ -104,6 +104,8 @@ export const LazyClip = memo(function LazyClip({
       return;
     }
 
+    console.log(`Needs HEVC Proxy? ${needsHevcProxy}`)
+    console.log(`Video is HEVC? ${videoIsHEVC}`)
     const wantsProxyNow =
       needsHevcProxy &&
       isVisible &&
@@ -635,11 +637,11 @@ export const LazyClip = memo(function LazyClip({
               <span className="status-text">{clip.originalName}</span>
             </div>
           )}
-          {!isProcessing && forceThumbnail && needsHevcProxy && (
+          {/* {!isProcessing && forceThumbnail && needsHevcProxy && (
             <div className="clip-status-overlay">
               <span className="status-text">Processing...</span>
             </div>
-          )}
+          )} */}
 
           {showClipTimestamps && (clip.startSec ?? clip.start) !== undefined && (
             <div className="clip-original-timestamp">
