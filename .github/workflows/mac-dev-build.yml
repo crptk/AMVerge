@@ -236,28 +236,107 @@ jobs:
             --signIdentity "$EFFECTIVE_SIGNING_IDENTITY" \
             --config frontend/src-tauri/tauri.macos.universal.conf.json
 
-      - name: Re-sign embedded Python sidecar binaries
+      - name: Diagnose and repair Python.framework structure
         run: |
+          set -e
           SIDECAR_ROOT="$UNIVERSAL_APP_PATH/Contents/Resources/bin"
           if [ ! -d "$SIDECAR_ROOT" ]; then
             echo "Sidecar bin directory not found at $SIDECAR_ROOT"
             exit 1
           fi
 
-          echo "Signing nested framework bundles first..."
-          find "$SIDECAR_ROOT" -type d -name '*.framework' -print0 | while IFS= read -r -d '' framework; do
-            codesign --force --sign "$EFFECTIVE_SIGNING_IDENTITY" --timestamp --options runtime "$framework"
-          done
+          # PyInstaller often flattens Python.framework so that
+          # `Python.framework/Python` and `Python.framework/Versions/Current`
+          # are real files/dirs instead of symlinks. Apple's notary then
+          # rejects them with "bundle format is ambiguous" / "invalid
+          # signature" / "missing secure timestamp". Repair the layout so
+          # the framework can be signed as a proper bundle.
+          find "$SIDECAR_ROOT" -type d -name 'Python.framework' -print0 | while IFS= read -r -d '' framework; do
+            echo "=============================================="
+            echo "Inspecting: $framework"
+            echo "=============================================="
+            ls -la "$framework" || true
+            echo "--- Versions ---"
+            ls -la "$framework/Versions" || true
 
-          echo "Signing Mach-O files under sidecar bin directories..."
-          find "$SIDECAR_ROOT" -type f -print0 | while IFS= read -r -d '' f; do
-            if [[ "$f" == *".framework/"* ]]; then
-              continue
+            # Pick the actual versioned directory (e.g. 3.11). Prefer a
+            # directory that is NOT named "Current".
+            VERSION_DIR="$(find "$framework/Versions" -mindepth 1 -maxdepth 1 -type d ! -name 'Current' -print -quit | xargs -I{} basename {} 2>/dev/null || true)"
+            if [ -z "$VERSION_DIR" ]; then
+              echo "No concrete version directory found inside $framework/Versions"
+              exit 1
+            fi
+            echo "Detected version dir: $VERSION_DIR"
+
+            REAL_BIN="$framework/Versions/$VERSION_DIR/Python"
+            if [ ! -f "$REAL_BIN" ]; then
+              echo "Expected real Python binary not found at $REAL_BIN"
+              exit 1
             fi
 
+            # Ensure Versions/Current is a symlink to the concrete version.
+            if [ ! -L "$framework/Versions/Current" ]; then
+              echo "Repairing Versions/Current -> $VERSION_DIR"
+              rm -rf "$framework/Versions/Current"
+              ln -s "$VERSION_DIR" "$framework/Versions/Current"
+            fi
+
+            # Ensure top-level Python is a symlink to Versions/Current/Python.
+            if [ ! -L "$framework/Python" ]; then
+              echo "Repairing Python -> Versions/Current/Python"
+              rm -rf "$framework/Python"
+              ln -s "Versions/Current/Python" "$framework/Python"
+            fi
+
+            # Resources alias is also part of the standard framework layout.
+            if [ -d "$framework/Versions/$VERSION_DIR/Resources" ] && [ ! -L "$framework/Resources" ]; then
+              echo "Repairing Resources -> Versions/Current/Resources"
+              rm -rf "$framework/Resources"
+              ln -s "Versions/Current/Resources" "$framework/Resources"
+            fi
+
+            echo "--- Post-repair layout ---"
+            ls -la "$framework"
+            ls -la "$framework/Versions"
+          done
+
+      - name: Re-sign embedded Python sidecar binaries
+        run: |
+          SIDECAR_ROOT="$UNIVERSAL_APP_PATH/Contents/Resources/bin"
+
+          echo "Signing all Mach-O files under sidecar (excluding Python.framework)..."
+          find "$SIDECAR_ROOT" -type f -print0 | while IFS= read -r -d '' f; do
+            case "$f" in
+              */Python.framework/*) continue ;;
+            esac
             if file -b "$f" | grep -q 'Mach-O'; then
               codesign --force --sign "$EFFECTIVE_SIGNING_IDENTITY" --timestamp --options runtime "$f"
             fi
+          done
+
+          echo "Signing each Python.framework as a bundle..."
+          find "$SIDECAR_ROOT" -type d -name 'Python.framework' -print0 | while IFS= read -r -d '' framework; do
+            # First, sign any Mach-O files inside the framework's versioned dir
+            # (e.g. lib-dynload .so modules) so that the bundle seal covers
+            # them with a valid signature.
+            find "$framework" -type f \( -name '*.so' -o -name '*.dylib' \) -print0 | while IFS= read -r -d '' inner; do
+              if file -b "$inner" | grep -q 'Mach-O'; then
+                codesign --force --sign "$EFFECTIVE_SIGNING_IDENTITY" --timestamp --options runtime "$inner"
+              fi
+            done
+
+            # Sign the concrete versioned bundle (e.g. Versions/3.11), then
+            # the framework itself. This produces the correct _CodeSignature
+            # under Versions/<X>/ that the alias paths point to.
+            VERSION_DIR="$(readlink "$framework/Versions/Current")"
+            if [ -n "$VERSION_DIR" ] && [ -d "$framework/Versions/$VERSION_DIR" ]; then
+              codesign --force --sign "$EFFECTIVE_SIGNING_IDENTITY" --timestamp --options runtime "$framework/Versions/$VERSION_DIR"
+            fi
+            codesign --force --sign "$EFFECTIVE_SIGNING_IDENTITY" --timestamp --options runtime "$framework"
+
+            echo "--- Verify framework signature ---"
+            codesign --verify --strict --verbose=2 "$framework"
+            codesign -dv --verbose=4 "$framework" 2>&1 | grep -E 'Timestamp|Authority|Identifier' || true
           done
 
       - name: Re-sign universal app bundle (final)
