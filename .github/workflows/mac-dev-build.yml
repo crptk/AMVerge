@@ -270,8 +270,33 @@ jobs:
 
       - name: Re-sign universal app bundle (final)
         run: |
-          codesign --force --deep --sign "$EFFECTIVE_SIGNING_IDENTITY" --timestamp --options runtime "$UNIVERSAL_APP_PATH"
+          codesign --force --sign "$EFFECTIVE_SIGNING_IDENTITY" --timestamp --options runtime "$UNIVERSAL_APP_PATH"
           codesign --verify --strict --deep --verbose=2 "$UNIVERSAL_APP_PATH"
+
+      - name: Finalize Python.framework alias signatures
+        run: |
+          SIDECAR_ROOT="$UNIVERSAL_APP_PATH/Contents/Resources/bin"
+          find "$SIDECAR_ROOT" -type d -path '*/Python.framework' -print0 | while IFS= read -r -d '' framework; do
+            for alias_path in "$framework/Python" "$framework/Versions/Current/Python"; do
+              if [ ! -e "$alias_path" ]; then
+                continue
+              fi
+
+              real_path="$(python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$alias_path")"
+              if [ ! -f "$real_path" ]; then
+                echo "Resolved Python.framework alias is not a file: $alias_path -> $real_path"
+                exit 1
+              fi
+
+              codesign --force --sign "$EFFECTIVE_SIGNING_IDENTITY" --timestamp --options runtime "$real_path"
+              codesign --verify --verbose=4 "$alias_path"
+
+              if ! codesign -dv --verbose=4 "$alias_path" 2>&1 | grep -q 'Timestamp='; then
+                echo "Missing secure timestamp on alias path: $alias_path"
+                exit 1
+              fi
+            done
+          done
 
       - name: Create universal DMG
         run: |
