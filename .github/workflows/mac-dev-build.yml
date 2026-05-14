@@ -257,6 +257,9 @@ jobs:
             case "$fwver" in
               */Python.framework/Versions/Current) continue ;;
             esac
+            if [ ! -f "$fwver/Python" ]; then
+              continue
+            fi
             codesign --force --sign "$EFFECTIVE_SIGNING_IDENTITY" --timestamp --options runtime "$fwver"
           done
 
