@@ -39,7 +39,6 @@ fn main() {
             commands::export::fast_split,
             commands::editor_import::import_media_to_editor,
             commands::editor_import::abort_editor_import,
-            commands::filmstrip::generate_filmstrip,
             commands::preview::check_hevc,
             commands::preview::hover_preview_error,
             commands::preview::ensure_preview_proxy,
@@ -91,7 +90,7 @@ fn kill_all_child_processes(app: &tauri::AppHandle) {
             .output();
     }
 
-    // Kill untracked ffmpeg processes (merge, split, proxy, filmstrip).
+    // Kill untracked ffmpeg processes (merge, split, proxy).
     let misc_pids: Vec<u32> = app
         .state::<ActiveFfmpegPids>()
         .pids
