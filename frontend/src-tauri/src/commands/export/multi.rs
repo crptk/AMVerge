@@ -27,7 +27,12 @@ fn format_seek_seconds(ms: u64) -> String {
         .to_string()
 }
 
-fn build_copy_args(input: &str, output: &str, input_seek_ms: Option<u64>) -> Vec<String> {
+fn build_copy_args(
+    input: &str,
+    output: &str,
+    input_seek_ms: Option<u64>,
+    bsf: Option<&str>,
+) -> Vec<String> {
     let mut args = vec!["-y".into()];
 
     if let Some(ms) = input_seek_ms.filter(|ms| *ms > 0) {
@@ -45,12 +50,28 @@ fn build_copy_args(input: &str, output: &str, input_seek_ms: Option<u64>) -> Vec
         "-1".into(),
         "-c".into(),
         "copy".into(),
+    ]);
+    // See compat::stream_copy_bsf_for. Required for MP4 → MKV/AVI/TS stream
+    // copy so Windows Media Foundation decodes the output cleanly.
+    if let Some(name) = bsf {
+        args.extend(["-bsf:v".into(), name.to_string()]);
+    }
+    args.extend([
         "-movflags".into(),
         "+faststart".into(),
         output.to_string(),
     ]);
 
     args
+}
+
+fn copy_bsf_for_job(runtime: &ExportRuntime, output: &str) -> Option<&'static str> {
+    let ext = std::path::Path::new(output)
+        .extension()
+        .and_then(|v| v.to_str())
+        .unwrap_or("")
+        .to_lowercase();
+    super::compat::stream_copy_bsf_for(runtime.source_video_codec.as_deref(), &ext)
 }
 
 fn uses_gpu_encoding(options: Option<&ExportOptionsPayload>) -> bool {
@@ -122,7 +143,12 @@ async fn run_one_job(
     let (mode_msg, args) = if job.copy_ok {
         (
             format!("{msg} (copy)"),
-            build_copy_args(&job.input, &job.output, job.input_seek_ms),
+            build_copy_args(
+                &job.input,
+                &job.output,
+                job.input_seek_ms,
+                copy_bsf_for_job(runtime, &job.output),
+            ),
         )
     } else {
         (
@@ -670,6 +696,7 @@ pub(super) async fn run_multi_export(
                     let export_options_for_run = runtime.export_options.clone();
                     let gpu_encoder_for_run = selected_gpu_encoder_name.clone();
                     let start_time = runtime.export_start_time;
+                    let copy_bsf_name = copy_bsf_for_job(runtime, &job.output).map(str::to_string);
 
                     let handle = tokio::task::spawn_blocking(move || {
                         if abort_requested_for_run.load(Ordering::SeqCst) {
@@ -683,7 +710,12 @@ pub(super) async fn run_multi_export(
                         let (mode_msg, args) = if job.copy_ok {
                             (
                                 format!("{msg} (copy)"),
-                                build_copy_args(&job.input, &job.output, job.input_seek_ms),
+                                build_copy_args(
+                                    &job.input,
+                                    &job.output,
+                                    job.input_seek_ms,
+                                    copy_bsf_name.as_deref(),
+                                ),
                             )
                         } else {
                             (

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo } from "react";
 import Dropdown from "../../common/Dropdown";
 import SettingRow from "../../common/SettingRow";
 import { useGeneralSettingsStore } from "../../../stores/settingsStore";
@@ -9,7 +9,6 @@ import {
   getCodecFamily,
   getExportProfileSummary,
   getParallelExportLimit,
-  getSafeDefaultParallelExports,
   isCodecGpuEligible,
   normalizeExportProfile,
   supportsAudioMode,
@@ -58,8 +57,6 @@ export default function ExportSection() {
   const setOpenFileLocationAfterExport = useGeneralSettingsStore(
     (state) => state.setOpenFileLocationAfterExport
   );
-
-  const autoParallelDefaultAppliedRef = useRef<Set<string>>(new Set());
 
   const {
     nvidiaDetection,
@@ -122,6 +119,11 @@ export default function ExportSection() {
     [parallelLimit]
   );
 
+  // Sync the persisted nvidiaEncoderProfile to whatever the GPU probe detected,
+  // and clamp parallelExports into the valid [1, nextParallelLimit] range when
+  // the limit shrinks (e.g. user switched codec/profile). Does NOT auto-bump
+  // the user's chosen value upward — the user's choice of "1 parallel" is
+  // always respected.
   useEffect(() => {
     if (!gpuProbeComplete || !encodingWorkflow) return;
 
@@ -142,21 +144,10 @@ export default function ExportSection() {
           })
         : 1;
 
-    const autoDefaultAlreadyApplied = autoParallelDefaultAppliedRef.current.has(activeProfile.id);
-
-    const shouldApplySafeDefault =
-      activeProfile.parallelExports <= 1 &&
-      nextParallelLimit > 1 &&
-      (activeProfile.nvidiaEncoderProfile === "unknown" ||
-        (!autoDefaultAlreadyApplied && activeProfile.nvidiaEncoderProfile === resolvedProfile));
-
-    const clampedParallelExports = shouldApplySafeDefault
-      ? getSafeDefaultParallelExports(nextParallelLimit)
-      : Math.max(1, Math.min(activeProfile.parallelExports, nextParallelLimit));
-
-    if (shouldApplySafeDefault) {
-      autoParallelDefaultAppliedRef.current.add(activeProfile.id);
-    }
+    const clampedParallelExports = Math.max(
+      1,
+      Math.min(activeProfile.parallelExports, nextParallelLimit)
+    );
 
     if (
       activeProfile.nvidiaEncoderProfile !== resolvedProfile ||
@@ -183,29 +174,13 @@ export default function ExportSection() {
     updateExportProfile,
   ]);
 
+  // Codecs that have no GPU encoder path (ProRes, DNxHR, etc.) must be CPU.
   useEffect(() => {
     if (!encoderLockedToCpu) return;
     if (activeProfile.hardwareMode === "cpu") return;
 
     updateExportProfile(activeProfile.id, { hardwareMode: "cpu" });
   }, [activeProfile.hardwareMode, activeProfile.id, encoderLockedToCpu, updateExportProfile]);
-
-  useEffect(() => {
-    if (!encodingWorkflow) return;
-
-    const family = getCodecFamily(activeProfile.codec);
-
-    if (family !== "h264" && family !== "h265") return;
-    if (activeProfile.hardwareMode !== "cpu") return;
-
-    updateExportProfile(activeProfile.id, { hardwareMode: "auto" });
-  }, [
-    activeProfile.codec,
-    activeProfile.hardwareMode,
-    activeProfile.id,
-    encodingWorkflow,
-    updateExportProfile,
-  ]);
 
   useEffect(() => {
     const normalized = normalizeExportProfile(activeProfile);
