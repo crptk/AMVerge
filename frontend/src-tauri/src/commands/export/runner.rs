@@ -45,8 +45,6 @@ pub(super) fn run_ffmpeg_with_progress(
     active_pids: Arc<Mutex<Vec<u32>>>,
     emit_progress_updates: bool,
 ) -> Result<(), String> {
-    // Force progress to stderr so we can parse it (while still receiving real errors).
-    // Note: ffmpeg writes key=value lines like out_time_ms=..., progress=continue/end.
     args.insert(0, "-hide_banner".into());
     args.insert(0, "-nostats".into());
     args.insert(0, "pipe:2".into());

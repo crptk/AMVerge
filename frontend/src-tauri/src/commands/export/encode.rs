@@ -1,5 +1,6 @@
 use std::path::Path;
 
+use super::compat::append_container_codec_tag;
 use super::types::{ExportOptionsPayload, GpuEncoderCapabilitiesPayload};
 
 fn normalize_codec(raw_codec: &str) -> &str {
@@ -550,6 +551,8 @@ pub(super) fn ffmpeg_reencode_args(
         args.push("-movflags".to_string());
         args.push("+faststart".to_string());
     }
+    let codec_for_tag = options.map(|o| o.codec.as_str()).unwrap_or("h264_high");
+    append_container_codec_tag(&mut args, codec_for_tag, &ext);
 
     args.push("-max_muxing_queue_size".to_string());
     args.push("1024".to_string());

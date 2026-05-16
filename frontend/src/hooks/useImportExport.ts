@@ -48,9 +48,13 @@ export default function useImportExport(props?: ImportExportProps) {
       ?? generalSettings.exportProfiles[0];
     if (!profile) return undefined;
 
-    let audioMode = profile.audioMode === "none" ? "copy" : profile.audioMode;
+    // Pass audioMode through as-is. The Rust backend now handles "copy" fallback
+    // safely (probes source audio codec and switches to AAC/etc. when copy would
+    // fail the muxer) and recognizes "none" as `-an`. Silently rewriting here
+    // was hiding muxer-incompat failures and producing 0 KB outputs.
+    let audioMode = profile.audioMode;
     if (profile.container === "mov" && audioMode === "flac") {
-      // MOV + FLAC can fail on some muxing paths; ALAC keeps lossless audio in a MOV-friendly format.
+      // MOV + FLAC isn't natively supported; ALAC keeps lossless audio in a MOV-friendly format.
       audioMode = "alac";
     }
 
@@ -510,7 +514,15 @@ export default function useImportExport(props?: ImportExportProps) {
       });
 
       if (mergeEnabled) {
-        const baseName = mergeFileName || ((selected[0]?.originalName || "episode") + "_merged");
+        const rawBase = mergeFileName || ((selected[0]?.originalName || "episode") + "_merged");
+        // Sanitize: strip path separators, control chars, and reserved characters;
+        // collapse to a safe filename. Prevents traversal injection (e.g. "../foo").
+        const baseName = (rawBase
+          .replace(/[\\/:*?"<>|\x00-\x1f]/g, "_")
+          .replace(/^\.+/, "_")
+          .replace(/\s+/g, " ")
+          .trim()
+          .slice(0, 180)) || "merged";
         const savePath = `${dir}${sep}${baseName}.${format}`;
         const exportedFiles = await invoke<string[]>("export_clips", {
           clips: clipArray,
@@ -561,11 +573,27 @@ export default function useImportExport(props?: ImportExportProps) {
         });
       }, 10000);
     } catch (err) {
-      console.log("Export failed:", err);
+      const message = typeof err === "string"
+        ? err
+        : (err instanceof Error ? err.message : "Unknown error");
+      console.error("Export failed:", err);
+      appState.setProgressMsg(`Export failed: ${message}`);
+      props?.onRPCUpdate?.({
+        type: "update",
+        details: "Export Failed",
+        state: message.slice(0, 120),
+        large_image: "amverge_logo",
+        small_image: generalSettings.rpcShowMiniIcons ? "edit_icon_new" : undefined,
+        small_text: generalSettings.rpcShowMiniIcons ? "Error" : undefined,
+        buttons: generalSettings.rpcShowButtons,
+      });
+      setTimeout(() => {
+        appState.setProgressMsg("");
+      }, 8000);
     } finally {
       setLoading(false);
     }
-  }, [appState.clips, buildExportOptionsPayload, persistedState, generalSettings, props?.onRPCUpdate]);
+  }, [appState, buildExportOptionsPayload, persistedState, generalSettings, props?.onRPCUpdate]);
 
   const handlePickExportDir = useCallback(async () => {
     const dir = await open({ directory: true, multiple: false });
@@ -601,12 +629,19 @@ export default function useImportExport(props?: ImportExportProps) {
         await invoke("reveal_in_file_manager", { filePath: exportedFiles[0] });
       }
     } catch (err) {
+      const message = typeof err === "string"
+        ? err
+        : (err instanceof Error ? err.message : "Unknown error");
       console.error("Single clip download failed:", err);
+      appState.setProgressMsg(`Export failed: ${message}`);
+      setTimeout(() => {
+        appState.setProgressMsg("");
+      }, 8000);
     } finally {
       setLoading(false);
     }
 
-  }, [buildExportOptionsPayload, generalSettings.exportFormat, generalSettings.exportProfiles, generalSettings.openFileLocationAfterExport, generalSettings.activeExportProfileId]);
+  }, [appState, buildExportOptionsPayload, generalSettings.exportFormat, generalSettings.exportProfiles, generalSettings.openFileLocationAfterExport, generalSettings.activeExportProfileId]);
 
   return {
     loading,
