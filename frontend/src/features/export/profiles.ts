@@ -644,10 +644,6 @@ export function getParallelExportLimit(profile: ExportProfile): number {
   return Math.max(1, support.maxParallelExports);
 }
 
-export function getSafeDefaultParallelExports(limit: number): number {
-  return Math.max(1, Math.ceil(limit / 2));
-}
-
 export function getExportProfileSummary(profile: ExportProfile): string {
   const codec = coerceExportCodec(profile.codec);
   const codecLabel = usesEncoding(profile.workflow)

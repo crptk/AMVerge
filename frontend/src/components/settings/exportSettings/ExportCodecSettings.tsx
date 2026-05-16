@@ -25,23 +25,11 @@ export default function ExportCodecSettings({
   const codecFamily = getCodecFamily(activeProfile.codec);
   const codecProfileOptions = getCodecOptionsForFamily(codecFamily);
 
-  const forceAutoHardwareForH26x = (
-    nextCodec: ExportProfile["codec"],
-    currentHardwareMode: ExportProfile["hardwareMode"]
-  ): Partial<ExportProfile> =>
-    (getCodecFamily(nextCodec) === "h264" || getCodecFamily(nextCodec) === "h265") &&
-    currentHardwareMode === "cpu"
-      ? { hardwareMode: "auto" }
-      : {};
-
   const handleCodecFamilyChange = (family: ExportCodecFamily) => {
     const options = getCodecOptionsForFamily(family);
     const nextCodec = options[0]?.value ?? activeProfile.codec;
 
-    updateActiveProfile({
-      codec: nextCodec,
-      ...forceAutoHardwareForH26x(nextCodec, activeProfile.hardwareMode),
-    });
+    updateActiveProfile({ codec: nextCodec });
   };
 
   return (
@@ -69,12 +57,7 @@ export default function ExportCodecSettings({
                 className="settings-wide-dropdown"
                 options={codecProfileOptions}
                 value={activeProfile.codec}
-                onChange={(codec) =>
-                  updateActiveProfile({
-                    codec,
-                    ...forceAutoHardwareForH26x(codec, activeProfile.hardwareMode),
-                  })
-                }
+                onChange={(codec) => updateActiveProfile({ codec })}
               />
             }
           />

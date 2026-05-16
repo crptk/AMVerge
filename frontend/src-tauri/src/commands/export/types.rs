@@ -86,4 +86,5 @@ pub(super) struct ExportRuntime {
     pub export_start_time: Instant,
     pub remux_workflow: bool,
     pub force_encode_workflow: bool,
+    pub source_video_codec: Option<String>,
 }

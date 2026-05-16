@@ -52,6 +52,20 @@ pub(super) async fn ffprobe_duration_ms(
     .map_err(|e| format!("ffprobe task panicked: {e}"))?
 }
 
+pub(super) async fn probe_audio_codec_name(
+    ffprobe: PathBuf,
+    path: String,
+) -> Result<Option<String>, String> {
+    ffprobe_codec_name(ffprobe, path, "a:0").await
+}
+
+pub(super) async fn probe_video_codec_name(
+    ffprobe: PathBuf,
+    path: String,
+) -> Result<Option<String>, String> {
+    ffprobe_codec_name(ffprobe, path, "v:0").await
+}
+
 async fn ffprobe_codec_name(
     ffprobe: PathBuf,
     path: String,
