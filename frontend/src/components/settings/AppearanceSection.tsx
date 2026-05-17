@@ -355,7 +355,7 @@ export default function AppearanceSection({
           control={
             <div className="settings-control">
               <button
-                className="buttons"
+                className="buttons emergency"
                 onClick={onThemeReset}
                 style={{ width: "auto", padding: "0 16px", marginBottom: 0, color: "red"}}
               >

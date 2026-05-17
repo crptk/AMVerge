@@ -10,6 +10,8 @@ type EpisodePanelHeaderProps = {
   onSortEpisodePanel: (direction: "asc" | "desc") => void;
   openNewFolderModal: (parentFolderId: string | null) => void;
   selectedEpisodeId: string | null;
+  selectedFolderId: string | null;
+  multiSelectedCount: number;
   onDeleteSelectedEpisode: () => void;
 };
 
@@ -19,14 +21,21 @@ export default function EpisodePanelHeader({
   onSortEpisodePanel,
   openNewFolderModal,
   selectedEpisodeId,
+  selectedFolderId,
+  multiSelectedCount,
   onDeleteSelectedEpisode,
 }: EpisodePanelHeaderProps) {
   const sortLabel = nextSortDirection === "asc" ? "Sort A-Z" : "Sort Z-A";
   const SortIcon = nextSortDirection === "asc" ? FaSortAlphaDown : FaSortAlphaUp;
-  const deleteDisabled = !selectedEpisodeId;
+  const deleteDisabled =
+    multiSelectedCount === 0 && !selectedEpisodeId && !selectedFolderId;
   const deleteLabel = deleteDisabled
-    ? "Delete selected episode (select an episode first)"
-    : "Delete selected episode";
+    ? "Delete selected item (select an episode or folder first)"
+    : multiSelectedCount > 1
+      ? `Delete ${multiSelectedCount} selected episodes`
+      : selectedEpisodeId
+        ? "Delete selected episode"
+        : "Delete selected folder";
 
   return (
     <div className="episode-panel-header">

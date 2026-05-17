@@ -15,7 +15,8 @@ export default function ImportButtons() {
   return (
       <main className="clips-import">
         <div className="import-buttons-container">
-          <button onClick={onImportClick}      
+          <button onClick={onImportClick} 
+                  className="import-button"    
                   disabled={loading}
                   id="file-button"
           >

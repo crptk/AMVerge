@@ -192,7 +192,7 @@ export default function GeneralSettings({
           control={
             <div className="settings-control">
               <button
-                className="buttons"
+                className="buttons emergency"
                 onClick={() => {
                   setShowFactoryResetConfirm(true);
                 }}
@@ -211,7 +211,7 @@ export default function GeneralSettings({
           control={
             <div className="settings-control">
               <button
-                className="buttons"
+                className="buttons emergency"
                 type="button"
                 onClick={() => setShowClearPanelConfirm(true)}
                 style={{ width: "auto", padding: "0 16px", marginBottom: 0, color: "red" }}

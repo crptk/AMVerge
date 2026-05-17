@@ -192,10 +192,39 @@ export default function ClipsContainer({ cols }: { cols?: number }) {
   }, [loading]);
 
   useEffect(() => {
-    // New import — discard any pending scroll restore and go to the top.
+    // New import - discard any pending scroll restore and go to the top.
     savedScrollRef.current = null;
     containerRef.current?.scrollTo({ top: 0 });
   }, [importToken]);
+
+  // Ctrl + wheel to adjust the grid column count
+  const setStoreCols = useUIStateStore((state) => state.setCols);
+  const colsOverridden = cols !== undefined;
+  const wheelAccumRef = useRef(0);
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el || colsOverridden) return;
+
+    const onWheel = (e: WheelEvent) => {
+      if (!e.ctrlKey && !e.metaKey) return;
+      e.preventDefault();
+
+      wheelAccumRef.current += e.deltaY;
+      const threshold = 40;
+      if (Math.abs(wheelAccumRef.current) < threshold) return;
+
+      const direction = wheelAccumRef.current > 0 ? 1 : -1;
+      wheelAccumRef.current = 0;
+
+      setStoreCols((prev) => {
+        const next = prev + direction;
+        return Math.max(1, Math.min(12, next));
+      });
+    };
+
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, [colsOverridden, setStoreCols]);
 
   return (
     <main className="clips-container" ref={containerRef}>

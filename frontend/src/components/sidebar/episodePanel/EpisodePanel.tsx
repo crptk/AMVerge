@@ -110,6 +110,7 @@ export default function EpisodePanel() {
       return;
     }
 
+    handleSelectEpisode(episodeId);
     setMultiSelectedIds(new Set());
     lastClickedEpisodeRef.current = episodeId;
   };
@@ -240,8 +241,23 @@ export default function EpisodePanel() {
           onSortEpisodePanel={handleSortEpisodePanel}
           openNewFolderModal={openNewFolderModal}
           selectedEpisodeId={selectedEpisodeId}
+          selectedFolderId={selectedFolderId}
+          multiSelectedCount={multiSelectedIds.size}
           onDeleteSelectedEpisode={() => {
-            if (selectedEpisodeId) void handleDeleteEpisode(selectedEpisodeId);
+            if (multiSelectedIds.size > 0) {
+              for (const id of multiSelectedIds) {
+                void handleDeleteEpisode(id);
+              }
+              setMultiSelectedIds(new Set());
+              return;
+            }
+            if (selectedEpisodeId) {
+              void handleDeleteEpisode(selectedEpisodeId);
+              return;
+            }
+            if (selectedFolderId) {
+              handleDeleteFolder(selectedFolderId);
+            }
           }}
         />
 
@@ -312,6 +328,15 @@ export default function EpisodePanel() {
           onDeleteFolder={handleDeleteFolder}
           onMoveEpisodeToFolder={handleMoveEpisodeToFolder}
         />
+        <div className="episode-panel-notice">
+          <div className="episode-panel-notice-text">
+            <h4>WARNING</h4>
+            <p>AMVerge V2 will revamp how episodes are stored, and all data 
+              will be wiped. Please treat this episode panel as a temporary storage
+              until then.
+            </p>
+          </div>
+        </div>
       </div>
     </div>
   );

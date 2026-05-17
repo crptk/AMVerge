@@ -1,25 +1,19 @@
 import { useState } from "react";
-import { FaChevronDown, FaChevronUp, FaQuestionCircle, FaWindows, FaApple, FaLinux } from "react-icons/fa";
+import { FaChevronDown, FaChevronUp, FaQuestionCircle, FaWindows, FaApple } from "react-icons/fa";
 
-type Platform = "windows" | "mac" | "linux";
+type Platform = "windows" | "mac";
 
 const STEPS: Record<Platform, React.ReactNode[]> = {
   windows: [
     <>Select clips with <b>Ctrl + Click</b> or <b>Shift + Click</b></>,
     <>Double click to <b>Focus</b> a clip</>,
-    <>Toggle <b>Merge clips</b> to export as one file</>,
+    <>Select <b>Export Profile</b> for export settings</>,
     <>Click <b>Export Now</b> to start the process</>,
   ],
   mac: [
     <>Select clips with <b>Cmd + Click</b> or <b>Shift + Click</b></>,
     <>Double click to <b>Focus</b> a clip</>,
-    <>Toggle <b>Merge clips</b> to export as one file</>,
-    <>Click <b>Export Now</b> to start the process</>,
-  ],
-  linux: [
-    <>Select clips with <b>Ctrl + Click</b> or <b>Shift + Click</b></>,
-    <>Double click to <b>Focus</b> a clip</>,
-    <>Toggle <b>Merge clips</b> to export as one file</>,
+    <>Select <b>Export Profile</b> for export settings</>,
     <>Click <b>Export Now</b> to start the process</>,
   ],
 };
@@ -54,12 +48,6 @@ export default function HowToUse() {
               onClick={(e) => { e.stopPropagation(); setPlatform("mac"); }}
             >
               <FaApple /> macOS
-            </button>
-            <button
-              className={`platform-btn ${platform === "linux" ? "active" : ""}`}
-              onClick={(e) => { e.stopPropagation(); setPlatform("linux"); }}
-            >
-              <FaLinux /> Linux
             </button>
           </div>
 

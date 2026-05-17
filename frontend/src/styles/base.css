@@ -71,10 +71,41 @@ body::before {
     font-size: 20px;
     border: 1px solid white;
     margin-bottom: 5px;
-    background: black;
+    background: rgba(15, 0, 0, 0.1);
+    -webkit-backdrop-filter: blur(4px);
+    backdrop-filter: blur(4px);
     color: white;
     border-radius: 8px;
     cursor: pointer;
+}
+
+.buttons:hover {
+    border-color: var(--accent);
+    background: rgb(var(--accent-rgb) / 0.16);
+    color: var(--accent);
+}
+
+:focus-visible {
+    outline: none;
+}
+
+.buttons.emergency {
+    height: 30px;
+    width: 100px;
+    font-family: 'Jersey 10', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+    font-size: 20px;
+    border: 1px solid white;
+    margin-bottom: 5px;
+    background: black;
+    -webkit-backdrop-filter: blur(4px);
+    backdrop-filter: blur(4px);
+    color: white;
+    border-radius: 8px;
+    cursor: pointer;
+}
+
+.buttons.emergency:hover {
+    border-color: red;
 }
 
 :focus-visible {

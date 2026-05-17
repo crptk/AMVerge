@@ -82,6 +82,7 @@
 .settings-control input[type="range"]:focus::-webkit-slider-runnable-track {
     background: rgba(255, 255, 255, 0.15);
 }
+
 .settings-path-value {
     display: flex;
     align-items: center;
@@ -251,7 +252,7 @@
     display: flex;
     gap: 10px;
     align-items: center;
-    margin-left: 24px;
+    margin-left: 0px;
     margin-top: -2px;
     margin-bottom: 16px;
 }
@@ -451,9 +452,11 @@
     align-items: center;
     justify-content: center;
     gap: 6px;
-    font-size: 20px;
+    font-size: 15px;
     border-color: white;
-    background: black;
+    background: rgba(15, 0, 0, 0.1);
+    -webkit-backdrop-filter: blur(4px);
+    backdrop-filter: blur(4px);
     color: white;
 }
 
@@ -461,11 +464,6 @@
     border-color: var(--accent);
     background: rgb(var(--accent-rgb) / 0.16);
     color: var(--accent);
-}
-
-.export-profile-action.danger {
-    border-color: white;
-    background: black;
 }
 
 .export-profile-action:disabled {
