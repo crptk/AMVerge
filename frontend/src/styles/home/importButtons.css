@@ -25,18 +25,18 @@
     align-items: center;
 }
 
-.import-buttons-container > button {
-    min-height: 2.2rem;
-    max-height: 2.5rem;
-    min-width: 5rem;
-    margin-right: 5px;
-    margin-bottom: 5px;
-    font-family: 'Jersey 10', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
-    font-size: 18px;
-    background: black;
+.import-button {
+    width: 8rem;
+    height: 2rem;
+    font-size: 20px;
+    font-family: 'Jersey 10', system-ui, sans-serif;
+    background: rgba(15, 0, 0, 0.1);
+    -webkit-backdrop-filter: blur(4px);
+    backdrop-filter: blur(4px);
+    border: 1px solid rgb(var(--accent-rgb) / 0.9);
     color: white;
-    border: 1px solid #555555;
-    border-radius: 8px;
+    border-radius: 10px;
+    transition: background 0.2s ease, border 0.1s ease, color 0.1s ease;
 }
 
 #file-button {

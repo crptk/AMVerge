@@ -37,7 +37,9 @@
     padding: 8px 24px;
     border-radius: 8px;
     border: 1px solid rgb(var(--accent-rgb) / 0.9);
-    background: #000;
+    background: rgba(15, 0, 0, 0.1);
+    -webkit-backdrop-filter: blur(4px);
+    backdrop-filter: blur(4px);
     color: #fff;
     font-size: 1.1rem;
     font-family: inherit;

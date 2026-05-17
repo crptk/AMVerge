@@ -40,6 +40,8 @@ body.is-resizing-sidebar {
     font-size: 25px;
     font-family: 'Jersey 10', system-ui, sans-serif;
     background: rgba(15, 0, 0, 0.1);
+    -webkit-backdrop-filter: blur(4px);
+    backdrop-filter: blur(4px);
     border: 1px solid rgb(var(--accent-rgb) / 0.9);
     color: white;
     border-radius: 10px;
@@ -170,6 +172,8 @@ body.is-resizing-sidebar {
     border-radius: 10px;
     border: 1px solid rgba(255, 255, 255, 0.12);
     background: rgba(0, 0, 0, 0.22);
+    -webkit-backdrop-filter: blur(4px);
+    backdrop-filter: blur(4px);
     box-sizing: border-box;
 }
 
@@ -183,7 +187,6 @@ body.is-resizing-sidebar {
 }
 
 /* rows */
-
 .episode-panel-row {
     display: flex;
     align-items: center;
@@ -194,19 +197,29 @@ body.is-resizing-sidebar {
     color: white;
     min-width: 0;
     user-select: none;
+    margin-top: 1px;
+    margin-bottom: 1px;
+    border: 1px solid transparent;
+    box-sizing: border-box;
 }
 
 .episode-panel-row:hover {
     background: rgba(255, 255, 255, 0.06);
 }
 
-.episode-panel-row.is-selected,
+.episode-panel-row.is-selected {
+    border-color: rgb(var(--accent-rgb));
+}
+
 .episode-panel-row.is-open {
     color: var(--accent);
     border-left: 2px solid rgb(var(--accent-rgb));
 }
 
-.episode-panel-row.is-focused,
+.episode-panel-row.is-focused {
+    border-color: rgb(var(--accent-rgb) / 0.5);
+}
+
 .episode-panel-row.is-multi-selected,
 .episode-panel-row.folder-row.is-selected {
     background: rgb(var(--accent-rgb) / 0.1);
@@ -403,4 +416,36 @@ body.is-resizing-sidebar {
 .episode-modal-btn.danger:hover {
     background: rgba(220, 53, 69, 0.32);
     border-color: rgba(220, 53, 69, 0.85);
+}
+
+.episode-panel-notice {
+    background: rgba(0, 0, 0, 0.22);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 10px;
+    margin-top: 1px;
+    padding: 10px
+}
+
+.episode-panel-notice-text {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    -webkit-backdrop-filter: blur(4px);
+    backdrop-filter: blur(4px);
+    /* background: navy; */
+    
+}
+
+.episode-panel-notice-text h4 {
+    margin: 0;
+    color: red;
+    font-weight: 1;
+}
+
+.episode-panel-notice-text p {
+    text-align: center;
+    font-size: 15px;
+    margin: 1px;
+    letter-spacing: 0.5px;
 }

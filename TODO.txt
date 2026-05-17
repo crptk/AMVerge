@@ -1,4 +1,3 @@
-- Put the delete episodes button into general settings, change the trash can to just delete selected
 - Add note below episode panel to let user know of storage changes in V2, they should treat ep panel as a temporary storage
 - Once all is good, plan out release
 - Make video about the ap
