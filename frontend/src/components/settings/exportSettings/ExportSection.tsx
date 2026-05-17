@@ -215,7 +215,7 @@ export default function ExportSection() {
   };
 
   return (
-    <section className="panel menu-panel settings-panel">
+    <section className="panel menu-panel settings-panel export-settings-panel">
       <h3>Export</h3>
 
       <div className="about-content">

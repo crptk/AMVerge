@@ -1,4 +1,4 @@
-// Episode Panel toolbar. Renders Sort, New Folder, and Clear Cache actions.
+// Episode Panel toolbar. Renders Sort, New Folder, and Delete-selected-episode actions.
 import { FaFolderPlus, FaSortAlphaDown, FaSortAlphaUp, FaTrashAlt } from "react-icons/fa";
 
 type EpisodePanelHeaderProps = {
@@ -9,7 +9,8 @@ type EpisodePanelHeaderProps = {
 
   onSortEpisodePanel: (direction: "asc" | "desc") => void;
   openNewFolderModal: (parentFolderId: string | null) => void;
-  openClearConfirmModal: () => void;
+  selectedEpisodeId: string | null;
+  onDeleteSelectedEpisode: () => void;
 };
 
 export default function EpisodePanelHeader({
@@ -17,10 +18,15 @@ export default function EpisodePanelHeader({
   setNextSortDirection,
   onSortEpisodePanel,
   openNewFolderModal,
-  openClearConfirmModal,
+  selectedEpisodeId,
+  onDeleteSelectedEpisode,
 }: EpisodePanelHeaderProps) {
   const sortLabel = nextSortDirection === "asc" ? "Sort A-Z" : "Sort Z-A";
   const SortIcon = nextSortDirection === "asc" ? FaSortAlphaDown : FaSortAlphaUp;
+  const deleteDisabled = !selectedEpisodeId;
+  const deleteLabel = deleteDisabled
+    ? "Delete selected episode (select an episode first)"
+    : "Delete selected episode";
 
   return (
     <div className="episode-panel-header">
@@ -56,9 +62,10 @@ export default function EpisodePanelHeader({
         <button
           type="button"
           className="episode-panel-action icon-only"
-          onClick={openClearConfirmModal}
-          title="Clear episode panel cache"
-          aria-label="Clear episode panel cache"
+          onClick={onDeleteSelectedEpisode}
+          disabled={deleteDisabled}
+          title={deleteLabel}
+          aria-label={deleteLabel}
         >
           <FaTrashAlt aria-hidden="true" />
         </button>

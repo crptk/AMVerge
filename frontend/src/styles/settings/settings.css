@@ -370,7 +370,7 @@
 
 .export-profile-dropdown .dropdown-item-label {
     grid-area: label;
-    font-size: 0.85rem;
+    font-size: 0.5rem;
     text-transform: none;
     letter-spacing: 0.5px;
 }
@@ -396,7 +396,7 @@
     justify-self: center;
     padding: 0;
     border-radius: 9px;
-    font-size: 0.82rem;
+    font-size: 0.5rem;
     color: rgb(212 187 255 / 0.95);
     border: 1px solid rgb(206 176 255 / 0.35);
     background: rgb(184 146 255 / 0.12);
@@ -436,6 +436,7 @@
 
 .export-settings-panel .settings-wide-dropdown .dropdown-value:not(.rich),
 .export-settings-panel .settings-wide-dropdown .dropdown-item-label {
+    font-size: 1rem;
     text-transform: none;
     letter-spacing: 0.35px;
 }

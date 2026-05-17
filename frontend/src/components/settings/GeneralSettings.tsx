@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { useGeneralSettingsStore } from "../../stores/settingsStore";
 import { useEffect, useState} from "react";
 import SettingRow from "../common/SettingRow";
+import { clearEpisodePanelCache } from "../../utils/episodeUtils";
 
 type GeneralSettingsProps = {
   onGeneralSettingsReset: () => void;
@@ -17,8 +18,12 @@ export default function GeneralSettings({
   const setGeneralSettings = useGeneralSettingsStore.setState;
   const [loading, setLoading] = useState(false);
   const [showFactoryResetConfirm, setShowFactoryResetConfirm] = useState(false);
+  const [showClearPanelConfirm, setShowClearPanelConfirm] = useState(false);
+  const [clearingPanel, setClearingPanel] = useState(false);
   const factoryResetConfirmation =
     "This will restore AMVerge to its default settings and move your episode storage folder back to AppData. Any custom settings or storage location changes you made will be reset.";
+  const clearPanelConfirmation =
+    "This will remove ALL episodes from the Episode Panel and delete their cached files on disk. This cannot be undone.";
   useEffect(() => {
     if (!showFactoryResetConfirm) return;
 
@@ -31,6 +36,31 @@ export default function GeneralSettings({
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [showFactoryResetConfirm]);
+
+  useEffect(() => {
+    if (!showClearPanelConfirm) return;
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setShowClearPanelConfirm(false);
+      }
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [showClearPanelConfirm]);
+
+  const handleClearEpisodePanel = async () => {
+    setClearingPanel(true);
+    try {
+      await clearEpisodePanelCache();
+    } catch (err) {
+      window.alert("Failed to clear episode panel: " + String(err));
+    } finally {
+      setClearingPanel(false);
+      setShowClearPanelConfirm(false);
+    }
+  };
 
   const handlePickDir = async () => {
     const selected = await open({
@@ -175,6 +205,24 @@ export default function GeneralSettings({
           }
         />
 
+        <SettingRow
+          label="Clear Episode Panel"
+          description="Remove all episodes from the panel and delete their cached files on disk."
+          control={
+            <div className="settings-control">
+              <button
+                className="buttons"
+                type="button"
+                onClick={() => setShowClearPanelConfirm(true)}
+                style={{ width: "auto", padding: "0 16px", marginBottom: 0, color: "red" }}
+                disabled={loading || clearingPanel}
+              >
+                {clearingPanel ? "Clearing..." : "Clear Episode Panel"}
+              </button>
+            </div>
+          }
+        />
+
         {showFactoryResetConfirm && (
           <div
             className="episode-modal-overlay"
@@ -200,6 +248,40 @@ export default function GeneralSettings({
                   }}
                 >
                   Reset
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {showClearPanelConfirm && (
+          <div
+            className="episode-modal-overlay"
+            onMouseDown={() => {
+              if (!clearingPanel) setShowClearPanelConfirm(false);
+            }}
+          >
+            <div className="episode-modal" onMouseDown={(e) => e.stopPropagation()}>
+              <div className="episode-modal-title">Clear Episode Panel</div>
+              <div className="episode-modal-message">{clearPanelConfirmation}</div>
+              <div className="episode-modal-actions">
+                <button
+                  type="button"
+                  className="episode-modal-btn"
+                  onClick={() => setShowClearPanelConfirm(false)}
+                  disabled={clearingPanel}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="episode-modal-btn primary"
+                  onClick={() => {
+                    void handleClearEpisodePanel();
+                  }}
+                  disabled={clearingPanel}
+                >
+                  {clearingPanel ? "Clearing..." : "Clear Episode Panel"}
                 </button>
               </div>
             </div>

@@ -1,5 +1,42 @@
 import { invoke } from "@tauri-apps/api/core";
 
+import { useAppStateStore } from "../stores/appStore";
+import {
+  useEpisodePanelMetadataStore,
+  useEpisodePanelRuntimeStore,
+} from "../stores/episodeStore";
+import { useGeneralSettingsStore } from "../stores/settingsStore";
+
+/**
+ * Wipes the episode panel UI state and asks the backend to delete all cached
+ * episode artifacts on disk. Used by the Episode Panel "clear cache" flow and
+ * the General Settings "Clear Episode Panel" button.
+ */
+export async function clearEpisodePanelCache(): Promise<void> {
+  const episodeRuntime = useEpisodePanelRuntimeStore.getState();
+  const episodeMetadata = useEpisodePanelMetadataStore.getState();
+  const appState = useAppStateStore.getState();
+
+  episodeRuntime.setEpisodes([]);
+  episodeMetadata.setEpisodeFolders([]);
+  episodeRuntime.setSelectedFolderId(null);
+  episodeRuntime.setSelectedEpisodeId(null);
+  episodeRuntime.setOpenedEpisodeId(null);
+  appState.setSelectedClips(new Set());
+  appState.setFocusedClip(null);
+  appState.setClips([]);
+  appState.setImportedVideoPath(null);
+  appState.setVideoIsHEVC(null);
+
+  try {
+    const customPath = useGeneralSettingsStore.getState().episodesPath;
+    await invoke("clear_episode_panel_cache", { customPath });
+  } catch (err) {
+    console.error("clear_episode_panel_cache failed:", err);
+    throw err;
+  }
+}
+
 export const truncateFileName = (name: string): string => {
     if (name.length <= 23) return name;
     return name.slice(0, 10) + "..." + name.slice(-10);

@@ -51,8 +51,6 @@ fn build_copy_args(
         "-c".into(),
         "copy".into(),
     ]);
-    // See compat::stream_copy_bsf_for. Required for MP4 → MKV/AVI/TS stream
-    // copy so Windows Media Foundation decodes the output cleanly.
     if let Some(name) = bsf {
         args.extend(["-bsf:v".into(), name.to_string()]);
     }

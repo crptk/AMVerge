@@ -22,7 +22,6 @@ type UseEpisodePanelMenusArgs = {
   onCreateFolder: (name: string, parentFolderId: string | null) => void;
   onRenameEpisode: (episodeId: string, newName: string) => void;
   onRenameFolder: (folderId: string, newName: string) => void;
-  onClearEpisodePanelCache: () => void | Promise<void>;
 };
 
 export default function useEpisodePanelMenus({
@@ -36,7 +35,6 @@ export default function useEpisodePanelMenus({
   onCreateFolder,
   onRenameEpisode,
   onRenameFolder,
-  onClearEpisodePanelCache,
 }: UseEpisodePanelMenusArgs) {
   const [contextMenu, setContextMenu] = useState<EpisodeContextMenuState | null>(null);
   const [folderContextMenu, setFolderContextMenu] = useState<FolderContextMenuState | null>(null);
@@ -196,20 +194,6 @@ export default function useEpisodePanelMenus({
     });
   };
 
-  const openClearConfirmModal = () => {
-    setConfirmModal({
-      title: "Clear Episode Panel Cache",
-      message:
-        "Are you sure you want to clear the episode panel cache? This will remove ALL episodes and free up disk space.",
-      note: "If you'd like to delete a single episode or folder, you can do so by right clicking them in the panel.",
-      confirmLabel: "Delete all episodes",
-      confirmTone: "danger",
-      onConfirm: () => {
-        void onClearEpisodePanelCache();
-      },
-    });
-  };
-
   return {
     contextMenu,
     setContextMenu,
@@ -229,6 +213,5 @@ export default function useEpisodePanelMenus({
     openNewFolderModal,
     openRenameEpisodeModal,
     openRenameFolderModal,
-    openClearConfirmModal,
   };
 }

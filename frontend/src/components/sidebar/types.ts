@@ -40,7 +40,6 @@ export type SidebarProps = {
   onMoveEpisode: (episodeId: string, folderId: string | null, beforeEpisodeId?: string) => void;
   onMoveFolder: (folderId: string, parentFolderId: string | null, beforeFolderId?: string) => void;
   onSortEpisodePanel: (direction: "asc" | "desc") => void;
-  onClearEpisodePanelCache: () => void | Promise<void>;
   sideBarEnabled: boolean;
 
   // Clips grid props used by sidebar-managed views
