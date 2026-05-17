@@ -5,7 +5,7 @@ export default function Credits() {
         { name: 'Crptk', role: 'App Owner, Developer' },
         { name: 'Netsuma', role: 'Export settings, UI Upgrades' },
         { name: 'Moongetsu', role: 'Tons of new settings, Discord RPC, Menu revamp'},
-        { name: 'Lewis', role: 'Background processes, Heavy optimizations' },
+        { name: 'Lewis', role: 'Mac Developer, Background import processing, Heavy optimization' },
         { name: '0xkhaosoccured', role: 'Grid UI Fixes' },
     ];
 
