@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -71,6 +72,10 @@ def ensure_log_dir() -> str:
 
 DEBUG_LOG_DIR = ensure_log_dir()
 DEBUG_LOG = os.path.join(DEBUG_LOG_DIR, "backend_debug.txt")
+_FFMPEG_SILENCED_LOGS = [
+    re.compile(r"track\s+\d+:\s+codec frame size is not set", re.IGNORECASE),
+    re.compile(r"^\[segment\s+@\s+[^\]]+\]\s+Opening\s+'.+'\s+for writing$", re.IGNORECASE),
+]
 
 
 def log(message: str) -> None:
@@ -81,11 +86,21 @@ def log(message: str) -> None:
     except Exception:
         pass
 
-    try:
-        with open(DEBUG_LOG, "a", encoding="utf-8") as file:
-            file.write(text + "\n")
-    except Exception:
-        pass
+
+def _sanitize_ffmpeg_log_output(output: str | None) -> str:
+    if not output:
+        return ""
+
+    filtered_lines: list[str] = []
+    for raw_line in output.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        if any(pattern.search(line) for pattern in _FFMPEG_SILENCED_LOGS):
+            continue
+        filtered_lines.append(raw_line)
+
+    return "\n".join(filtered_lines)
 
 
 def format_timestamp(seconds: float) -> str:
@@ -272,8 +287,13 @@ def _run_ffmpeg_segment_chunk(
         creationflags=CREATE_NO_WINDOW,
     )
 
-    log(result.stdout)
-    log(result.stderr)
+    cleaned_stdout = _sanitize_ffmpeg_log_output(result.stdout)
+    cleaned_stderr = _sanitize_ffmpeg_log_output(result.stderr)
+
+    if cleaned_stdout:
+        log(cleaned_stdout)
+    if cleaned_stderr:
+        log(cleaned_stderr)
 
     if result.returncode != 0:
         tail = result.stderr[-2000:] if result.stderr else "No stderr output."

@@ -7,6 +7,9 @@ jobs:
   build-macos-arch:
     name: Build macOS App (${{ matrix.arch_label }})
     runs-on: ${{ matrix.runner }}
+    env:
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
     strategy:
       fail-fast: false
       matrix:
@@ -86,6 +89,13 @@ jobs:
 
       - name: Verify macOS sidecar exists
         run: ls -la frontend/src-tauri/bin/${{ matrix.sidecar_dir }}
+
+      - name: Verify Tauri updater signing secrets
+        run: |
+          if [ -z "$TAURI_SIGNING_PRIVATE_KEY" ]; then
+            echo "TAURI_SIGNING_PRIVATE_KEY is missing. Configure repository/org secret and re-run."
+            exit 1
+          fi
 
       - name: Build macOS app bundle
         working-directory: frontend/src-tauri
