@@ -275,8 +275,10 @@ jobs:
       APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
       APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
       APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      APPLE_NOTARY_TEAM_ID: ${{ secrets.APPLE_NOTARY_TEAM_ID }}
       APPLE_ASC_KEY_ID: ${{ secrets.APPLE_ASC_KEY_ID }}
       APPLE_ASC_ISSUER_ID: ${{ secrets.APPLE_ASC_ISSUER_ID }}
+      APPLE_ASC_API_KEY: ${{ secrets.APPLE_ASC_API_KEY }}
       APPLE_ASC_API_KEY_BASE64: ${{ secrets.APPLE_ASC_API_KEY_BASE64 }}
 
     steps:
@@ -362,6 +364,73 @@ jobs:
             --signIdentity "$EFFECTIVE_SIGNING_IDENTITY" \
             --config frontend/src-tauri/tauri.macos.universal.conf.json
 
+      - name: Diagnose and repair Python.framework structure
+        run: |
+          set -e
+          SIDECAR_ROOT="$UNIVERSAL_APP_PATH/Contents/Resources/bin"
+          if [ ! -d "$SIDECAR_ROOT" ]; then
+            echo "Sidecar bin directory not found at $SIDECAR_ROOT"
+            exit 1
+          fi
+
+          # Repair flattened PyInstaller framework layout before signing.
+          find "$SIDECAR_ROOT" -type d -name 'Python.framework' -print0 | while IFS= read -r -d '' framework; do
+            VERSION_DIR="$(find "$framework/Versions" -mindepth 1 -maxdepth 1 -type d ! -name 'Current' -print -quit | xargs -I{} basename {} 2>/dev/null || true)"
+            if [ -z "$VERSION_DIR" ]; then
+              echo "No concrete version directory found inside $framework/Versions"
+              exit 1
+            fi
+
+            REAL_BIN="$framework/Versions/$VERSION_DIR/Python"
+            if [ ! -f "$REAL_BIN" ]; then
+              echo "Expected real Python binary not found at $REAL_BIN"
+              exit 1
+            fi
+
+            if [ ! -L "$framework/Versions/Current" ]; then
+              rm -rf "$framework/Versions/Current"
+              ln -s "$VERSION_DIR" "$framework/Versions/Current"
+            fi
+
+            if [ ! -L "$framework/Python" ]; then
+              rm -rf "$framework/Python"
+              ln -s "Versions/Current/Python" "$framework/Python"
+            fi
+
+            if [ -d "$framework/Versions/$VERSION_DIR/Resources" ] && [ ! -L "$framework/Resources" ]; then
+              rm -rf "$framework/Resources"
+              ln -s "Versions/Current/Resources" "$framework/Resources"
+            fi
+          done
+
+      - name: Re-sign embedded Python sidecar binaries
+        run: |
+          SIDECAR_ROOT="$UNIVERSAL_APP_PATH/Contents/Resources/bin"
+
+          find "$SIDECAR_ROOT" -type f -print0 | while IFS= read -r -d '' f; do
+            case "$f" in
+              */Python.framework/*) continue ;;
+            esac
+            if file -b "$f" | grep -q 'Mach-O'; then
+              codesign --force --sign "$EFFECTIVE_SIGNING_IDENTITY" --timestamp --options runtime "$f"
+            fi
+          done
+
+          find "$SIDECAR_ROOT" -type d -name 'Python.framework' -print0 | while IFS= read -r -d '' framework; do
+            find "$framework" -type f \( -name '*.so' -o -name '*.dylib' \) -print0 | while IFS= read -r -d '' inner; do
+              if file -b "$inner" | grep -q 'Mach-O'; then
+                codesign --force --sign "$EFFECTIVE_SIGNING_IDENTITY" --timestamp --options runtime "$inner"
+              fi
+            done
+
+            VERSION_DIR="$(readlink "$framework/Versions/Current")"
+            if [ -n "$VERSION_DIR" ] && [ -d "$framework/Versions/$VERSION_DIR" ]; then
+              codesign --force --sign "$EFFECTIVE_SIGNING_IDENTITY" --timestamp --options runtime "$framework/Versions/$VERSION_DIR"
+            fi
+            codesign --force --sign "$EFFECTIVE_SIGNING_IDENTITY" --timestamp --options runtime "$framework"
+            codesign --verify --strict --verbose=2 "$framework"
+          done
+
       - name: Re-sign universal app bundle (final)
         run: |
           codesign --force --sign "$EFFECTIVE_SIGNING_IDENTITY" --timestamp --options runtime "$UNIVERSAL_APP_PATH"
@@ -377,7 +446,21 @@ jobs:
           done
 
           rm -f "$DMG_PATH"
-          hdiutil create -volname "$APP_VOLNAME" -srcfolder "$UNIVERSAL_APP_PATH" -ov -format UDZO "$DMG_PATH"
+          for attempt in 1 2 3; do
+            if hdiutil create -volname "$APP_VOLNAME" -srcfolder "$UNIVERSAL_APP_PATH" -ov -format UDZO "$DMG_PATH"; then
+              break
+            fi
+
+            if [ "$attempt" -eq 3 ]; then
+              echo "hdiutil create failed after 3 attempts"
+              exit 1
+            fi
+
+            echo "hdiutil create failed (attempt $attempt), retrying..."
+            hdiutil info | awk '/\/Volumes\/'"$APP_VOLNAME"'$/ {print $1}' | while read -r dev; do
+              [ -n "$dev" ] && hdiutil detach "$dev" -force || true
+            done
+          done
 
       - name: Sign universal DMG
         run: |
@@ -387,24 +470,59 @@ jobs:
       - name: Notarize and staple universal DMG
         run: |
           DMG_PATH="frontend/src-tauri/target/universal-apple-darwin/release/bundle/dmg/AMVerge-macos-universal.dmg"
+          NOTARY_SUBMIT_JSON="$RUNNER_TEMP/notary-submit.json"
           NOTARY_PASSWORD="$(printf '%s' "${APPLE_APP_SPECIFIC_PASSWORD:-$APPLE_PASSWORD}" | tr -d '[:space:]')"
           APPLE_ID_CLEAN="$(printf '%s' "$APPLE_ID" | tr -d '[:space:]')"
           SIGNING_TEAM_ID="$(printf '%s' "$EFFECTIVE_SIGNING_IDENTITY" | sed -n 's/.*(\([A-Z0-9]\{10\}\)).*/\1/p')"
-          NOTARY_TEAM_ID="$(printf '%s' "${APPLE_TEAM_ID:-$SIGNING_TEAM_ID}" | tr -d '[:space:]')"
+          NOTARY_TEAM_ID="$(printf '%s' "${APPLE_NOTARY_TEAM_ID:-${APPLE_TEAM_ID:-$SIGNING_TEAM_ID}}" | tr -d '[:space:]')"
 
-          if [ -n "$APPLE_ASC_KEY_ID" ] && [ -n "$APPLE_ASC_ISSUER_ID" ] && [ -n "$APPLE_ASC_API_KEY_BASE64" ]; then
+          if [ -n "$APPLE_ASC_KEY_ID" ] && [ -n "$APPLE_ASC_ISSUER_ID" ] && { [ -n "$APPLE_ASC_API_KEY" ] || [ -n "$APPLE_ASC_API_KEY_BASE64" ]; }; then
             KEY_DIR="$RUNNER_TEMP/private_keys"
             KEY_PATH="$KEY_DIR/AuthKey_${APPLE_ASC_KEY_ID}.p8"
             mkdir -p "$KEY_DIR"
-            printf '%s' "$APPLE_ASC_API_KEY_BASE64" | base64 --decode > "$KEY_PATH" 2>/dev/null || printf '%s' "$APPLE_ASC_API_KEY_BASE64" | base64 -D > "$KEY_PATH"
+
+            if [ -n "$APPLE_ASC_API_KEY_BASE64" ]; then
+              printf '%s' "$APPLE_ASC_API_KEY_BASE64" | base64 --decode > "$KEY_PATH" 2>/dev/null || printf '%s' "$APPLE_ASC_API_KEY_BASE64" | base64 -D > "$KEY_PATH"
+            else
+              printf '%s' "$APPLE_ASC_API_KEY" > "$KEY_PATH"
+            fi
+
             chmod 600 "$KEY_PATH"
-            xcrun notarytool submit "$DMG_PATH" --key "$KEY_PATH" --key-id "$APPLE_ASC_KEY_ID" --issuer "$APPLE_ASC_ISSUER_ID" --wait
+            xcrun notarytool submit "$DMG_PATH" --key "$KEY_PATH" --key-id "$APPLE_ASC_KEY_ID" --issuer "$APPLE_ASC_ISSUER_ID" --output-format json --wait > "$NOTARY_SUBMIT_JSON"
           else
             if [ -z "$NOTARY_PASSWORD" ] || [ -z "$APPLE_ID_CLEAN" ] || [ -z "$NOTARY_TEAM_ID" ]; then
               echo "Missing Apple notarization credentials"
               exit 1
             fi
-            xcrun notarytool submit "$DMG_PATH" --apple-id "$APPLE_ID_CLEAN" --password "$NOTARY_PASSWORD" --team-id "$NOTARY_TEAM_ID" --wait
+            xcrun notarytool submit "$DMG_PATH" --apple-id "$APPLE_ID_CLEAN" --password "$NOTARY_PASSWORD" --team-id "$NOTARY_TEAM_ID" --output-format json --wait > "$NOTARY_SUBMIT_JSON"
+          fi
+
+          if [ ! -s "$NOTARY_SUBMIT_JSON" ]; then
+            echo "Notary submission did not produce JSON output."
+            exit 1
+          fi
+
+          cat "$NOTARY_SUBMIT_JSON"
+
+          NOTARY_ID="$(sed -n 's/.*"id"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$NOTARY_SUBMIT_JSON" | head -n 1)"
+          NOTARY_STATUS="$(sed -n 's/.*"status"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$NOTARY_SUBMIT_JSON" | head -n 1)"
+
+          if [ -z "$NOTARY_ID" ] || [ -z "$NOTARY_STATUS" ]; then
+            echo "Unable to parse notary id/status from JSON output."
+            exit 1
+          fi
+
+          if [ "$NOTARY_STATUS" != "Accepted" ]; then
+            echo "Notarization status is '$NOTARY_STATUS' (expected Accepted)."
+            echo "Fetching detailed notary log for submission id: $NOTARY_ID"
+
+            if [ -n "$APPLE_ASC_KEY_ID" ] && [ -n "$APPLE_ASC_ISSUER_ID" ] && { [ -n "$APPLE_ASC_API_KEY" ] || [ -n "$APPLE_ASC_API_KEY_BASE64" ]; }; then
+              xcrun notarytool log "$NOTARY_ID" --key "$KEY_PATH" --key-id "$APPLE_ASC_KEY_ID" --issuer "$APPLE_ASC_ISSUER_ID" || true
+            else
+              xcrun notarytool log "$NOTARY_ID" --apple-id "$APPLE_ID_CLEAN" --password "$NOTARY_PASSWORD" --team-id "$NOTARY_TEAM_ID" || true
+            fi
+
+            exit 1
           fi
 
           xcrun stapler staple "$DMG_PATH"
