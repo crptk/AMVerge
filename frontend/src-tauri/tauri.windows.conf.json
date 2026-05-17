@@ -9,6 +9,8 @@
     },
     "resources": [
       "bin/backend_script-x86_64-pc-windows-msvc/backend_script.exe",
+      "bin/backend_script-x86_64-pc-windows-msvc/ffmpeg.exe",
+      "bin/backend_script-x86_64-pc-windows-msvc/ffprobe.exe",
       "bin/backend_script-x86_64-pc-windows-msvc/_internal/**/*",
       "bin/backend_script-x86_64-pc-windows-msvc/_internal/ffmpeg.exe",
       "bin/backend_script-x86_64-pc-windows-msvc/_internal/ffprobe.exe"

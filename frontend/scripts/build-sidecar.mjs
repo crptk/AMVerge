@@ -74,9 +74,9 @@ async function main() {
     "--name",
     "backend_script",
     "--add-binary",
-    `${ffmpegBin}${sep}_internal`,
+    `${ffmpegBin}${sep}.`,
     "--add-binary",
-    `${ffprobeBin}${sep}_internal`,
+    `${ffprobeBin}${sep}.`,
   ];
 
   if (isWindows) {
@@ -92,8 +92,29 @@ async function main() {
   const exeName = isWindows ? "backend_script.exe" : "backend_script";
   const exePath = path.join(tauriSidecarDir, exeName);
   const baseLib = path.join(tauriSidecarDir, "_internal", "base_library.zip");
-  const ffmpegPath = path.join(tauriSidecarDir, "_internal", isWindows ? "ffmpeg.exe" : "ffmpeg");
-  const ffprobePath = path.join(tauriSidecarDir, "_internal", isWindows ? "ffprobe.exe" : "ffprobe");
+  const ffmpegName = isWindows ? "ffmpeg.exe" : "ffmpeg";
+  const ffprobeName = isWindows ? "ffprobe.exe" : "ffprobe";
+
+  const ffmpegCandidates = [
+    path.join(tauriSidecarDir, "_internal", ffmpegName),
+    path.join(tauriSidecarDir, ffmpegName),
+  ];
+  const ffprobeCandidates = [
+    path.join(tauriSidecarDir, "_internal", ffprobeName),
+    path.join(tauriSidecarDir, ffprobeName),
+  ];
+
+  async function resolveExisting(candidates) {
+    for (const candidate of candidates) {
+      try {
+        const stat = await fs.stat(candidate);
+        if (stat.isFile()) return candidate;
+      } catch {
+        // Continue searching.
+      }
+    }
+    return null;
+  }
 
   try {
     const exeStat = await fs.stat(exePath);
@@ -102,14 +123,14 @@ async function main() {
     const baseStat = await fs.stat(baseLib);
     if (!baseStat.isFile()) throw new Error("base_library.zip is not a file");
 
-    const ffmpegStat = await fs.stat(ffmpegPath);
-    if (!ffmpegStat.isFile()) throw new Error("ffmpeg sidecar binary is not a file");
+    const ffmpegPath = await resolveExisting(ffmpegCandidates);
+    if (!ffmpegPath) throw new Error("ffmpeg sidecar binary is missing");
 
-    const ffprobeStat = await fs.stat(ffprobePath);
-    if (!ffprobeStat.isFile()) throw new Error("ffprobe sidecar binary is not a file");
+    const ffprobePath = await resolveExisting(ffprobeCandidates);
+    if (!ffprobePath) throw new Error("ffprobe sidecar binary is missing");
   } catch {
     throw new Error(
-      `Sidecar sync finished, but required files are missing. Expected ${exePath}, ${baseLib}, ${ffmpegPath}, and ${ffprobePath}.`
+      `Sidecar sync finished, but required files are missing. Expected ${exePath}, ${baseLib}, and ffmpeg/ffprobe in either root or _internal of ${tauriSidecarDir}.`
     );
   }
 }

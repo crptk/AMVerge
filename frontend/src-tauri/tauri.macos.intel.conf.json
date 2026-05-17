@@ -7,6 +7,8 @@
     },
     "resources": [
       "bin/backend_script-x86_64-apple-darwin/backend_script",
+      "bin/backend_script-x86_64-apple-darwin/ffmpeg",
+      "bin/backend_script-x86_64-apple-darwin/ffprobe",
       "bin/backend_script-x86_64-apple-darwin/_internal/**/*",
       "bin/backend_script-x86_64-apple-darwin/_internal/ffmpeg",
       "bin/backend_script-x86_64-apple-darwin/_internal/ffprobe"

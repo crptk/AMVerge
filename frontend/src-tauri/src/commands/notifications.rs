@@ -42,7 +42,7 @@ fn read_config_var(runtime_key: &str, build_fallback: Option<&str>) -> Option<St
         })
 }
 
-fn resolve_notifications_endpoint(base: &str, app_version: &str) -> Result<String, String> {
+fn resolve_notifications_endpoint(base: &str, app_version: Option<&str>) -> Result<String, String> {
     let mut url = reqwest::Url::parse(base)
         .map_err(|e| format!("Invalid notifications URL `{base}`: {e}"))?;
 
@@ -54,7 +54,12 @@ fn resolve_notifications_endpoint(base: &str, app_version: &str) -> Result<Strin
         url.set_path(&next);
     }
 
-    url.query_pairs_mut().append_pair("version", app_version);
+    if let Some(version) = app_version {
+        let trimmed = version.trim();
+        if !trimmed.is_empty() {
+            url.query_pairs_mut().append_pair("version", trimmed);
+        }
+    }
     Ok(url.into())
 }
 
@@ -128,62 +133,99 @@ pub async fn fetch_startup_notification(app: AppHandle) -> Result<Option<Startup
 
     let app_version = app.package_info().version.to_string();
     let app_version_norm = normalize_version_for_match(&app_version);
-    let endpoint = resolve_notifications_endpoint(&base_url, &app_version)?;
+    let app_version_with_v = format!("v{app_version}");
 
-    console_log("NOTIFY|fetch", &format!("version={app_version} endpoint={endpoint}"));
+    let mut endpoint_candidates: Vec<String> = vec![
+        resolve_notifications_endpoint(&base_url, Some(&app_version))?,
+    ];
+    if normalize_version_for_match(&app_version_with_v) == app_version_norm {
+        endpoint_candidates.push(resolve_notifications_endpoint(&base_url, Some(&app_version_with_v))?);
+    }
+    endpoint_candidates.push(resolve_notifications_endpoint(&base_url, None)?);
 
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(15))
         .build()
         .map_err(|e| format!("Failed to initialize notifications HTTP client: {e}"))?;
 
-    let mut request = client.get(&endpoint).header("content-type", "application/json");
+    let api_key = read_config_var("AMVERGE_NOTIFICATIONS_API_KEY", BUILD_NOTIFICATIONS_API_KEY)
+        .or_else(|| read_config_var("AMVERGE_BUG_REPORT_API_KEY", BUILD_BUG_REPORT_API_KEY));
 
-    if let Some(api_key) = read_config_var("AMVERGE_NOTIFICATIONS_API_KEY", BUILD_NOTIFICATIONS_API_KEY)
-        .or_else(|| read_config_var("AMVERGE_BUG_REPORT_API_KEY", BUILD_BUG_REPORT_API_KEY))
-    {
-        request = request.header("x-amverge-api-key", api_key);
+    let mut rows: Vec<serde_json::Value> = Vec::new();
+    let mut last_error: Option<String> = None;
+
+    for endpoint in endpoint_candidates {
+        console_log("NOTIFY|fetch", &format!("version={app_version} endpoint={endpoint}"));
+
+        let mut request = client.get(&endpoint).header("content-type", "application/json");
+        if let Some(key) = &api_key {
+            request = request.header("x-amverge-api-key", key);
+        }
+
+        let response = match request.send().await {
+            Ok(r) => r,
+            Err(e) => {
+                last_error = Some(format!("Failed to fetch startup notifications: {e}"));
+                continue;
+            }
+        };
+
+        if !response.status().is_success() {
+            last_error = Some(format!(
+                "Notifications endpoint returned HTTP {}",
+                response.status().as_u16()
+            ));
+            continue;
+        }
+
+        let raw = match response.text().await {
+            Ok(text) => text,
+            Err(e) => {
+                last_error = Some(format!("Failed to read notifications response body: {e}"));
+                continue;
+            }
+        };
+
+        let parsed_json: serde_json::Value = match serde_json::from_str(&raw) {
+            Ok(v) => v,
+            Err(e) => {
+                let snippet: String = raw.chars().take(220).collect();
+                last_error = Some(format!(
+                    "Failed to parse notifications response: {e}. Body starts with: {snippet}"
+                ));
+                continue;
+            }
+        };
+
+        rows = if let Some(array) = parsed_json.get("notifications").and_then(|v| v.as_array()) {
+            array.clone()
+        } else if let Some(array) = parsed_json
+            .get("data")
+            .and_then(|v| v.get("notifications"))
+            .and_then(|v| v.as_array())
+        {
+            array.clone()
+        } else if let Some(object) = parsed_json.get("notification") {
+            vec![object.clone()]
+        } else if parsed_json.is_object() {
+            vec![parsed_json.clone()]
+        } else if let Some(array) = parsed_json.as_array() {
+            array.clone()
+        } else {
+            Vec::new()
+        };
+
+        if !rows.is_empty() {
+            break;
+        }
     }
 
-    let response = request
-        .send()
-        .await
-        .map_err(|e| format!("Failed to fetch startup notifications: {e}"))?;
-
-    if !response.status().is_success() {
-        return Err(format!(
-            "Notifications endpoint returned HTTP {}",
-            response.status().as_u16()
-        ));
+    if rows.is_empty() {
+        if let Some(err) = last_error {
+            return Err(err);
+        }
+        return Ok(None);
     }
-
-    let raw = response
-        .text()
-        .await
-        .map_err(|e| format!("Failed to read notifications response body: {e}"))?;
-
-    let parsed_json: serde_json::Value = serde_json::from_str(&raw).map_err(|e| {
-        let snippet: String = raw.chars().take(220).collect();
-        format!("Failed to parse notifications response: {e}. Body starts with: {snippet}")
-    })?;
-
-    let rows = if let Some(array) = parsed_json.get("notifications").and_then(|v| v.as_array()) {
-        array.clone()
-    } else if let Some(array) = parsed_json
-        .get("data")
-        .and_then(|v| v.get("notifications"))
-        .and_then(|v| v.as_array())
-    {
-        array.clone()
-    } else if let Some(object) = parsed_json.get("notification") {
-        vec![object.clone()]
-    } else if parsed_json.is_object() {
-        vec![parsed_json.clone()]
-    } else if let Some(array) = parsed_json.as_array() {
-        array.clone()
-    } else {
-        return Err("Notifications response JSON does not contain an array under `notifications`.".to_string());
-    };
 
     console_log("NOTIFY|rows", &format!("count={}", rows.len()));
 
