@@ -24,7 +24,6 @@ const INLINE_DEFAULT_ICONS: ExportProfileIcon[] = [
   "h264",
   "h265",
   "prores",
-  "dnxhr",
 ];
 
 const ICON_FILE_EXTENSIONS = [

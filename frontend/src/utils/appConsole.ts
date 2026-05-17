@@ -14,6 +14,41 @@ let logs: ConsoleEntry[] = [];
 const listeners = new Set<(logs: ConsoleEntry[]) => void>();
 let initialized = false;
 
+function stringifyConsoleArg(arg: unknown): string {
+  if (typeof arg === "string") return arg;
+
+  try {
+    return JSON.stringify(arg, null, 2);
+  } catch {
+    return String(arg);
+  }
+}
+
+function formatConsoleArgs(args: unknown[]): string {
+  if (args.length === 0) return "";
+
+  const [first, ...rest] = args;
+  if (typeof first !== "string") {
+    return args.map(stringifyConsoleArg).join(" ");
+  }
+
+  let restIndex = 0;
+  const formatted = first.replace(/%[%sdifoOc]/g, (token) => {
+    if (token === "%%") return "%";
+
+    const value = rest[restIndex++];
+    if (token === "%c") {
+      // CSS styling token used by browser console; ignore style value in log text.
+      return "";
+    }
+    if (value === undefined) return token;
+    return stringifyConsoleArg(value);
+  });
+
+  const trailing = rest.slice(restIndex).map(stringifyConsoleArg);
+  return trailing.length > 0 ? `${formatted} ${trailing.join(" ")}` : formatted;
+}
+
 function notify() {
   listeners.forEach((listener) => listener([...logs]));
 }
@@ -33,17 +68,7 @@ export function addConsoleLog(
   level: ConsoleEntry["level"],
   args: unknown[]
 ) {
-  const message = args
-    .map((arg) => {
-      if (typeof arg === "string") return arg;
-
-      try {
-        return JSON.stringify(arg, null, 2);
-      } catch {
-        return String(arg);
-      }
-    })
-    .join(" ");
+  const message = formatConsoleArgs(args);
 
   logs = [
     ...logs.slice(-(MAX_LOGS - 1)),

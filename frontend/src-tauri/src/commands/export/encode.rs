@@ -8,6 +8,16 @@ fn normalize_codec(raw_codec: &str) -> &str {
         "h264" => "h264_high",
         "h265" => "h265_main",
         "av1" => "av1_main",
+        "cineform"
+        | "dnxhr_lb"
+        | "dnxhr_sq"
+        | "dnxhr_hq"
+        | "dnxhr_hqx"
+        | "dnxhr_444"
+        | "uncompressed_rgb8"
+        | "uncompressed_rgb10"
+        | "uncompressed_rgba8"
+        | "uncompressed_rgba16" => "h264_high",
         other => other,
     }
 }
@@ -323,98 +333,6 @@ pub(super) fn append_video_encode_args(
                 "5".into(),
                 "-pix_fmt".into(),
                 "yuva444p10le".into(),
-            ]);
-        }
-        "dnxhr_lb" => {
-            args.extend([
-                "-c:v".into(),
-                "dnxhd".into(),
-                "-profile:v".into(),
-                "dnxhr_lb".into(),
-                "-pix_fmt".into(),
-                "yuv422p".into(),
-            ]);
-        }
-        "dnxhr_sq" => {
-            args.extend([
-                "-c:v".into(),
-                "dnxhd".into(),
-                "-profile:v".into(),
-                "dnxhr_sq".into(),
-                "-pix_fmt".into(),
-                "yuv422p".into(),
-            ]);
-        }
-        "dnxhr_hq" => {
-            args.extend([
-                "-c:v".into(),
-                "dnxhd".into(),
-                "-profile:v".into(),
-                "dnxhr_hq".into(),
-                "-pix_fmt".into(),
-                "yuv422p".into(),
-            ]);
-        }
-        "dnxhr_hqx" => {
-            args.extend([
-                "-c:v".into(),
-                "dnxhd".into(),
-                "-profile:v".into(),
-                "dnxhr_hqx".into(),
-                "-pix_fmt".into(),
-                "yuv422p10le".into(),
-            ]);
-        }
-        "dnxhr_444" => {
-            args.extend([
-                "-c:v".into(),
-                "dnxhd".into(),
-                "-profile:v".into(),
-                "dnxhr_444".into(),
-                "-pix_fmt".into(),
-                "gbrp10le".into(),
-            ]);
-        }
-        "uncompressed_rgb8" => {
-            args.extend([
-                "-c:v".into(),
-                "rawvideo".into(),
-                "-pix_fmt".into(),
-                "rgb24".into(),
-            ]);
-        }
-        "uncompressed_rgb10" => {
-            args.extend([
-                "-c:v".into(),
-                "rawvideo".into(),
-                "-pix_fmt".into(),
-                "gbrp10le".into(),
-            ]);
-        }
-        "uncompressed_rgba8" => {
-            args.extend([
-                "-c:v".into(),
-                "rawvideo".into(),
-                "-pix_fmt".into(),
-                "rgba".into(),
-            ]);
-        }
-        "uncompressed_rgba16" => {
-            args.extend([
-                "-c:v".into(),
-                "rawvideo".into(),
-                "-pix_fmt".into(),
-                "rgba64le".into(),
-            ]);
-        }
-        "cineform" => {
-            args.extend([
-                "-c:v".into(),
-                "cfhd".into(),
-                "-quality".into(),
-                "high".into(),
-                "-pix_fmt".into(),
-                "yuv422p10le".into(),
             ]);
         }
         _ => {

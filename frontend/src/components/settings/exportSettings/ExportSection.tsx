@@ -174,7 +174,7 @@ export default function ExportSection() {
     updateExportProfile,
   ]);
 
-  // Codecs that have no GPU encoder path (ProRes, DNxHR, etc.) must be CPU.
+  // Codecs that have no GPU encoder path (for example ProRes) must be CPU.
   useEffect(() => {
     if (!encoderLockedToCpu) return;
     if (activeProfile.hardwareMode === "cpu") return;

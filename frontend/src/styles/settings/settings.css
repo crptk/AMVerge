@@ -542,17 +542,21 @@
 }
 
 .profile-icon-modal-header h3 {
-    margin: 0 0 12px;
+    margin: 0 0 8px;
     font-size: 0.95rem;
     font-weight: 300;
     color: rgb(255 255 255 / 0.72);
     letter-spacing: 0.2px;
 }
 
+.profile-icon-popover .profile-icon-grid + .profile-icon-modal-header {
+    margin-top: 14px;
+}
+
 .profile-icon-popover .profile-icon-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(38px, 1fr));
-    gap: 8px;
+    gap: 4px;
 }
 
 .profile-icon-tile {

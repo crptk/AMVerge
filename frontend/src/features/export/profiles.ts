@@ -6,10 +6,7 @@ export type ExportCodecFamily =
   | "h264"
   | "h265"
   | "av1"
-  | "cineform"
-  | "prores"
-  | "dnxhr"
-  | "uncompressed";
+  | "prores";
 
 export type ExportCodec =
   | "h264_main"
@@ -26,16 +23,6 @@ export type ExportCodec =
   | "prores_422_hq"
   | "prores_4444"
   | "prores_4444_xq"
-  | "dnxhr_lb"
-  | "dnxhr_sq"
-  | "dnxhr_hq"
-  | "dnxhr_hqx"
-  | "dnxhr_444"
-  | "uncompressed_rgb8"
-  | "uncompressed_rgb10"
-  | "uncompressed_rgba8"
-  | "uncompressed_rgba16"
-  | "cineform"
   // legacy values kept for persisted data compatibility
   | "h264"
   | "h265"
@@ -52,7 +39,7 @@ export type ExportAudioMode =
   | "opus"
   | "mp3"
   | "none";
-export type ExportContainer = "mp4" | "mkv" | "mov" | "avi" | "mxf";
+export type ExportContainer = "mp4" | "mkv" | "mov" | "mxf";
 export type ExportHardwareMode = "auto" | "gpu" | "cpu";
 export type ExportEditorTarget =
   | "none";
@@ -62,8 +49,6 @@ export type ExportProfileIcon =
   | "h264"
   | "h265"
   | "prores"
-  | "dnxhr"
-  | "uncompressed"
   | "custom";
 export type NvidiaEncoderProfile =
   | "unknown"
@@ -132,15 +117,6 @@ export const EXPORT_CODEC_OPTIONS: { value: ExportCodec; label: string }[] = [
   { value: "prores_422_hq", label: "ProRes 422 HQ" },
   { value: "prores_4444", label: "ProRes 4444" },
   { value: "prores_4444_xq", label: "ProRes 4444 XQ" },
-  { value: "dnxhr_lb", label: "DNxHR LB" },
-  { value: "dnxhr_sq", label: "DNxHR SQ" },
-  { value: "dnxhr_hq", label: "DNxHR HQ" },
-  { value: "dnxhr_hqx", label: "DNxHR HQX" },
-  { value: "dnxhr_444", label: "DNxHR 444" },
-  { value: "uncompressed_rgb8", label: "Uncompressed RGB 8-bit" },
-  { value: "uncompressed_rgb10", label: "Uncompressed RGB 10-bit" },
-  { value: "uncompressed_rgba8", label: "Uncompressed RGBA 8-bit" },
-  { value: "uncompressed_rgba16", label: "Uncompressed RGBA 16-bit" },
 ];
 
 export const EXPORT_AUDIO_OPTIONS: { value: ExportAudioMode; label: string }[] = [
@@ -174,8 +150,6 @@ export const EXPORT_PROFILE_ICON_OPTIONS: { value: ExportProfileIcon; label: str
   { value: "h264", label: "H.264" },
   { value: "h265", label: "H.265" },
   { value: "prores", label: "ProRes" },
-  { value: "dnxhr", label: "DNxHR" },
-  { value: "uncompressed", label: "Uncompressed" },
   { value: "custom", label: "Custom" },
 ];
 
@@ -185,14 +159,14 @@ const EXPORT_PROFILE_ICON_VALUES: ExportProfileIcon[] = [
   "h264",
   "h265",
   "prores",
-  "dnxhr",
-  "uncompressed",
   "custom",
 ];
 
 const LEGACY_PROFILE_ICON_MAP: Record<string, ExportProfileIcon> = {
   av1: "h265",
-  cineform: "uncompressed",
+  cineform: "prores",
+  dnxhr: "prores",
+  uncompressed: "prores",
   premiere: "video",
   after_effects: "video",
   resolve: "video",
@@ -318,12 +292,12 @@ export const DEFAULT_EXPORT_PROFILES: ExportProfile[] = [
     parallelExports: 1,
   },
   {
-    id: "dnxhr-hqx-master",
-    name: "DNxHR HQX",
-    icon: "dnxhr",
+    id: "prores-4444-master",
+    name: "ProRes 4444",
+    icon: "prores",
     workflow: "video_encode",
     editorTarget: "none",
-    codec: "dnxhr_hqx",
+    codec: "prores_4444",
     audioMode: "pcm16",
     container: "mov",
     mergeEnabled: true,
@@ -362,16 +336,6 @@ const CODEC_LABELS: Record<ExportCodec, string> = {
   prores_422_hq: "ProRes 422 HQ",
   prores_4444: "ProRes 4444",
   prores_4444_xq: "ProRes 4444 XQ",
-  dnxhr_lb: "DNxHR LB",
-  dnxhr_sq: "DNxHR SQ",
-  dnxhr_hq: "DNxHR HQ",
-  dnxhr_hqx: "DNxHR HQX",
-  dnxhr_444: "DNxHR 444",
-  uncompressed_rgb8: "Uncompressed RGB 8-bit",
-  uncompressed_rgb10: "Uncompressed RGB 10-bit",
-  uncompressed_rgba8: "Uncompressed RGBA 8-bit",
-  uncompressed_rgba16: "Uncompressed RGBA 16-bit",
-  cineform: "CineForm",
   h264: "H.264 High",
   h265: "H.265 Main",
   av1: "AV1 Main",
@@ -394,26 +358,31 @@ const CODEC_FAMILY_LABELS: Record<ExportCodecFamily, string> = {
   h264: "H.264 / AVC",
   h265: "H.265 / HEVC",
   av1: "AV1",
-  cineform: "CineForm",
   prores: "ProRes",
-  dnxhr: "DNxHR",
-  uncompressed: "Uncompressed",
 };
 
 const CODEC_FAMILY_TO_CODECS: Record<ExportCodecFamily, ExportCodec[]> = {
   h264: ["h264_main", "h264_high", "h264_high10", "h264_high422"],
   h265: ["h265_main", "h265_main10", "h265_main12", "h265_main422_10"],
   av1: ["av1_main"],
-  cineform: ["cineform"],
   prores: ["prores_422_lt", "prores_422", "prores_422_hq", "prores_4444", "prores_4444_xq"],
-  dnxhr: ["dnxhr_lb", "dnxhr_sq", "dnxhr_hq", "dnxhr_hqx", "dnxhr_444"],
-  uncompressed: ["uncompressed_rgb8", "uncompressed_rgb10", "uncompressed_rgba8", "uncompressed_rgba16"],
 };
 
 const LEGACY_CODEC_MAP: Record<string, ExportCodec> = {
   h264: "h264_high",
   h265: "h265_main",
-  av1: "av1_main",
+  av1: "h265_main",
+  av1_main: "h265_main",
+  cineform: "h264_high",
+  dnxhr_lb: "h264_high",
+  dnxhr_sq: "h264_high",
+  dnxhr_hq: "h264_high",
+  dnxhr_hqx: "h264_high",
+  dnxhr_444: "h264_high",
+  uncompressed_rgb8: "h264_high",
+  uncompressed_rgb10: "h264_high",
+  uncompressed_rgba8: "h264_high",
+  uncompressed_rgba16: "h264_high",
 };
 
 const LEGACY_AUDIO_MODE_MAP: Record<string, ExportAudioMode> = {
@@ -427,10 +396,11 @@ const LEGACY_AUDIO_MODE_MAP: Record<string, ExportAudioMode> = {
 
 export const EXPORT_CODEC_FAMILY_OPTIONS: { value: ExportCodecFamily; label: string }[] = (
   Object.keys(CODEC_FAMILY_LABELS) as ExportCodecFamily[]
-).map((family) => ({
-  value: family,
-  label: CODEC_FAMILY_LABELS[family],
-}));
+).filter((family) => family !== "av1")
+  .map((family) => ({
+    value: family,
+    label: CODEC_FAMILY_LABELS[family],
+  }));
 
 export function coerceExportCodec(codec: string | undefined | null): ExportCodec {
   if (!codec) return "h264_high";
@@ -465,11 +435,8 @@ export function getCodecFamily(codec: ExportCodec): ExportCodecFamily {
 
   if (normalized.startsWith("h264_")) return "h264";
   if (normalized.startsWith("h265_")) return "h265";
-  if (normalized === "av1_main") return "av1";
-  if (normalized === "cineform") return "cineform";
+  if (normalized === "av1_main") return "h265";
   if (normalized.startsWith("prores_")) return "prores";
-  if (normalized.startsWith("dnxhr_")) return "dnxhr";
-  if (normalized.startsWith("uncompressed_")) return "uncompressed";
   return "h264";
 }
 
@@ -540,6 +507,32 @@ export function isQuickDownloadCompatibleWorkflow(workflow: ExportWorkflow): boo
     default:
       return false;
   }
+}
+
+export function isExportCodecContainerCompatible(
+  codec: ExportCodec,
+  container: ExportContainer
+): boolean {
+  const family = getCodecFamily(codec);
+
+  switch (container) {
+    case "mp4":
+      return family === "h264" || family === "h265" || family === "av1";
+    case "mov":
+      return family === "h264" || family === "h265" || family === "av1" || family === "prores";
+    case "mkv":
+      return true;
+    case "mxf":
+      return family === "prores";
+    default:
+      return true;
+  }
+}
+
+export function getRecommendedContainerForCodec(codec: ExportCodec): ExportContainer {
+  const family = getCodecFamily(codec);
+  if (family === "prores") return "mov";
+  return "mp4";
 }
 
 export function coerceExportWorkflow(workflow: string | undefined | null): ExportWorkflow {
@@ -671,6 +664,11 @@ export function normalizeExportProfile(profile: ExportProfile): ExportProfile {
       ? profile.customIconPath
       : null;
   const editorTarget: ExportEditorTarget = "none";
+  let container = coerceExportContainer(profile.container);
+
+  if (usesEncoding(workflow) && !isExportCodecContainerCompatible(codec, container)) {
+    container = getRecommendedContainerForCodec(codec);
+  }
 
   const nvidiaEncoderProfile = profile.nvidiaEncoderProfile || "unknown";
 
@@ -693,7 +691,7 @@ export function normalizeExportProfile(profile: ExportProfile): ExportProfile {
     nvidiaEncoderProfile,
     name: typeof profile.name === "string" ? profile.name : "Export Profile",
     audioMode: coerceExportAudioMode(profile.audioMode),
-    container: coerceExportContainer(profile.container),
+    container,
     mergeEnabled: profile.mergeEnabled ?? false,
     parallelExports: Number.isFinite(profile.parallelExports) ? profile.parallelExports : 1,
   };

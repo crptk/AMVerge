@@ -11,11 +11,11 @@ import {
 /*====================
     GENERAL SETTINGS 
 =====================*/
-export type ExportFormat = "mp4" | "mkv" | "mov" | "avi" | "xml";
+export type ExportFormat = "mp4" | "mkv" | "mov" | "xml";
 
 export type GeneralSettings = {
     episodesPath: string | null;
-    exportFormat: "mp4" | "mkv" | "mov" | "avi" | "xml";
+    exportFormat: "mp4" | "mkv" | "mov" | "xml";
     exportPath: string | null;
     openFileLocationAfterExport: boolean;
     exportProfiles: ExportProfile[];
@@ -166,6 +166,35 @@ export const useGeneralSettingsStore = create<GeneralSettingsStore>()(
         }),
         {
             name: "amverge.generalSettings.v2",
+            merge: (persistedState, currentState) => {
+                const persisted = (persistedState || {}) as Partial<GeneralSettings>;
+
+                const persistedProfiles = Array.isArray(persisted.exportProfiles)
+                    ? persisted.exportProfiles.map((profile) =>
+                        normalizeExportProfile(profile as ExportProfile)
+                    )
+                    : currentState.exportProfiles;
+
+                const activeExportProfileId =
+                    persisted.activeExportProfileId &&
+                    persistedProfiles.some((profile) => profile.id === persisted.activeExportProfileId)
+                        ? persisted.activeExportProfileId
+                        : (persistedProfiles[0]?.id ?? DEFAULT_EXPORT_PROFILE_ID);
+
+                const rawExportFormat = persisted.exportFormat;
+                const exportFormat: ExportFormat =
+                    rawExportFormat === "mkv" || rawExportFormat === "mov" || rawExportFormat === "xml"
+                        ? rawExportFormat
+                        : "mp4";
+
+                return {
+                    ...currentState,
+                    ...persisted,
+                    exportProfiles: persistedProfiles,
+                    activeExportProfileId,
+                    exportFormat,
+                };
+            },
         }
     )
 );

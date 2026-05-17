@@ -2,12 +2,10 @@ import { convertFileSrc } from "@tauri-apps/api/core";
 import type { ComponentType, ReactNode } from "react";
 import {
   IconCustom,
-  IconDNxHR,
   IconH264,
   IconH265,
   IconProRes,
   IconRemux,
-  IconUncompressed,
   IconVideo,
   type ProfileIconProps,
 } from "../../components/icons/ProfileIcons";
@@ -21,8 +19,6 @@ const PROFILE_ICON_COMPONENTS: Record<BuiltInProfileIcon, ComponentType<ProfileI
   h264: IconH264,
   h265: IconH265,
   prores: IconProRes,
-  dnxhr: IconDNxHR,
-  uncompressed: IconUncompressed,
 };
 
 export function resolveStoredAssetPath(path: string): string {

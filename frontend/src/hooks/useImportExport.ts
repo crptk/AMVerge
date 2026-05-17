@@ -4,6 +4,10 @@ import { listen } from "@tauri-apps/api/event";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { ClipItem, EpisodeEntry } from "../types/domain"
 import { fileNameFromPath, truncateFileName, detectScenes } from "../utils/episodeUtils";
+import {
+  getRecommendedContainerForCodec,
+  isExportCodecContainerCompatible,
+} from "../features/export/profiles";
 
 import { useAppStateStore, useAppPersistedStore } from "../stores/appStore";
 import { useEpisodePanelRuntimeStore } from "../stores/episodeStore";
@@ -103,6 +107,8 @@ export default function useImportExport(props?: ImportExportProps) {
     let thumbReadyBeforeStore = 0;
     let pairResultCount = 0;
     let pairResultBeforeStore = 0;
+    let totalThumbsApplied = 0;
+    let totalMergesApplied = 0;
 
     // Batched updates: instead of one Zustand setState per event (which triggers a
     // synchronous React re-render via useSyncExternalStore each time), we accumulate
@@ -116,7 +122,6 @@ export default function useImportExport(props?: ImportExportProps) {
       batchedThumbIds.clear();
       const merges = batchedMerges.splice(0);
       if (thumbIds.size === 0 && merges.length === 0) return;
-      console.log(`[batch flush] thumbIds=${thumbIds.size} merges=${merges.length}`);
       useAppStateStore.setState(s => {
         let clips = s.clips;
         let bgProgress = s.bgProgress;
@@ -130,6 +135,7 @@ export default function useImportExport(props?: ImportExportProps) {
           const mergeInto = (c: ClipItem) =>
             c.id !== clipBId ? c : { ...c, mergedSrcs: [...removedSrcs, ...(c.mergedSrcs ?? [c.src])] };
           clips = clips.filter(c => c.id !== clipAId).map(mergeInto);
+          totalMergesApplied++;
           changed = true;
         }
 
@@ -144,6 +150,7 @@ export default function useImportExport(props?: ImportExportProps) {
           if (thumbsApplied > 0) {
             clips = newClips;
             changed = true;
+            totalThumbsApplied += thumbsApplied;
             if (bgProgress) {
               bgProgress = { ...bgProgress, done: Math.min(bgProgress.done + thumbsApplied, bgProgress.total) };
             }
@@ -342,7 +349,9 @@ export default function useImportExport(props?: ImportExportProps) {
           batchRafId = null;
         }
         applyBatchedUpdates(activeEpisodeId);
-        console.log(`[processing_complete] thumbReady=${thumbReadyCount} (beforeStore=${thumbReadyBeforeStore}), pairResult=${pairResultCount} (beforeStore=${pairResultBeforeStore}), store=${useAppStateStore.getState().clips.length} clips`);
+        console.log(
+          `[import summary] thumbsApplied=${totalThumbsApplied}, mergesApplied=${totalMergesApplied}, thumbReadyEvents=${thumbReadyCount} (beforeStore=${thumbReadyBeforeStore}), pairResultEvents=${pairResultCount} (beforeStore=${pairResultBeforeStore}), store=${useAppStateStore.getState().clips.length} clips`
+        );
         
         const finalClips = useAppStateStore.getState().clips.map(c => {
           const { thumbnailReady: _, ...rest } = c;
@@ -501,7 +510,13 @@ export default function useImportExport(props?: ImportExportProps) {
       const activeProfile = generalSettings.exportProfiles.find(
         (candidate) => candidate.id === generalSettings.activeExportProfileId
       ) ?? generalSettings.exportProfiles[0];
-      const format = activeProfile?.container || generalSettings.exportFormat || "mp4";
+      const preferredFormat = activeProfile?.container || "mp4";
+      const format =
+        activeProfile &&
+        activeProfile.workflow === "video_encode" &&
+        !isExportCodecContainerCompatible(activeProfile.codec, preferredFormat)
+          ? getRecommendedContainerForCodec(activeProfile.codec)
+          : preferredFormat;
 
       props?.onRPCUpdate?.({
         type: "update",
@@ -605,7 +620,13 @@ export default function useImportExport(props?: ImportExportProps) {
       const activeProfile = generalSettings.exportProfiles.find(
         (candidate) => candidate.id === generalSettings.activeExportProfileId
       ) ?? generalSettings.exportProfiles[0];
-      const format = activeProfile?.container || generalSettings.exportFormat || "mp4";
+      const preferredFormat = activeProfile?.container || "mp4";
+      const format =
+        activeProfile &&
+        activeProfile.workflow === "video_encode" &&
+        !isExportCodecContainerCompatible(activeProfile.codec, preferredFormat)
+          ? getRecommendedContainerForCodec(activeProfile.codec)
+          : preferredFormat;
       const fileName = clip.originalName || fileNameFromPath(clip.src);
       const defaultPath = `${fileName}.${format}`;
       const savePath = await save({

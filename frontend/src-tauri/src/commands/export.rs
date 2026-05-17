@@ -256,7 +256,7 @@ pub async fn export_clips(
 
     // Probe the source video codec once. Used to pick the right `_mp4toannexb`
     // bitstream filter for stream-copy paths into Annex-B containers
-    // (MKV/WebM/AVI/TS). Without this, MP4 → MKV `-c copy` produces files that
+    // (MKV/WebM/TS). Without this, MP4 → MKV `-c copy` produces files that
     // VLC plays but Windows Media Foundation decodes as green/blue snow,
     // because the concat demuxer does not auto-insert the BSF.
     let source_video_codec = probe::probe_video_codec_name(ffprobe.clone(), clips[0].clone())

@@ -17,12 +17,6 @@ fn codec_family(codec: &str) -> &'static str {
         "av1"
     } else if c.starts_with("prores_") {
         "prores"
-    } else if c.starts_with("dnxhr_") {
-        "dnxhr"
-    } else if c.starts_with("uncompressed_") {
-        "uncompressed"
-    } else if c == "cineform" {
-        "cineform"
     } else {
         "h264"
     }
@@ -32,18 +26,16 @@ pub(super) fn is_codec_container_compatible(codec: &str, container: &str) -> boo
     let fam = codec_family(codec);
     match container {
         "mp4" => matches!(fam, "h264" | "h265" | "av1"),
-        "mov" => matches!(fam, "h264" | "h265" | "av1" | "prores" | "dnxhr" | "cineform"),
+        "mov" => matches!(fam, "h264" | "h265" | "av1" | "prores"),
         "mkv" => true,
-        "avi" => matches!(fam, "h264" | "uncompressed" | "cineform"),
-        "mxf" => matches!(fam, "dnxhr" | "prores"),
+        "mxf" => matches!(fam, "prores"),
         _ => true,
     }
 }
 
 pub(super) fn recommended_container_for_codec(codec: &str) -> &'static str {
     match codec_family(codec) {
-        "prores" | "dnxhr" | "cineform" => "mov",
-        "uncompressed" => "mkv",
+        "prores" => "mov",
         _ => "mp4",
     }
 }
@@ -74,7 +66,6 @@ pub(super) fn audio_copy_safe_for_container(audio_codec: &str, container: &str) 
                 | "qdm2"
         ),
         "mkv" | "webm" => true,
-        "avi" => matches!(codec.as_str(), "mp3" | "ac3" | "aac" | "pcm_s16le"),
         _ => true,
     }
 }
@@ -83,7 +74,6 @@ pub(super) fn fallback_audio_mode_for_container(container: &str) -> &'static str
     match container {
         "mp4" | "mov" | "m4v" | "m4a" => "aac",
         "mkv" | "webm" => "copy",
-        "avi" => "mp3",
         _ => "aac",
     }
 }
