@@ -20,10 +20,20 @@ def get_binary(name: str) -> str:
     """
 
     candidates = [
-        ROOT / "bin" / name,
-        ROOT / name,
+        # Most reliable for packaged sidecars.
         ROOT / "_internal" / name,
+        ROOT / name,
+        ROOT / "bin" / name,
     ]
+
+    # Extra fallbacks when executable cwd differs from executable location.
+    if getattr(sys, "frozen", False):
+        exe_dir = Path(sys.executable).resolve().parent
+        candidates.extend([
+            exe_dir / "_internal" / name,
+            exe_dir / name,
+            exe_dir / "bin" / name,
+        ])
 
     for candidate in candidates:
         if candidate.exists():
@@ -31,6 +41,8 @@ def get_binary(name: str) -> str:
 
     found = which(name)
     if found:
-        return found
+        found_path = Path(found)
+        if found_path.is_absolute() and found_path.exists():
+            return str(found_path)
 
     return str(candidates[0])

@@ -74,9 +74,9 @@ async function main() {
     "--name",
     "backend_script",
     "--add-binary",
-    `${ffmpegBin}${sep}.`,
+    `${ffmpegBin}${sep}_internal`,
     "--add-binary",
-    `${ffprobeBin}${sep}.`,
+    `${ffprobeBin}${sep}_internal`,
   ];
 
   if (isWindows) {
@@ -92,6 +92,8 @@ async function main() {
   const exeName = isWindows ? "backend_script.exe" : "backend_script";
   const exePath = path.join(tauriSidecarDir, exeName);
   const baseLib = path.join(tauriSidecarDir, "_internal", "base_library.zip");
+  const ffmpegPath = path.join(tauriSidecarDir, "_internal", isWindows ? "ffmpeg.exe" : "ffmpeg");
+  const ffprobePath = path.join(tauriSidecarDir, "_internal", isWindows ? "ffprobe.exe" : "ffprobe");
 
   try {
     const exeStat = await fs.stat(exePath);
@@ -99,9 +101,15 @@ async function main() {
 
     const baseStat = await fs.stat(baseLib);
     if (!baseStat.isFile()) throw new Error("base_library.zip is not a file");
+
+    const ffmpegStat = await fs.stat(ffmpegPath);
+    if (!ffmpegStat.isFile()) throw new Error("ffmpeg sidecar binary is not a file");
+
+    const ffprobeStat = await fs.stat(ffprobePath);
+    if (!ffprobeStat.isFile()) throw new Error("ffprobe sidecar binary is not a file");
   } catch {
     throw new Error(
-      `Sidecar sync finished, but required files are missing. Expected ${exePath} and ${baseLib}.`
+      `Sidecar sync finished, but required files are missing. Expected ${exePath}, ${baseLib}, ${ffmpegPath}, and ${ffprobePath}.`
     );
   }
 }

@@ -97,6 +97,14 @@ fn get_bool(value: &serde_json::Value, keys: &[&str], default_value: bool) -> bo
     default_value
 }
 
+fn normalize_version_for_match(version: &str) -> String {
+    version
+        .trim()
+        .trim_start_matches('v')
+        .trim_start_matches('V')
+        .to_string()
+}
+
 fn parse_notification_row(row: &serde_json::Value) -> Option<StartupNotification> {
     let id = get_string(row, &["id"])?;
     let title = get_string(row, &["title"])?;
@@ -119,6 +127,7 @@ pub async fn fetch_startup_notification(app: AppHandle) -> Result<Option<Startup
         .ok_or_else(|| "Startup notifications URL is not configured.".to_string())?;
 
     let app_version = app.package_info().version.to_string();
+    let app_version_norm = normalize_version_for_match(&app_version);
     let endpoint = resolve_notifications_endpoint(&base_url, &app_version)?;
 
     console_log("NOTIFY|fetch", &format!("version={app_version} endpoint={endpoint}"));
@@ -185,10 +194,10 @@ pub async fn fetch_startup_notification(app: AppHandle) -> Result<Option<Startup
         }
 
         let target_version = get_string(&row, &["targetVersion", "target_version"]);
-        if target_version
-            .as_deref()
-            .is_some_and(|v| v != app_version.as_str())
-        {
+        if target_version.as_deref().is_some_and(|v| {
+            let target_norm = normalize_version_for_match(v);
+            !target_norm.is_empty() && target_norm != app_version_norm
+        }) {
             return None;
         }
 
