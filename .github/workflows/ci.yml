@@ -49,9 +49,22 @@ jobs:
         shell: pwsh
         run: |
           choco install ffmpeg -y
-          New-Item -ItemType Directory -Force backend/bin
-          Copy-Item "C:\ProgramData\chocolatey\bin\ffmpeg.exe" backend/bin/ffmpeg.exe -Force
-          Copy-Item "C:\ProgramData\chocolatey\bin\ffprobe.exe" backend/bin/ffprobe.exe -Force
+          New-Item -ItemType Directory -Force backend/bin | Out-Null
+
+          $ffmpegReal = "C:\ProgramData\chocolatey\lib\ffmpeg\tools\ffmpeg\bin\ffmpeg.exe"
+          $ffprobeReal = "C:\ProgramData\chocolatey\lib\ffmpeg\tools\ffmpeg\bin\ffprobe.exe"
+
+          if (-not (Test-Path $ffmpegReal) -or -not (Test-Path $ffprobeReal)) {
+            Write-Host "Real ffmpeg binaries not found at expected Chocolatey path."
+            Get-ChildItem "C:\ProgramData\chocolatey\lib\ffmpeg" -Recurse -File -Filter ffmpeg.exe | Format-Table -AutoSize
+            Get-ChildItem "C:\ProgramData\chocolatey\lib\ffmpeg" -Recurse -File -Filter ffprobe.exe | Format-Table -AutoSize
+            exit 1
+          }
+
+          Copy-Item $ffmpegReal backend/bin/ffmpeg.exe -Force
+          Copy-Item $ffprobeReal backend/bin/ffprobe.exe -Force
+          & backend/bin/ffmpeg.exe -version | Select-Object -First 1
+          & backend/bin/ffprobe.exe -version | Select-Object -First 1
           
       - name: Build Python sidecar
         working-directory: frontend
