@@ -1,0 +1,546 @@
+name: Release Multi Platform
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-windows:
+    name: Build Windows Release Artifacts
+    runs-on: windows-latest
+    env:
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Install Tauri CLI (Rust)
+        run: cargo install tauri-cli --version '^2.0'
+
+      - name: Create backend venv and install dependencies
+        shell: pwsh
+        run: |
+          python -m venv backend/venv
+          backend/venv/Scripts/python -m pip install --upgrade pip
+          backend/venv/Scripts/pip install -r backend/requirements.txt
+          backend/venv/Scripts/pip install pyinstaller
+
+      - name: Install FFmpeg binaries
+        shell: pwsh
+        run: |
+          choco install ffmpeg -y
+          New-Item -ItemType Directory -Force backend/bin | Out-Null
+          Copy-Item "C:\ProgramData\chocolatey\bin\ffmpeg.exe" backend/bin/ffmpeg.exe -Force
+          Copy-Item "C:\ProgramData\chocolatey\bin\ffprobe.exe" backend/bin/ffprobe.exe -Force
+
+      - name: Build Python sidecar
+        working-directory: frontend
+        run: node scripts/build-sidecar.mjs --target x86_64-pc-windows-msvc
+
+      - name: Build Windows installer
+        working-directory: frontend/src-tauri
+        run: cargo tauri build --target x86_64-pc-windows-msvc --config tauri.windows.conf.json
+
+      - name: Collect Windows release assets
+        shell: pwsh
+        run: |
+          $bundleRoot = "frontend/src-tauri/target/x86_64-pc-windows-msvc/release/bundle"
+          New-Item -ItemType Directory -Force artifacts/windows-installer | Out-Null
+          New-Item -ItemType Directory -Force artifacts/windows-updater | Out-Null
+
+          $exe = Get-ChildItem -Path $bundleRoot -Recurse -File -Filter *.exe |
+            Where-Object { $_.FullName -match "bundle\\nsis\\" } |
+            Select-Object -First 1
+
+          if (-not $exe) {
+            Write-Host "No NSIS .exe found under $bundleRoot"
+            Get-ChildItem -Path $bundleRoot -Recurse | Format-Table -AutoSize
+            exit 1
+          }
+
+          Copy-Item $exe.FullName artifacts/windows-installer/ -Force
+
+          $sigFiles = Get-ChildItem -Path $bundleRoot -Recurse -File -Filter *.sig
+          if (-not $sigFiles) {
+            Write-Host "No updater signature files found under $bundleRoot"
+            exit 1
+          }
+
+          foreach ($sig in $sigFiles) {
+            $targetFile = $sig.FullName.Substring(0, $sig.FullName.Length - 4)
+            if (Test-Path $targetFile) {
+              Copy-Item $targetFile artifacts/windows-updater/ -Force
+              Copy-Item $sig.FullName artifacts/windows-updater/ -Force
+            }
+          }
+
+          $copiedSig = Get-ChildItem artifacts/windows-updater -File -Filter *.sig | Select-Object -First 1
+          if (-not $copiedSig) {
+            Write-Host "No paired updater artifact+sig copied for Windows"
+            exit 1
+          }
+
+      - name: Upload Windows installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-installer
+          path: artifacts/windows-installer/*
+          if-no-files-found: error
+
+      - name: Upload Windows updater artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-updater
+          path: artifacts/windows-updater/*
+          if-no-files-found: error
+
+  build-macos-arch:
+    name: Build macOS App (${{ matrix.arch_label }})
+    runs-on: ${{ matrix.runner }}
+    env:
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-14
+            arch_label: apple-silicon
+            rust_target: aarch64-apple-darwin
+            tauri_config: tauri.macos.conf.json
+            sidecar_dir: backend_script-aarch64-apple-darwin
+            app_artifact_name: amverge-macos-arm64-app
+            updater_artifact_name: amverge-macos-arm64-updater
+          - runner: macos-14
+            arch_label: intel
+            rust_target: x86_64-apple-darwin
+            tauri_config: tauri.macos.intel.conf.json
+            sidecar_dir: backend_script-x86_64-apple-darwin
+            app_artifact_name: amverge-macos-x64-app
+            updater_artifact_name: amverge-macos-x64-updater
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Add Rust target
+        run: rustup target add ${{ matrix.rust_target }}
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci --include=optional
+
+      - name: Work around npm optional dependency issue (Rollup)
+        working-directory: frontend
+        run: |
+          ROLLUP_VERSION=$(node -e "console.log(require('rollup/package.json').version)")
+          ROLLUP_ARCH=$(node -p "process.arch")
+          if [ "$ROLLUP_ARCH" = "arm64" ]; then
+            ROLLUP_PKG="@rollup/rollup-darwin-arm64"
+          else
+            ROLLUP_PKG="@rollup/rollup-darwin-x64"
+          fi
+          npm i --no-save "${ROLLUP_PKG}@${ROLLUP_VERSION}"
+
+      - name: Install Tauri CLI (Rust)
+        run: cargo install tauri-cli --version '^2.0'
+
+      - name: Create backend venv and install dependencies
+        run: |
+          python -m venv backend/venv
+          backend/venv/bin/python -m pip install --upgrade pip
+          backend/venv/bin/pip install -r backend/requirements.txt
+          backend/venv/bin/pip install pyinstaller
+
+      - name: Install FFmpeg binaries
+        run: |
+          brew install ffmpeg
+          mkdir -p backend/bin
+          cp "$(which ffmpeg)" backend/bin/ffmpeg
+          cp "$(which ffprobe)" backend/bin/ffprobe
+          chmod +x backend/bin/ffmpeg backend/bin/ffprobe
+
+      - name: Build Python sidecar
+        working-directory: frontend
+        run: node scripts/build-sidecar.mjs --target ${{ matrix.rust_target }}
+
+      - name: Verify macOS sidecar exists
+        run: ls -la frontend/src-tauri/bin/${{ matrix.sidecar_dir }}
+
+      - name: Build macOS app bundle
+        working-directory: frontend/src-tauri
+        run: cargo tauri build --target ${{ matrix.rust_target }} --bundles app --config ${{ matrix.tauri_config }}
+
+      - name: Archive app bundle
+        run: |
+          mkdir -p artifacts
+          BUNDLE_ROOT="frontend/src-tauri/target/${{ matrix.rust_target }}/release/bundle"
+          APP_BUNDLE="$(find "$BUNDLE_ROOT" -type d -name '*.app' | head -n 1)"
+          if [ -z "$APP_BUNDLE" ]; then
+            echo "No .app bundle found in $BUNDLE_ROOT"
+            find "$BUNDLE_ROOT" -maxdepth 4 -print || true
+            exit 1
+          fi
+          APP_BUNDLE_DIR="$(dirname "$APP_BUNDLE")"
+          tar -C "$APP_BUNDLE_DIR" -czf artifacts/${{ matrix.app_artifact_name }}.tar.gz "$(basename "$APP_BUNDLE")"
+
+      - name: Collect mac updater artifacts
+        run: |
+          mkdir -p artifacts/updater
+          BUNDLE_ROOT="frontend/src-tauri/target/${{ matrix.rust_target }}/release/bundle"
+          FOUND=0
+          while IFS= read -r -d '' sig; do
+            target="${sig%.sig}"
+            if [ -f "$target" ]; then
+              cp "$target" artifacts/updater/
+              cp "$sig" artifacts/updater/
+              FOUND=1
+            fi
+          done < <(find "$BUNDLE_ROOT" -type f -name '*.sig' -print0)
+
+          if [ "$FOUND" -ne 1 ]; then
+            echo "No updater artifact/signature pair found under $BUNDLE_ROOT"
+            find "$BUNDLE_ROOT" -maxdepth 4 -print || true
+            exit 1
+          fi
+
+      - name: Upload app artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.app_artifact_name }}
+          path: artifacts/${{ matrix.app_artifact_name }}.tar.gz
+          if-no-files-found: error
+
+      - name: Upload updater artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.updater_artifact_name }}
+          path: artifacts/updater/*
+          if-no-files-found: error
+
+  package-universal-macos:
+    name: Package Universal macOS DMG
+    needs: build-macos-arch
+    runs-on: macos-14
+    env:
+      APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+      APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+      APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+      APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      APPLE_ASC_KEY_ID: ${{ secrets.APPLE_ASC_KEY_ID }}
+      APPLE_ASC_ISSUER_ID: ${{ secrets.APPLE_ASC_ISSUER_ID }}
+      APPLE_ASC_API_KEY_BASE64: ${{ secrets.APPLE_ASC_API_KEY_BASE64 }}
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Import Apple signing certificate
+        run: |
+          if [ -z "$APPLE_CERTIFICATE" ]; then
+            echo "APPLE_CERTIFICATE is empty"
+            exit 1
+          fi
+          printf '%s' "$APPLE_CERTIFICATE" | base64 --decode > certificate.p12 2>/dev/null || printf '%s' "$APPLE_CERTIFICATE" | base64 -D > certificate.p12
+
+          KEYCHAIN_PATH="$RUNNER_TEMP/universal-signing.keychain-db"
+          KEYCHAIN_PASSWORD="$(openssl rand -base64 24)"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+          openssl pkcs12 -in certificate.p12 -clcerts -nokeys -passin "pass:$APPLE_CERTIFICATE_PASSWORD" -out extracted-cert.pem
+          openssl pkcs12 -in certificate.p12 -nocerts -nodes -passin "pass:$APPLE_CERTIFICATE_PASSWORD" -out extracted-key.pem
+
+          security import extracted-cert.pem -k "$KEYCHAIN_PATH" -T /usr/bin/codesign -T /usr/bin/security
+          security import extracted-key.pem -k "$KEYCHAIN_PATH" -T /usr/bin/codesign -T /usr/bin/security
+          security list-keychains -d user -s "$KEYCHAIN_PATH"
+          security default-keychain -d user -s "$KEYCHAIN_PATH"
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+          if [ -n "$APPLE_SIGNING_IDENTITY" ] && security find-identity -v -p codesigning "$KEYCHAIN_PATH" | grep -Fq "$APPLE_SIGNING_IDENTITY"; then
+            EFFECTIVE_SIGNING_IDENTITY="$APPLE_SIGNING_IDENTITY"
+          else
+            EFFECTIVE_SIGNING_IDENTITY="$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" | sed -n 's/.*"\(Developer ID Application:.*\)"/\1/p' | head -n 1)"
+            if [ -z "$EFFECTIVE_SIGNING_IDENTITY" ]; then
+              echo "No Developer ID Application identity found in keychain"
+              exit 1
+            fi
+          fi
+
+          echo "EFFECTIVE_SIGNING_IDENTITY=$EFFECTIVE_SIGNING_IDENTITY" >> "$GITHUB_ENV"
+
+      - name: Download arm64 app artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: amverge-macos-arm64-app
+          path: artifacts/arm64
+
+      - name: Download x64 app artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: amverge-macos-x64-app
+          path: artifacts/x64
+
+      - name: Extract app bundles
+        run: |
+          mkdir -p build-input/arm64 build-input/x64 build-output
+          tar -xzf artifacts/arm64/amverge-macos-arm64-app.tar.gz -C build-input/arm64
+          tar -xzf artifacts/x64/amverge-macos-x64-app.tar.gz -C build-input/x64
+          ARM_APP_PATH="$(find build-input/arm64 -maxdepth 1 -type d -name '*.app' | head -n 1)"
+          X64_APP_PATH="$(find build-input/x64 -maxdepth 1 -type d -name '*.app' | head -n 1)"
+          if [ -z "$ARM_APP_PATH" ] || [ -z "$X64_APP_PATH" ]; then
+            echo "Missing extracted .app bundle(s)"
+            exit 1
+          fi
+          APP_BUNDLE_NAME="$(basename "$ARM_APP_PATH")"
+          UNIVERSAL_APP_PATH="build-output/$APP_BUNDLE_NAME"
+          echo "ARM_APP_PATH=$ARM_APP_PATH" >> "$GITHUB_ENV"
+          echo "X64_APP_PATH=$X64_APP_PATH" >> "$GITHUB_ENV"
+          echo "UNIVERSAL_APP_PATH=$UNIVERSAL_APP_PATH" >> "$GITHUB_ENV"
+          echo "APP_VOLNAME=${APP_BUNDLE_NAME%.app}" >> "$GITHUB_ENV"
+
+      - name: Merge universal app bundle
+        run: |
+          node frontend/scripts/merge-universal-macos-app.mjs \
+            --armApp "$ARM_APP_PATH" \
+            --x64App "$X64_APP_PATH" \
+            --outApp "$UNIVERSAL_APP_PATH" \
+            --signIdentity "$EFFECTIVE_SIGNING_IDENTITY" \
+            --config frontend/src-tauri/tauri.macos.universal.conf.json
+
+      - name: Re-sign universal app bundle (final)
+        run: |
+          codesign --force --sign "$EFFECTIVE_SIGNING_IDENTITY" --timestamp --options runtime "$UNIVERSAL_APP_PATH"
+          codesign --verify --strict --deep --verbose=2 "$UNIVERSAL_APP_PATH"
+
+      - name: Create universal DMG
+        run: |
+          mkdir -p frontend/src-tauri/target/universal-apple-darwin/release/bundle/dmg
+          DMG_PATH="frontend/src-tauri/target/universal-apple-darwin/release/bundle/dmg/AMVerge-macos-universal.dmg"
+
+          hdiutil info | awk '/\/Volumes\/'"$APP_VOLNAME"'$/ {print $1}' | while read -r dev; do
+            [ -n "$dev" ] && hdiutil detach "$dev" -force || true
+          done
+
+          rm -f "$DMG_PATH"
+          hdiutil create -volname "$APP_VOLNAME" -srcfolder "$UNIVERSAL_APP_PATH" -ov -format UDZO "$DMG_PATH"
+
+      - name: Sign universal DMG
+        run: |
+          DMG_PATH="frontend/src-tauri/target/universal-apple-darwin/release/bundle/dmg/AMVerge-macos-universal.dmg"
+          codesign --force --sign "$EFFECTIVE_SIGNING_IDENTITY" --timestamp "$DMG_PATH"
+
+      - name: Notarize and staple universal DMG
+        run: |
+          DMG_PATH="frontend/src-tauri/target/universal-apple-darwin/release/bundle/dmg/AMVerge-macos-universal.dmg"
+          NOTARY_PASSWORD="$(printf '%s' "${APPLE_APP_SPECIFIC_PASSWORD:-$APPLE_PASSWORD}" | tr -d '[:space:]')"
+          APPLE_ID_CLEAN="$(printf '%s' "$APPLE_ID" | tr -d '[:space:]')"
+          SIGNING_TEAM_ID="$(printf '%s' "$EFFECTIVE_SIGNING_IDENTITY" | sed -n 's/.*(\([A-Z0-9]\{10\}\)).*/\1/p')"
+          NOTARY_TEAM_ID="$(printf '%s' "${APPLE_TEAM_ID:-$SIGNING_TEAM_ID}" | tr -d '[:space:]')"
+
+          if [ -n "$APPLE_ASC_KEY_ID" ] && [ -n "$APPLE_ASC_ISSUER_ID" ] && [ -n "$APPLE_ASC_API_KEY_BASE64" ]; then
+            KEY_DIR="$RUNNER_TEMP/private_keys"
+            KEY_PATH="$KEY_DIR/AuthKey_${APPLE_ASC_KEY_ID}.p8"
+            mkdir -p "$KEY_DIR"
+            printf '%s' "$APPLE_ASC_API_KEY_BASE64" | base64 --decode > "$KEY_PATH" 2>/dev/null || printf '%s' "$APPLE_ASC_API_KEY_BASE64" | base64 -D > "$KEY_PATH"
+            chmod 600 "$KEY_PATH"
+            xcrun notarytool submit "$DMG_PATH" --key "$KEY_PATH" --key-id "$APPLE_ASC_KEY_ID" --issuer "$APPLE_ASC_ISSUER_ID" --wait
+          else
+            if [ -z "$NOTARY_PASSWORD" ] || [ -z "$APPLE_ID_CLEAN" ] || [ -z "$NOTARY_TEAM_ID" ]; then
+              echo "Missing Apple notarization credentials"
+              exit 1
+            fi
+            xcrun notarytool submit "$DMG_PATH" --apple-id "$APPLE_ID_CLEAN" --password "$NOTARY_PASSWORD" --team-id "$NOTARY_TEAM_ID" --wait
+          fi
+
+          xcrun stapler staple "$DMG_PATH"
+          xcrun stapler validate "$DMG_PATH"
+
+      - name: Upload universal DMG artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: amverge-macos-universal-dmg
+          path: frontend/src-tauri/target/universal-apple-darwin/release/bundle/dmg/AMVerge-macos-universal.dmg
+          if-no-files-found: error
+
+  publish-release:
+    name: Publish Combined Release
+    runs-on: ubuntu-latest
+    needs:
+      - build-windows
+      - package-universal-macos
+      - build-macos-arch
+
+    steps:
+      - name: Download Windows installer artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-installer
+          path: release-input/windows-installer
+
+      - name: Download Windows updater artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-updater
+          path: release-input/windows-updater
+
+      - name: Download macOS universal DMG artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: amverge-macos-universal-dmg
+          path: release-input/macos-dmg
+
+      - name: Download macOS arm64 updater artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: amverge-macos-arm64-updater
+          path: release-input/macos-arm64-updater
+
+      - name: Download macOS x64 updater artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: amverge-macos-x64-updater
+          path: release-input/macos-x64-updater
+
+      - name: Prepare combined release assets and latest.json
+        run: |
+          set -euo pipefail
+
+          mkdir -p release-assets
+
+          WIN_EXE="$(find release-input/windows-installer -type f -name '*.exe' | head -n 1)"
+          WIN_SIG="$(find release-input/windows-updater -type f -name '*.sig' | head -n 1)"
+          ARM_SIG="$(find release-input/macos-arm64-updater -type f -name '*.sig' | head -n 1)"
+          X64_SIG="$(find release-input/macos-x64-updater -type f -name '*.sig' | head -n 1)"
+          MAC_DMG_SRC="$(find release-input/macos-dmg -type f -name '*.dmg' | head -n 1)"
+
+          [ -n "$WIN_EXE" ] || { echo "Missing Windows .exe"; exit 1; }
+          [ -n "$WIN_SIG" ] || { echo "Missing Windows updater signature"; exit 1; }
+          [ -n "$ARM_SIG" ] || { echo "Missing macOS arm64 updater signature"; exit 1; }
+          [ -n "$X64_SIG" ] || { echo "Missing macOS x64 updater signature"; exit 1; }
+          [ -n "$MAC_DMG_SRC" ] || { echo "Missing universal macOS DMG"; exit 1; }
+
+          WIN_UPDATER_FILE="${WIN_SIG%.sig}"
+          ARM_UPDATER_FILE="${ARM_SIG%.sig}"
+          X64_UPDATER_FILE="${X64_SIG%.sig}"
+
+          [ -f "$WIN_UPDATER_FILE" ] || { echo "Missing Windows updater file pair"; exit 1; }
+          [ -f "$ARM_UPDATER_FILE" ] || { echo "Missing macOS arm64 updater file pair"; exit 1; }
+          [ -f "$X64_UPDATER_FILE" ] || { echo "Missing macOS x64 updater file pair"; exit 1; }
+
+          WIN_EXE_NAME="$(basename "$WIN_EXE")"
+          MAC_DMG_NAME="${WIN_EXE_NAME%.exe}.dmg"
+
+          cp "$WIN_EXE" "release-assets/$WIN_EXE_NAME"
+          cp "$MAC_DMG_SRC" "release-assets/$MAC_DMG_NAME"
+
+          cp "$WIN_UPDATER_FILE" release-assets/
+          cp "$WIN_SIG" release-assets/
+          cp "$ARM_UPDATER_FILE" release-assets/
+          cp "$ARM_SIG" release-assets/
+          cp "$X64_UPDATER_FILE" release-assets/
+          cp "$X64_SIG" release-assets/
+
+          VERSION="${GITHUB_REF_NAME#v}"
+          NOW_UTC="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+
+          WIN_UPDATER_NAME="$(basename "$WIN_UPDATER_FILE")"
+          ARM_UPDATER_NAME="$(basename "$ARM_UPDATER_FILE")"
+          X64_UPDATER_NAME="$(basename "$X64_UPDATER_FILE")"
+
+          WIN_SIG_VAL="$(tr -d '\r\n' < "$WIN_SIG")"
+          ARM_SIG_VAL="$(tr -d '\r\n' < "$ARM_SIG")"
+          X64_SIG_VAL="$(tr -d '\r\n' < "$X64_SIG")"
+
+          cat > release-assets/latest.json <<EOF
+          {
+            "version": "$VERSION",
+            "notes": "Release $VERSION",
+            "pub_date": "$NOW_UTC",
+            "platforms": {
+              "windows-x86_64": {
+                "signature": "$WIN_SIG_VAL",
+                "url": "https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/$WIN_UPDATER_NAME"
+              },
+              "darwin-aarch64": {
+                "signature": "$ARM_SIG_VAL",
+                "url": "https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/$ARM_UPDATER_NAME"
+              },
+              "darwin-x86_64": {
+                "signature": "$X64_SIG_VAL",
+                "url": "https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/$X64_UPDATER_NAME"
+              }
+            }
+          }
+          EOF
+
+          ls -la release-assets
+
+      - name: Create or update GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            --title "$GITHUB_REF_NAME" \
+            --notes "Automated multi-platform release for $GITHUB_REF_NAME" \
+            || true
+
+      - name: Upload assets to release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload "$GITHUB_REF_NAME" release-assets/* --clobber

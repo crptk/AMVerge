@@ -2,9 +2,7 @@ name: CI
 
 on:
   push:
-    tags:
-      - "v*"
-
+    
 jobs:
   check:
     runs-on: windows-latest
