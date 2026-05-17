@@ -94,25 +94,30 @@ async function main() {
   const baseLib = path.join(tauriSidecarDir, "_internal", "base_library.zip");
   const ffmpegName = isWindows ? "ffmpeg.exe" : "ffmpeg";
   const ffprobeName = isWindows ? "ffprobe.exe" : "ffprobe";
+  const internalDir = path.join(tauriSidecarDir, "_internal");
 
-  const ffmpegCandidates = [
-    path.join(tauriSidecarDir, "_internal", ffmpegName),
-    path.join(tauriSidecarDir, ffmpegName),
-  ];
-  const ffprobeCandidates = [
-    path.join(tauriSidecarDir, "_internal", ffprobeName),
-    path.join(tauriSidecarDir, ffprobeName),
-  ];
+  async function ensureInternalTool(toolName) {
+    const internalPath = path.join(internalDir, toolName);
+    const rootPath = path.join(tauriSidecarDir, toolName);
 
-  async function resolveExisting(candidates) {
-    for (const candidate of candidates) {
-      try {
-        const stat = await fs.stat(candidate);
-        if (stat.isFile()) return candidate;
-      } catch {
-        // Continue searching.
-      }
+    try {
+      const stat = await fs.stat(internalPath);
+      if (stat.isFile()) return internalPath;
+    } catch {
+      // Continue to root fallback.
     }
+
+    try {
+      const rootStat = await fs.stat(rootPath);
+      if (rootStat.isFile()) {
+        await fs.mkdir(internalDir, { recursive: true });
+        await fs.copyFile(rootPath, internalPath);
+        return internalPath;
+      }
+    } catch {
+      // Missing in both root and _internal.
+    }
+
     return null;
   }
 
@@ -123,10 +128,10 @@ async function main() {
     const baseStat = await fs.stat(baseLib);
     if (!baseStat.isFile()) throw new Error("base_library.zip is not a file");
 
-    const ffmpegPath = await resolveExisting(ffmpegCandidates);
+    const ffmpegPath = await ensureInternalTool(ffmpegName);
     if (!ffmpegPath) throw new Error("ffmpeg sidecar binary is missing");
 
-    const ffprobePath = await resolveExisting(ffprobeCandidates);
+    const ffprobePath = await ensureInternalTool(ffprobeName);
     if (!ffprobePath) throw new Error("ffprobe sidecar binary is missing");
   } catch {
     throw new Error(
