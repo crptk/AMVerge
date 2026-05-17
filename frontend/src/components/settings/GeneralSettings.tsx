@@ -223,24 +223,6 @@ export default function GeneralSettings({
           }
         />
 
-        <SettingRow
-          label="Clear Episode Panel"
-          description="Remove all episodes from the panel and delete their cached files on disk."
-          control={
-            <div className="settings-control">
-              <button
-                className="buttons emergency"
-                type="button"
-                onClick={() => setShowClearPanelConfirm(true)}
-                style={{ width: "auto", padding: "0 16px", marginBottom: 0, color: "red" }}
-                disabled={loading || clearingPanel}
-              >
-                {clearingPanel ? "Clearing..." : "Clear Episode Panel"}
-              </button>
-            </div>
-          }
-        />
-
         {showFactoryResetConfirm && (
           <div
             className="episode-modal-overlay"
