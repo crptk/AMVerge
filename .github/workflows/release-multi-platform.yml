@@ -167,7 +167,7 @@ jobs:
             sidecar_dir: backend_script-aarch64-apple-darwin
             app_artifact_name: amverge-macos-arm64-app
             updater_artifact_name: amverge-macos-arm64-updater
-          - runner: macos-14
+          - runner: macos-13
             arch_label: intel
             rust_target: x86_64-apple-darwin
             tauri_config: tauri.macos.intel.conf.json
@@ -231,12 +231,47 @@ jobs:
           cp "$(which ffprobe)" backend/bin/ffprobe
           chmod +x backend/bin/ffmpeg backend/bin/ffprobe
 
+          echo "Validating FFmpeg architecture for target ${{ matrix.rust_target }}"
+          FFMPEG_INFO="$(file backend/bin/ffmpeg)"
+          FFPROBE_INFO="$(file backend/bin/ffprobe)"
+          echo "$FFMPEG_INFO"
+          echo "$FFPROBE_INFO"
+
+          if [ "${{ matrix.rust_target }}" = "x86_64-apple-darwin" ]; then
+            echo "$FFMPEG_INFO" | grep -q "x86_64" || { echo "ffmpeg arch mismatch: expected x86_64"; exit 1; }
+            echo "$FFPROBE_INFO" | grep -q "x86_64" || { echo "ffprobe arch mismatch: expected x86_64"; exit 1; }
+          else
+            echo "$FFMPEG_INFO" | grep -q "arm64" || { echo "ffmpeg arch mismatch: expected arm64"; exit 1; }
+            echo "$FFPROBE_INFO" | grep -q "arm64" || { echo "ffprobe arch mismatch: expected arm64"; exit 1; }
+          fi
+
       - name: Build Python sidecar
         working-directory: frontend
         run: node scripts/build-sidecar.mjs --target ${{ matrix.rust_target }}
 
       - name: Verify macOS sidecar exists
-        run: ls -la frontend/src-tauri/bin/${{ matrix.sidecar_dir }}
+        run: |
+          ls -la frontend/src-tauri/bin/${{ matrix.sidecar_dir }}
+
+          SIDECAR_FFMPEG="frontend/src-tauri/bin/${{ matrix.sidecar_dir }}/_internal/ffmpeg"
+          SIDECAR_FFPROBE="frontend/src-tauri/bin/${{ matrix.sidecar_dir }}/_internal/ffprobe"
+
+          [ -f "$SIDECAR_FFMPEG" ] || { echo "Missing sidecar ffmpeg at $SIDECAR_FFMPEG"; exit 1; }
+          [ -f "$SIDECAR_FFPROBE" ] || { echo "Missing sidecar ffprobe at $SIDECAR_FFPROBE"; exit 1; }
+
+          echo "Validating sidecar FFmpeg architecture for target ${{ matrix.rust_target }}"
+          SIDECAR_FFMPEG_INFO="$(file "$SIDECAR_FFMPEG")"
+          SIDECAR_FFPROBE_INFO="$(file "$SIDECAR_FFPROBE")"
+          echo "$SIDECAR_FFMPEG_INFO"
+          echo "$SIDECAR_FFPROBE_INFO"
+
+          if [ "${{ matrix.rust_target }}" = "x86_64-apple-darwin" ]; then
+            echo "$SIDECAR_FFMPEG_INFO" | grep -q "x86_64" || { echo "sidecar ffmpeg arch mismatch: expected x86_64"; exit 1; }
+            echo "$SIDECAR_FFPROBE_INFO" | grep -q "x86_64" || { echo "sidecar ffprobe arch mismatch: expected x86_64"; exit 1; }
+          else
+            echo "$SIDECAR_FFMPEG_INFO" | grep -q "arm64" || { echo "sidecar ffmpeg arch mismatch: expected arm64"; exit 1; }
+            echo "$SIDECAR_FFPROBE_INFO" | grep -q "arm64" || { echo "sidecar ffprobe arch mismatch: expected arm64"; exit 1; }
+          fi
 
       - name: Build macOS app bundle
         working-directory: frontend/src-tauri
@@ -629,22 +664,43 @@ jobs:
           WIN_EXE_NAME="$(basename "$WIN_EXE")"
           MAC_DMG_NAME="${WIN_EXE_NAME%.exe}.dmg"
 
+          WIN_UPDATER_NAME="$(basename "$WIN_UPDATER_FILE")"
+          WIN_SIG_NAME="$(basename "$WIN_SIG")"
+
+          ARM_UPDATER_BASENAME="$(basename "$ARM_UPDATER_FILE")"
+          ARM_SIG_BASENAME="$(basename "$ARM_SIG")"
+          X64_UPDATER_BASENAME="$(basename "$X64_UPDATER_FILE")"
+          X64_SIG_BASENAME="$(basename "$X64_SIG")"
+
+          ARM_UPDATER_NAME="darwin-aarch64-${ARM_UPDATER_BASENAME}"
+          ARM_SIG_NAME="darwin-aarch64-${ARM_SIG_BASENAME}"
+          X64_UPDATER_NAME="darwin-x86_64-${X64_UPDATER_BASENAME}"
+          X64_SIG_NAME="darwin-x86_64-${X64_SIG_BASENAME}"
+
+          if [ "$ARM_UPDATER_NAME" = "$X64_UPDATER_NAME" ] || [ "$ARM_SIG_NAME" = "$X64_SIG_NAME" ]; then
+            echo "macOS updater artifact naming collision detected"
+            exit 1
+          fi
+
           cp "$WIN_EXE" "release-assets/$WIN_EXE_NAME"
           cp "$MAC_DMG_SRC" "release-assets/$MAC_DMG_NAME"
 
-          cp "$WIN_UPDATER_FILE" release-assets/
-          cp "$WIN_SIG" release-assets/
-          cp "$ARM_UPDATER_FILE" release-assets/
-          cp "$ARM_SIG" release-assets/
-          cp "$X64_UPDATER_FILE" release-assets/
-          cp "$X64_SIG" release-assets/
+          cp "$WIN_UPDATER_FILE" "release-assets/$WIN_UPDATER_NAME"
+          cp "$WIN_SIG" "release-assets/$WIN_SIG_NAME"
+          cp "$ARM_UPDATER_FILE" "release-assets/$ARM_UPDATER_NAME"
+          cp "$ARM_SIG" "release-assets/$ARM_SIG_NAME"
+          cp "$X64_UPDATER_FILE" "release-assets/$X64_UPDATER_NAME"
+          cp "$X64_SIG" "release-assets/$X64_SIG_NAME"
+
+          [ -f "release-assets/$WIN_UPDATER_NAME" ] || { echo "Missing staged Windows updater file"; exit 1; }
+          [ -f "release-assets/$WIN_SIG_NAME" ] || { echo "Missing staged Windows updater signature"; exit 1; }
+          [ -f "release-assets/$ARM_UPDATER_NAME" ] || { echo "Missing staged macOS arm64 updater file"; exit 1; }
+          [ -f "release-assets/$ARM_SIG_NAME" ] || { echo "Missing staged macOS arm64 updater signature"; exit 1; }
+          [ -f "release-assets/$X64_UPDATER_NAME" ] || { echo "Missing staged macOS x64 updater file"; exit 1; }
+          [ -f "release-assets/$X64_SIG_NAME" ] || { echo "Missing staged macOS x64 updater signature"; exit 1; }
 
           VERSION="${GITHUB_REF_NAME#v}"
           NOW_UTC="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
-
-          WIN_UPDATER_NAME="$(basename "$WIN_UPDATER_FILE")"
-          ARM_UPDATER_NAME="$(basename "$ARM_UPDATER_FILE")"
-          X64_UPDATER_NAME="$(basename "$X64_UPDATER_FILE")"
 
           WIN_SIG_VAL="$(tr -d '\r\n' < "$WIN_SIG")"
           ARM_SIG_VAL="$(tr -d '\r\n' < "$ARM_SIG")"

@@ -229,7 +229,9 @@ export default function ClipsContainer({ cols }: { cols?: number }) {
   return (
     <main className="clips-container" ref={containerRef}>
       {clips.length === 0 ? (
-        <p id="empty-grid">No video loaded.</p>
+        <div className="empty-grid-wrapper">
+          <p id="empty-grid">No video loaded.<br/>If no clips are displaying, try changing the episode storage path in general settings.</p>
+        </div>
       ) : (
         <div
           className="clips-grid"

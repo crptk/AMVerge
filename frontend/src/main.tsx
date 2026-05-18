@@ -12,7 +12,7 @@ async function maybeCheckForUpdatesOnStartup() {
   }
 
   try {
-    const [{ check }, { confirm }] = await Promise.all([
+    const [{ check }, { confirm, message }] = await Promise.all([
       import("@tauri-apps/plugin-updater"),
       import("@tauri-apps/plugin-dialog"),
     ]);
@@ -27,9 +27,26 @@ async function maybeCheckForUpdatesOnStartup() {
 
     if (!ok) return;
 
+    console.log(`[updater] starting install for v${update.version}`);
     await update.downloadAndInstall();
-  } catch {
-    // Swallow updater errors (offline, misconfigured endpoint/pubkey, etc.).
+    console.log(`[updater] install finished for v${update.version}`);
+
+    await message(
+      `Update v${update.version} was installed.`,
+      { title: "AMVerge Update Installed" },
+    );
+  } catch (error) {
+    // Show a visible error instead of silently dismissing the update flow.
+    const [{ message }] = await Promise.all([
+      import("@tauri-apps/plugin-dialog"),
+    ]);
+
+    const errorText = error instanceof Error ? error.message : "Update download/install failed.";
+    console.error("[updater] update flow failed:", error);
+    await message(
+      `Could not install the update. ${errorText}`,
+      { title: "AMVerge Update Failed" },
+    );
   }
 }
 
