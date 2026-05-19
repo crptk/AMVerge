@@ -439,8 +439,6 @@ pub(super) fn ffmpeg_reencode_args(
         "0:v:0".to_string(),
         "-map".to_string(),
         "0:a?".to_string(),
-        "-map_metadata".to_string(),
-        "-1".to_string(),
     ]);
 
     if let Some(seek) = output_seek {

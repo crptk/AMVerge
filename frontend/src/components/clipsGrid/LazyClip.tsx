@@ -104,8 +104,6 @@ export const LazyClip = memo(function LazyClip({
       return;
     }
 
-    console.log(`Needs HEVC Proxy? ${needsHevcProxy}`)
-    console.log(`Video is HEVC? ${videoIsHEVC}`)
     const wantsProxyNow =
       needsHevcProxy &&
       isVisible &&

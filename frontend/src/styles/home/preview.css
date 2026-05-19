@@ -327,6 +327,14 @@
     transition: border-color 0.2s ease;
 }
 
+.merge-clips-input {
+    /* background: red; */
+    height: 25px;
+    width: 80px;
+    font-size: 20px;
+    text-align: center;
+}
+
 .export-dir-input:focus {
     border-color: var(--accent);
 }

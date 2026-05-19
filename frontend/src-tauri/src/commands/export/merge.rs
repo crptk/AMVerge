@@ -55,6 +55,11 @@ fn is_gpu_session_open_error(error_text: &str) -> bool {
         || text.contains("invalid argument")
 }
 
+fn append_reencode_timing_args(args: &mut Vec<String>) {
+    args.extend(["-enc_time_base:v".to_string(), "demux".to_string()]);
+    args.extend(["-fps_mode".to_string(), "passthrough".to_string()]);
+}
+
 pub(super) async fn run_merge_export(
     runtime: &ExportRuntime,
     clips: &[String],
@@ -211,8 +216,6 @@ pub(super) async fn run_merge_export(
         "0:v:0".into(),
         "-map".into(),
         "0:a?".into(),
-        "-map_metadata".into(),
-        "-1".into(),
     ];
 
     if use_stream_copy {
@@ -263,9 +266,8 @@ pub(super) async fn run_merge_export(
             .map(|o| o.codec.as_str())
             .unwrap_or("h264_high");
         append_container_codec_tag(&mut args, codec_for_tag, &ext_for_tag);
-        args.extend(["-enc_time_base:v".into(), "demux".into()]);
+        append_reencode_timing_args(&mut args);
         append_audio_encode_args(&mut args, runtime.export_options.as_ref());
-        args.extend(["-fps_mode".into(), "passthrough".into()]);
     }
 
     let ext = save_path
@@ -341,8 +343,6 @@ pub(super) async fn run_merge_export(
                 "0:v:0".to_string(),
                 "-map".to_string(),
                 "0:a?".to_string(),
-                "-map_metadata".to_string(),
-                "-1".to_string(),
                 "-vf".to_string(),
                 "setpts=PTS-STARTPTS".to_string(),
             ];
@@ -363,9 +363,8 @@ pub(super) async fn run_merge_export(
                     .unwrap_or("h264_high");
                 append_container_codec_tag(&mut retry_args, codec_for_tag, &ext);
             }
-            retry_args.extend(["-enc_time_base:v".to_string(), "demux".to_string()]);
+            append_reencode_timing_args(&mut retry_args);
             append_audio_encode_args(&mut retry_args, runtime.export_options.as_ref());
-            retry_args.extend(["-fps_mode".to_string(), "passthrough".to_string()]);
 
             if ext == "mp4" || ext == "mov" {
                 retry_args.extend(["-movflags".to_string(), "+faststart".to_string()]);
@@ -429,8 +428,6 @@ pub(super) async fn run_merge_export(
                         "0:v:0".to_string(),
                         "-map".to_string(),
                         "0:a?".to_string(),
-                        "-map_metadata".to_string(),
-                        "-1".to_string(),
                         "-vf".to_string(),
                         "setpts=PTS-STARTPTS".to_string(),
                     ];
@@ -450,9 +447,8 @@ pub(super) async fn run_merge_export(
                             .unwrap_or("h264_high");
                         append_container_codec_tag(&mut cpu_args, codec_for_tag, &ext);
                     }
-                    cpu_args.extend(["-enc_time_base:v".to_string(), "demux".to_string()]);
+                    append_reencode_timing_args(&mut cpu_args);
                     append_audio_encode_args(&mut cpu_args, cpu_options.as_ref());
-                    cpu_args.extend(["-fps_mode".to_string(), "passthrough".to_string()]);
 
                     if ext == "mp4" || ext == "mov" {
                         cpu_args.extend(["-movflags".to_string(), "+faststart".to_string()]);
@@ -536,8 +532,6 @@ pub(super) async fn run_merge_export(
                 "0:v:0".to_string(),
                 "-map".to_string(),
                 "0:a?".to_string(),
-                "-map_metadata".to_string(),
-                "-1".to_string(),
                 "-vf".to_string(),
                 "setpts=PTS-STARTPTS".to_string(),
             ];
@@ -557,9 +551,8 @@ pub(super) async fn run_merge_export(
                     .unwrap_or("h264_high");
                 append_container_codec_tag(&mut cpu_args, codec_for_tag, &ext);
             }
-            cpu_args.extend(["-enc_time_base:v".to_string(), "demux".to_string()]);
+            append_reencode_timing_args(&mut cpu_args);
             append_audio_encode_args(&mut cpu_args, cpu_options.as_ref());
-            cpu_args.extend(["-fps_mode".to_string(), "passthrough".to_string()]);
 
             if ext == "mp4" || ext == "mov" {
                 cpu_args.extend(["-movflags".to_string(), "+faststart".to_string()]);
@@ -649,8 +642,6 @@ fn build_merge_segment_args(
         "0:v:0".to_string(),
         "-map".to_string(),
         "0:a?".to_string(),
-        "-map_metadata".to_string(),
-        "-1".to_string(),
     ];
 
     if stream_copy {
@@ -670,9 +661,8 @@ fn build_merge_segment_args(
         }
         append_video_encode_args(&mut args, options, gpu_encoder);
         append_container_codec_tag(&mut args, codec_for_tag, ext);
-        args.extend(["-enc_time_base:v".to_string(), "demux".to_string()]);
+        append_reencode_timing_args(&mut args);
         append_audio_encode_args(&mut args, options);
-        args.extend(["-fps_mode".to_string(), "passthrough".to_string()]);
     }
 
     args.extend([
@@ -1008,8 +998,6 @@ async fn run_segmented_merge(
         "0:v:0".to_string(),
         "-map".to_string(),
         "0:a?".to_string(),
-        "-map_metadata".to_string(),
-        "-1".to_string(),
         "-c".to_string(),
         "copy".to_string(),
     ];

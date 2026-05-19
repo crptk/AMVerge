@@ -17,11 +17,13 @@ export type GeneralSettings = {
     episodesPath: string | null;
     exportFormat: "mp4" | "mkv" | "mov" | "xml";
     exportPath: string | null;
+    mergeClipsEnabled: boolean;
     openFileLocationAfterExport: boolean;
     exportProfiles: ExportProfile[];
     customProfileIcons: string[];
     activeExportProfileId: string;
     audioPlaybackHover: boolean;
+    previewAudioEnabled: boolean;
     playbackVolume: number;
     discordRPCEnabled: boolean;
     rpcShowFilename: boolean;
@@ -33,6 +35,7 @@ export type GeneralSettingsStore = GeneralSettings & {
     setEpisodesPath: (path: string | null) => void;
     setExportFormat: (format: ExportFormat) => void;
     setExportPath: (path: string | null) => void;
+    setMergeClipsEnabled: (enabled: boolean) => void;
     setOpenFileLocationAfterExport: (enabled: boolean) => void;
     setActiveExportProfileId: (profileId: string) => void;
     addExportProfile: () => void;
@@ -41,6 +44,7 @@ export type GeneralSettingsStore = GeneralSettings & {
     addCustomProfileIcon: (iconPath: string) => void;
     removeCustomProfileIcon: (iconPath: string) => void;
     setAudioPlaybackHover: (enabled: boolean) => void;
+    setPreviewAudioEnabled: (enabled: boolean) => void;
     setPlaybackVolume: (volume: number) => void;
     setDiscordRPCEnabled: (enabled: boolean) => void;
     setRpcShowFilename: (enabled: boolean) => void;
@@ -53,11 +57,13 @@ export const DEFAULT_GENERAL_SETTINGS: GeneralSettings = {
     episodesPath: null,
     exportFormat: "mp4",
     exportPath: null,
+    mergeClipsEnabled: true,
     openFileLocationAfterExport: true,
     exportProfiles: DEFAULT_EXPORT_PROFILES.map((profile) => ({ ...profile })),
     customProfileIcons: [],
     activeExportProfileId: DEFAULT_EXPORT_PROFILE_ID,
     audioPlaybackHover: false,
+    previewAudioEnabled: false,
     playbackVolume: 0.2,
     discordRPCEnabled: true,
     rpcShowFilename: true,
@@ -73,6 +79,7 @@ export const useGeneralSettingsStore = create<GeneralSettingsStore>()(
             setEpisodesPath: (path) => set({ episodesPath: path }),
             setExportFormat: (format) => set({ exportFormat: format }),
             setExportPath: (path) => set({ exportPath: path }),
+            setMergeClipsEnabled: (enabled) => set({ mergeClipsEnabled: enabled }),
             setOpenFileLocationAfterExport: (enabled) => set({ openFileLocationAfterExport: enabled }),
             setActiveExportProfileId: (profileId) =>
                 set((state) => {
@@ -152,6 +159,8 @@ export const useGeneralSettingsStore = create<GeneralSettingsStore>()(
                 }),
             setAudioPlaybackHover: (enabled) =>
                 set({ audioPlaybackHover: enabled }),
+            setPreviewAudioEnabled: (enabled) =>
+                set({ previewAudioEnabled: enabled }),
             setPlaybackVolume: (volume) => set({ playbackVolume: volume }),
             setDiscordRPCEnabled: (enabled) =>
                 set({ discordRPCEnabled: enabled }),

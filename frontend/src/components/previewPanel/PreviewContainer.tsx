@@ -16,7 +16,6 @@ import { renderProfileIcon } from "../../features/export/profileIconUtils.tsx";
 import {
   getActiveExportProfile,
   getExportProfileSummary,
-  supportsClipMerge,
 } from "../../features/export/profiles.ts";
 type PreviewContainerProps = {
   sourceClip: string | null;
@@ -40,6 +39,8 @@ export default function PreviewContainer(props: PreviewContainerProps) {
   const setSettingsTab = useUIStateStore(s => s.setSettingsTab);
   const generalSettings = useGeneralSettingsStore();
   const setActiveExportProfileId = useGeneralSettingsStore(s => s.setActiveExportProfileId);
+  const mergeClipsEnabled = useGeneralSettingsStore(s => s.mergeClipsEnabled);
+  const setMergeClipsEnabled = useGeneralSettingsStore(s => s.setMergeClipsEnabled);
   const { handleExport, handlePickExportDir } = useImportExport();
 
   const defaultMergedName = (clips[0]?.originalName || "episode") + "_merged";
@@ -52,15 +53,12 @@ export default function PreviewContainer(props: PreviewContainerProps) {
       generalSettings.exportProfiles.map((profile) => ({
         value: profile.id,
         label: profile.name.trim() || "Untitled Profile",
-        description: supportsClipMerge(profile.workflow)
-          ? `${getExportProfileSummary(profile)} • ${profile.mergeEnabled ? "MERGE" : "CLIPS"}`
-          : getExportProfileSummary(profile),
+        description: getExportProfileSummary(profile),
         icon: renderProfileIcon(profile),
       })),
     [generalSettings.exportProfiles]
   );
 
-  const canMergeWithActiveProfile = supportsClipMerge(activeExportProfile.workflow) && activeExportProfile.mergeEnabled;
   const hasSelectedClips = selectedClips.size > 0;
 
   const sourceClipObj = props.sourceClip ? clips.find(c => c.src === props.sourceClip) : null;
@@ -79,7 +77,7 @@ export default function PreviewContainer(props: PreviewContainerProps) {
   const onExportClick = () => {
     if (!hasSelectedClips) return;
     const targetClips = selectedClips;
-    if (canMergeWithActiveProfile) {
+    if (mergeClipsEnabled) {
       setShowMergeNameModal(true);
     } else {
       handleExport(targetClips, false);
@@ -167,6 +165,23 @@ export default function PreviewContainer(props: PreviewContainerProps) {
             >
               <FaFolderOpen />
             </button>
+          </div>
+        </div>
+
+        <div>
+          <div className="export-dir-row">
+            <span className="merge-clips-input" style={{ display: "flex", alignItems: "center" }}>
+              Merge Clips
+            </span>
+            <label className="custom-checkbox" aria-label="Merge clips">
+              <input
+                type="checkbox"
+                className="checkbox"
+                checked={mergeClipsEnabled}
+                onChange={(event) => setMergeClipsEnabled(event.target.checked)}
+              />
+              <span className="checkmark" />
+            </label>
           </div>
         </div>
 

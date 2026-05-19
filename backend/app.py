@@ -271,7 +271,6 @@ def _run_ffmpeg_segment_chunk(
         "-i", video_path,
         "-map", "0:v:0",
         "-map", "0:a?",
-        "-map_metadata", "-1",
         "-c", "copy",
         "-f", "segment",
         "-segment_times", ",".join(format_timestamp(pt) for pt in cut_points),

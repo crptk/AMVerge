@@ -167,7 +167,7 @@ jobs:
             sidecar_dir: backend_script-aarch64-apple-darwin
             app_artifact_name: amverge-macos-arm64-app
             updater_artifact_name: amverge-macos-arm64-updater
-          - runner: macos-13
+          - runner: macos-14
             arch_label: intel
             rust_target: x86_64-apple-darwin
             tauri_config: tauri.macos.intel.conf.json
@@ -225,10 +225,22 @@ jobs:
 
       - name: Install FFmpeg binaries
         run: |
-          brew install ffmpeg
           mkdir -p backend/bin
-          cp "$(which ffmpeg)" backend/bin/ffmpeg
-          cp "$(which ffprobe)" backend/bin/ffprobe
+
+          if [ "${{ matrix.rust_target }}" = "x86_64-apple-darwin" ]; then
+            echo "Installing x86_64 ffmpeg/ffprobe from Evermeet for Intel target"
+            curl -fL --retry 3 "https://evermeet.cx/ffmpeg/getrelease/zip" -o backend/bin/ffmpeg.zip
+            curl -fL --retry 3 "https://evermeet.cx/ffmpeg/getrelease/ffprobe/zip" -o backend/bin/ffprobe.zip
+            unzip -j -o backend/bin/ffmpeg.zip -d backend/bin
+            unzip -j -o backend/bin/ffprobe.zip -d backend/bin
+            rm -f backend/bin/ffmpeg.zip backend/bin/ffprobe.zip
+          else
+            echo "Installing arm64 ffmpeg/ffprobe from Homebrew for Apple Silicon target"
+            brew install ffmpeg
+            cp "$(which ffmpeg)" backend/bin/ffmpeg
+            cp "$(which ffprobe)" backend/bin/ffprobe
+          fi
+
           chmod +x backend/bin/ffmpeg backend/bin/ffprobe
 
           echo "Validating FFmpeg architecture for target ${{ matrix.rust_target }}"

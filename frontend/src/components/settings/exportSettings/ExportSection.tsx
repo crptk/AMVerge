@@ -12,7 +12,6 @@ import {
   isCodecGpuEligible,
   normalizeExportProfile,
   supportsAudioMode,
-  supportsClipMerge,
   supportsContainerSelection,
   usesEncoding,
   type ExportProfile,
@@ -81,7 +80,6 @@ export default function ExportSection() {
   );
 
   const encodingWorkflow = usesEncoding(activeProfile.workflow);
-  const showMergeSetting = supportsClipMerge(activeProfile.workflow);
   const showAudioSetting = supportsAudioMode(activeProfile.workflow);
   const showContainerSetting = supportsContainerSelection(activeProfile.workflow);
 
@@ -293,24 +291,6 @@ export default function ExportSection() {
             </label>
           }
         />
-
-        {showMergeSetting && (
-          <SettingRow
-            label="Merge Clips"
-            description="When enabled, selected clips are merged into a single output file."
-            control={
-              <label className="custom-checkbox" aria-label="Merge clips">
-                <input
-                  type="checkbox"
-                  className="checkbox"
-                  checked={activeProfile.mergeEnabled}
-                  onChange={(event) => updateActiveProfile({ mergeEnabled: event.target.checked })}
-                />
-                <span className="checkmark" />
-              </label>
-            }
-          />
-        )}
 
         {(encodingWorkflow || showAudioSetting) && (
           <ExportCodecSettings

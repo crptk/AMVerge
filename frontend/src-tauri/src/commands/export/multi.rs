@@ -46,8 +46,6 @@ fn build_copy_args(
         "0:v:0".into(),
         "-map".into(),
         "0:a?".into(),
-        "-map_metadata".into(),
-        "-1".into(),
         "-c".into(),
         "copy".into(),
     ]);

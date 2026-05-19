@@ -73,7 +73,7 @@ export default function VideoPlayer({
                     src={effectiveClip ? `${convertFileSrc(effectiveClip)}?v=${importToken}` : undefined}
                     poster={(externalTime === undefined) && posterPath ? `${convertFileSrc(posterPath)}?v=${importToken}` : undefined}
                     preload="metadata"
-                    muted
+                    muted={isMuted}
                     loop
                     draggable={false}
                     onDragStart={(e) => {
