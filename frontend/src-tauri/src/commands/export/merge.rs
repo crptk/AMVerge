@@ -127,7 +127,7 @@ pub(super) async fn run_merge_export(
 
     emit_export_progress(&runtime.app, 50, "Merging...", runtime.export_start_time);
 
-    let mut remux_merge_fallback_reason: Option<String> = None;
+    let mut remux_precheck_note: Option<String> = None;
     if runtime.remux_workflow {
         for clip in clips {
             if is_export_cancel_requested(&runtime.abort_requested) {
@@ -139,8 +139,8 @@ pub(super) async fn run_merge_export(
                 .ok()
                 .flatten();
             if let Some(ms) = leading_gap_ms.filter(|ms| *ms >= 1) {
-                remux_merge_fallback_reason = Some(format!(
-                    "leading gap={}ms detected on {}; using merge re-encode",
+                remux_precheck_note = Some(format!(
+                    "leading gap={}ms detected on {}; will still try stream-copy merge first",
                     ms,
                     file_name_only(clip)
                 ));
@@ -155,8 +155,8 @@ pub(super) async fn run_merge_export(
                     Ok(None) | Err(_) => false,
                 };
             if !starts_with_presentable_key {
-                remux_merge_fallback_reason = Some(format!(
-                    "first displayed frame is not key/I on {}; using merge re-encode",
+                remux_precheck_note = Some(format!(
+                    "first displayed frame is not key/I on {}; will still try stream-copy merge first",
                     file_name_only(clip)
                 ));
                 break;
@@ -170,8 +170,8 @@ pub(super) async fn run_merge_export(
                     Ok(None) | Err(_) => false,
                 };
             if !first_packet_copy_safe {
-                remux_merge_fallback_reason = Some(format!(
-                    "first video packet not copy-safe (needs sync/preroll) on {}; using merge re-encode",
+                remux_precheck_note = Some(format!(
+                    "first video packet not copy-safe (needs sync/preroll) on {}; will still try stream-copy merge first",
                     file_name_only(clip)
                 ));
                 break;
@@ -179,10 +179,12 @@ pub(super) async fn run_merge_export(
         }
     }
 
-    let use_stream_copy = runtime.remux_workflow && remux_merge_fallback_reason.is_none();
+    // Remux workflow should always attempt stream-copy first.
+    // If ffmpeg copy fails, existing retry paths fallback to re-encode.
+    let use_stream_copy = runtime.remux_workflow;
 
-    if let Some(reason) = &remux_merge_fallback_reason {
-        console_log("EXPORT|merge", reason);
+    if let Some(note) = &remux_precheck_note {
+        console_log("EXPORT|merge", note);
     }
 
     if clips.len() > 1 {
