@@ -23,6 +23,7 @@ export type GeneralSettings = {
     customProfileIcons: string[];
     activeExportProfileId: string;
     audioPlaybackHover: boolean;
+    previewAudioEnabled: boolean;
     playbackVolume: number;
     discordRPCEnabled: boolean;
     rpcShowFilename: boolean;
@@ -43,6 +44,7 @@ export type GeneralSettingsStore = GeneralSettings & {
     addCustomProfileIcon: (iconPath: string) => void;
     removeCustomProfileIcon: (iconPath: string) => void;
     setAudioPlaybackHover: (enabled: boolean) => void;
+    setPreviewAudioEnabled: (enabled: boolean) => void;
     setPlaybackVolume: (volume: number) => void;
     setDiscordRPCEnabled: (enabled: boolean) => void;
     setRpcShowFilename: (enabled: boolean) => void;
@@ -61,6 +63,7 @@ export const DEFAULT_GENERAL_SETTINGS: GeneralSettings = {
     customProfileIcons: [],
     activeExportProfileId: DEFAULT_EXPORT_PROFILE_ID,
     audioPlaybackHover: false,
+    previewAudioEnabled: false,
     playbackVolume: 0.2,
     discordRPCEnabled: true,
     rpcShowFilename: true,
@@ -156,6 +159,8 @@ export const useGeneralSettingsStore = create<GeneralSettingsStore>()(
                 }),
             setAudioPlaybackHover: (enabled) =>
                 set({ audioPlaybackHover: enabled }),
+            setPreviewAudioEnabled: (enabled) =>
+                set({ previewAudioEnabled: enabled }),
             setPlaybackVolume: (volume) => set({ playbackVolume: volume }),
             setDiscordRPCEnabled: (enabled) =>
                 set({ discordRPCEnabled: enabled }),

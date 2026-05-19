@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 
 import { invoke } from "@tauri-apps/api/core";
+import { useGeneralSettingsStore } from "../../../stores/settingsStore";
 
 type UseVideoPlayerArgs = {
     selectedClip: string;
@@ -42,7 +43,10 @@ export function useVideoPlayer({
     const [mergedPreviewClip, setMergedPreviewClip] = useState<string | null>(null);
     const [isVideoReady, setIsVideoReady] = useState(false);
     const [isPlaying, setIsPlaying] = useState(true);
-    const [isMuted, setIsMuted] = useState(true);
+    const previewAudioEnabled = useGeneralSettingsStore((s) => s.previewAudioEnabled);
+    const playbackVolume = useGeneralSettingsStore((s) => s.playbackVolume);
+    const setPreviewAudioEnabled = useGeneralSettingsStore((s) => s.setPreviewAudioEnabled);
+    const isMuted = !previewAudioEnabled;
     const [currentTime, setCurrentTime] = useState(0);
     const [duration, setDuration] = useState(0);
     const [isScrubbing, setIsScrubbing] = useState(false);
@@ -131,6 +135,11 @@ export function useVideoPlayer({
         });
     };
 
+    const applyPreviewAudioSettings = useCallback((video: HTMLVideoElement) => {
+        video.muted = !previewAudioEnabled;
+        video.volume = playbackVolume;
+    }, [previewAudioEnabled, playbackVolume]);
+
     const seekFromMouseEvent = (e: MouseEvent | React.MouseEvent, target: HTMLDivElement) => {
         const video = videoRef.current;
         if (!video || !duration) return;
@@ -147,21 +156,24 @@ export function useVideoPlayer({
         if (!video) return;
 
         if (video.paused) {
+            applyPreviewAudioSettings(video);
             video.play();
             setIsPlaying(true);
         } else {
             video.pause();
             setIsPlaying(false);
         }
-    }, []);
+    }, [applyPreviewAudioSettings]);
 
     const toggleMute = useCallback(() => {
         const video = videoRef.current;
         if (!video) return;
 
-        video.muted = !video.muted;
-        setIsMuted(video.muted);
-    }, []);
+        const nextAudioEnabled = video.muted;
+        setPreviewAudioEnabled(nextAudioEnabled);
+        video.muted = !nextAudioEnabled;
+        video.volume = playbackVolume;
+    }, [setPreviewAudioEnabled, playbackVolume]);
 
     const goFullScreen = useCallback(() => {
         const video = videoRef.current;
@@ -172,6 +184,7 @@ export function useVideoPlayer({
 
     const handleLoadedMetadata = (video: HTMLVideoElement) => {
         video.style.setProperty("--aspect-ratio", `${video.videoWidth} / ${video.videoHeight}`);
+        applyPreviewAudioSettings(video);
         setDuration(video.duration);
         requestFirstFrame(video);
         if (isPlaying) safePlay(video);
@@ -202,6 +215,7 @@ export function useVideoPlayer({
     };
 
     const handlePlay = (video: HTMLVideoElement) => {
+        applyPreviewAudioSettings(video);
         requestFirstFrame(video);
         setIsPlaying(true);
         setIsVideoReady(true);
@@ -438,12 +452,19 @@ export function useVideoPlayer({
         if (!video || !effectiveClip) return;
 
         setIsVideoReady(false);
+        applyPreviewAudioSettings(video);
         video.load();
 
         if (isPlaying) {
             safePlay(video);
         }
-    }, [effectiveClip]);
+    }, [effectiveClip, isPlaying, applyPreviewAudioSettings]);
+
+    useEffect(() => {
+        const video = videoRef.current;
+        if (!video) return;
+        applyPreviewAudioSettings(video);
+    }, [applyPreviewAudioSettings]);
 
     // External time seeking — waits for video to be fully loaded and ready
     useEffect(() => {
