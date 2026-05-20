@@ -56,8 +56,8 @@ fn is_gpu_session_open_error(error_text: &str) -> bool {
 }
 
 fn append_reencode_timing_args(args: &mut Vec<String>) {
-    args.extend(["-enc_time_base:v".to_string(), "demux".to_string()]);
-    args.extend(["-fps_mode".to_string(), "passthrough".to_string()]);
+    // Force constant frame rate on re-encode outputs.
+    args.extend(["-fps_mode:v:0".to_string(), "cfr".to_string()]);
 }
 
 pub(super) async fn run_merge_export(

@@ -454,9 +454,9 @@ pub(super) fn ffmpeg_reencode_args(
     }
 
     append_video_encode_args(&mut args, options, gpu_encoder);
-    args.extend(["-enc_time_base:v".to_string(), "demux".to_string()]);
     append_audio_encode_args(&mut args, options);
-    args.extend(["-fps_mode".to_string(), "passthrough".to_string()]);
+    // Force constant frame rate on re-encode outputs.
+    args.extend(["-fps_mode:v:0".to_string(), "cfr".to_string()]);
 
     let ext = Path::new(output)
         .extension()
