@@ -56,7 +56,6 @@ fn is_gpu_session_open_error(error_text: &str) -> bool {
 }
 
 fn append_reencode_timing_args(args: &mut Vec<String>) {
-    // Force constant frame rate on re-encode outputs.
     args.extend(["-fps_mode:v:0".to_string(), "cfr".to_string()]);
 }
 
@@ -187,7 +186,10 @@ pub(super) async fn run_merge_export(
         console_log("EXPORT|merge", note);
     }
 
-    if clips.len() > 1 {
+    // Segmented mode is reserved for re-encode merges.
+    // For remux/stream-copy merges, use direct concat copy first (with existing fallback),
+    // which provides steadier progress and avoids per-segment stall behavior.
+    if clips.len() > 1 && !use_stream_copy {
         let parallel_workers = runtime
             .export_options
             .as_ref()

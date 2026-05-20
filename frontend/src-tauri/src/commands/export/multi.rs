@@ -7,10 +7,9 @@ use std::sync::Arc;
 use crate::utils::logging::console_log;
 use crate::utils::paths::file_name_only;
 
-use super::encode::{ffmpeg_reencode_args, select_gpu_encoder_for_codec};
+use super::encode::{append_audio_encode_args, ffmpeg_reencode_args, select_gpu_encoder_for_codec};
 use super::probe::{
-    clip_first_presented_frame_is_key, clip_first_video_packet_is_copy_safe, clip_video_start_ms,
-    ffprobe_duration_ms, is_ae_copy_safe,
+    clip_video_start_ms, ffprobe_duration_ms, is_ae_copy_safe,
 };
 use super::progress::{
     emit_export_progress, export_canceled_error, is_canceled_error_text, is_export_cancel_requested,
@@ -30,10 +29,12 @@ fn format_seek_seconds(ms: u64) -> String {
 fn build_copy_args(
     input: &str,
     output: &str,
+    options: Option<&ExportOptionsPayload>,
     input_seek_ms: Option<u64>,
     bsf: Option<&str>,
 ) -> Vec<String> {
     let mut args = vec!["-y".into()];
+    let audio_mode = options.map(|o| o.audio_mode.as_str()).unwrap_or("copy");
 
     if let Some(ms) = input_seek_ms.filter(|ms| *ms > 0) {
         args.extend(["-ss".into(), format_seek_seconds(ms)]);
@@ -44,11 +45,20 @@ fn build_copy_args(
         input.to_string(),
         "-map".into(),
         "0:v:0".into(),
-        "-map".into(),
-        "0:a?".into(),
-        "-c".into(),
-        "copy".into(),
     ]);
+    if audio_mode != "none" {
+        args.extend(["-map".into(), "0:a?".into()]);
+    }
+
+    args.extend(["-c:v".into(), "copy".into()]);
+    if audio_mode == "none" {
+        args.push("-an".into());
+    } else if audio_mode == "copy" {
+        args.extend(["-c:a".into(), "copy".into()]);
+    } else {
+        append_audio_encode_args(&mut args, options);
+    }
+
     if let Some(name) = bsf {
         args.extend(["-bsf:v".into(), name.to_string()]);
     }
@@ -142,6 +152,7 @@ async fn run_one_job(
             build_copy_args(
                 &job.input,
                 &job.output,
+                runtime.export_options.as_ref(),
                 job.input_seek_ms,
                 copy_bsf_for_job(runtime, &job.output),
             ),
@@ -506,57 +517,19 @@ pub(super) async fn run_multi_export(
         let leading_gap_seek_ms = video_start_ms.filter(|ms| *ms >= 20);
 
         let copy_safe = if runtime.remux_workflow {
-            let starts_with_presentable_key =
-                match clip_first_presented_frame_is_key(runtime.ffprobe.clone(), clip.clone())
-                    .await
-                {
-                    Ok(Some(v)) => v,
-                    Ok(None) | Err(_) => false,
-                };
-
-            if !starts_with_presentable_key {
+            // Copy-first for remux workflow. Let ffmpeg be the source of truth and
+            // fall back to re-encode only on actual stream-copy failure.
+            if let Some(ms) = leading_gap_seek_ms {
                 console_log(
                     "EXPORT|remux",
                     &format!(
-                        "first displayed frame is not key/I; fallback re-encode (input={})",
+                        "normalizing leading gap via stream copy seek={}ms (input={})",
+                        ms,
                         file_name_only(clip)
                     ),
                 );
-                false
-            } else {
-                let first_packet_copy_safe = match clip_first_video_packet_is_copy_safe(
-                    runtime.ffprobe.clone(),
-                    clip.clone(),
-                )
-                .await
-                {
-                    Ok(Some(v)) => v,
-                    Ok(None) | Err(_) => false,
-                };
-
-                if !first_packet_copy_safe {
-                    console_log(
-                        "EXPORT|remux",
-                        &format!(
-                            "first video packet not copy-safe; fallback re-encode (input={})",
-                            file_name_only(clip)
-                        ),
-                    );
-                    false
-                } else {
-                if let Some(ms) = leading_gap_seek_ms {
-                    console_log(
-                        "EXPORT|remux",
-                        &format!(
-                            "normalizing leading gap via stream copy seek={}ms (input={})",
-                            ms,
-                            file_name_only(clip)
-                        ),
-                    );
-                }
-                true
-                }
             }
+            true
         } else if runtime.force_encode_workflow {
             false
         } else {
@@ -709,6 +682,7 @@ pub(super) async fn run_multi_export(
                                 build_copy_args(
                                     &job.input,
                                     &job.output,
+                                    export_options_for_run.as_ref(),
                                     job.input_seek_ms,
                                     copy_bsf_name.as_deref(),
                                 ),
