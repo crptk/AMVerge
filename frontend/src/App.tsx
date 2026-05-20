@@ -32,7 +32,8 @@ function App() {
   const batchDone = useAppStateStore((s) => s.batchDone);
   const batchCurrentFile = useAppStateStore((s) => s.batchCurrentFile);
   const bgProgress = useAppStateStore((s) => s.bgProgress);
-  const clearBgProgress = () => useAppStateStore.setState((s) => ({ ...s, bgProgress: null }));
+  const bgImportProgress = useAppStateStore((s) => s.bgImportProgress);
+  const clearBgProgress = () => useAppStateStore.setState((s) => ({ ...s, bgProgress: null, bgImportProgress: null }));
   const setProgress = useAppStateStore((s) => s.setProgress);
   const setProgressMsg = useAppStateStore((s) => s.setProgressMsg);
   const setVideoIsHEVC = useAppStateStore((s) => s.setVideoIsHEVC);
@@ -180,6 +181,11 @@ function App() {
     } catch (err) {
       console.error("abort tasks failed:", err);
     }
+  }
+
+  async function handleAbortAndCloseBgProgress() {
+    await handleAbort();
+    clearBgProgress();
   }
 
   // Effects
@@ -347,8 +353,14 @@ function App() {
             batchCurrentFile={batchCurrentFile || ""}
             onAbort={handleAbort}
           />
-        ) : bgProgress ? (
-          <BgProgressBar done={bgProgress.done} total={bgProgress.total} onClose={clearBgProgress} />
+        ) : (bgProgress || bgImportProgress) ? (
+          <BgProgressBar
+            clipDone={bgProgress?.done ?? 0}
+            clipTotal={bgProgress?.total ?? 0}
+            importDone={bgImportProgress?.done ?? 0}
+            importTotal={bgImportProgress?.total ?? 0}
+            onClose={handleAbortAndCloseBgProgress}
+          />
         ) : null
       }
       sidebarEnabled={sidebarEnabled}

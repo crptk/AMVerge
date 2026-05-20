@@ -25,6 +25,7 @@ export type AppState = {
   progress: number;
   progressMsg: string;
   bgProgress: { done: number; total: number } | null;
+  bgImportProgress: { done: number; total: number } | null;
   importToken: string;
   batchTotal: number;
   batchDone: number;
@@ -44,6 +45,7 @@ export type AppStateStore = AppState & {
   setLoading: (loading: boolean) => void;
   setProgress: (progress: number) => void;
   setProgressMsg: (msg: string) => void;
+  setBgImportProgress: (progress: SetterValue<{ done: number; total: number } | null>) => void;
   setImportToken: (token: SetterValue<string>) => void;
   setBatchTotal: (total: SetterValue<number>) => void;
   setBatchDone: (done: SetterValue<number>) => void;
@@ -64,6 +66,7 @@ export const DEFAULT_APP_STATE: AppState = {
   progress: 0,
   progressMsg: "",
   bgProgress: null,
+  bgImportProgress: null,
   importToken: "",
   batchTotal: 0,
   batchDone: 0,
@@ -85,6 +88,7 @@ export const useAppStateStore = create<AppStateStore>()((set) => ({
   setLoading: (loading) => set({ loading }),
   setProgress: (progress) => set({ progress }),
   setProgressMsg: (progressMsg) => set({ progressMsg }),
+  setBgImportProgress: (val) => set((s) => ({ bgImportProgress: resolveSetterValue(s.bgImportProgress, val) })),
   setImportToken: (val) => set((s) => ({ importToken: resolveSetterValue(s.importToken, val) })),
   setBatchTotal: (val) => set((s) => ({ batchTotal: resolveSetterValue(s.batchTotal, val) })),
   setBatchDone: (val) => set((s) => ({ batchDone: resolveSetterValue(s.batchDone, val) })),

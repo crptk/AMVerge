@@ -132,13 +132,23 @@
     font-size: 1.1rem;
     color: rgba(255, 255, 255, 0.6);
     white-space: nowrap;
+    margin: 0;
 }
 
+.bg-progress-label.header {
+    color: var(--accent);
+}
 .bg-progress-head {
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 8px;
+    cursor: grab;
+    user-select: none;
+}
+
+.bg-progress-head.dragging {
+    cursor: grabbing;
 }
 
 .bg-progress-close {

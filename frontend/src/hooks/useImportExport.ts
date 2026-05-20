@@ -35,6 +35,7 @@ export default function useImportExport(props?: ImportExportProps) {
 
   const loading = appState.loading;
   const setLoading = appState.setLoading;
+  const setBgImportProgress = appState.setBgImportProgress;
   const importToken = appState.importToken;
   const setImportToken = appState.setImportToken;
   const batchTotal = appState.batchTotal;
@@ -97,6 +98,9 @@ export default function useImportExport(props?: ImportExportProps) {
 
   const handleImport = useCallback(async (file: string | null) => {
     if (!file) return;
+    const currentState = useAppStateStore.getState();
+    if (currentState.loading || currentState.bgProgress || currentState.bgImportProgress) return;
+
     const episodeId = crypto.randomUUID();
     const gen = ++importGenRef.current;
     positionToIdRef.current = new Map();
@@ -389,16 +393,23 @@ export default function useImportExport(props?: ImportExportProps) {
   }, [appState, episodeState, generalSettings, props?.onRPCUpdate]);
 
   const handleBatchImport = useCallback(async (files: string[]) => {
+    if (files.length === 0) return;
+    const currentState = useAppStateStore.getState();
+    if (currentState.loading || currentState.bgProgress || currentState.bgImportProgress) return;
+
     const gen = ++importGenRef.current;
     abortedRef.current = false;
     const completedEpisodes: EpisodeEntry[] = [];
     try {
       appState.setProgress(0);
       appState.setProgressMsg("Starting...");
-      setLoading(true);
+      setLoading(false);
       appState.setSelectedClips(new Set());
       appState.setFocusedClip(null);
       appState.setVideoIsHEVC(null);
+      useAppStateStore.setState({ bgProgress: null });
+      setBgImportProgress({ done: 0, total: files.length });
+      setImportToken(Date.now().toString());
       setBatchTotal(files.length);
       setBatchDone(0);
       setBatchCurrentFile("");
@@ -436,6 +447,7 @@ export default function useImportExport(props?: ImportExportProps) {
 
           completedEpisodes.push(episodeEntry);
           episodeState.setEpisodes((prev) => [episodeEntry, ...prev]);
+          setBgImportProgress({ done: i + 1, total: files.length });
         } catch (err) {
           if (abortedRef.current) {
             invoke("delete_episode_cache", {
@@ -449,6 +461,7 @@ export default function useImportExport(props?: ImportExportProps) {
             episodeCacheId: episodeId,
             customPath: generalSettings.episodesPath,
           }).catch(() => { });
+          setBgImportProgress({ done: i + 1, total: files.length });
         }
       }
 
@@ -466,14 +479,19 @@ export default function useImportExport(props?: ImportExportProps) {
 
       if (importGenRef.current === gen) {
         setLoading(false);
+        setBgImportProgress(null);
+        useAppStateStore.setState({ bgProgress: null });
         setBatchTotal(0);
         setBatchDone(0);
         setBatchCurrentFile(null);
       }
     }
-  }, [appState, episodeState, generalSettings, abortedRef]);
+  }, [appState, episodeState, generalSettings, abortedRef, setBgImportProgress]);
 
   const onImportClick = useCallback(async () => {
+    const currentState = useAppStateStore.getState();
+    if (currentState.loading || currentState.bgProgress || currentState.bgImportProgress) return;
+
     const files = await open({
       multiple: true,
       filters: [{ name: "Video", extensions: ["mp4", "mkv", "mov", "avi"] }],

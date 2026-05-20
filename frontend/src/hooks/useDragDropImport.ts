@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
+import { useAppStateStore } from "../stores/appStore";
 import { useUIStateStore } from "../stores/UIStore";
 
 type UseDragDropImportProps = {
@@ -25,9 +26,15 @@ export default function useDragDropImport({
     let unlisten: (() => void) | null = null;
 
     const unlistenPromise = getCurrentWebview().onDragDropEvent((event) => {
+      const appState = useAppStateStore.getState();
+      const importBusy = appState.loading || Boolean(appState.bgProgress) || Boolean(appState.bgImportProgress);
       const type = event.payload.type;
 
       if (type === "over") {
+        if (importBusy) {
+          setIsDragging(false);
+          return;
+        }
         const paths = (event.payload as { paths?: string[] }).paths;
         const hasPaths = Array.isArray(paths) && paths.length > 0;
         setIsDragging(hasPaths);
@@ -36,6 +43,7 @@ export default function useDragDropImport({
 
       if (type === "drop") {
         setIsDragging(false);
+        if (importBusy) return;
 
         const paths = event.payload.paths;
         if (!paths || paths.length === 0) return;
