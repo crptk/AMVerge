@@ -83,7 +83,15 @@ async function main() {
     pyinstallerArgs.push("--noconsole");
   }
 
-  run(pythonExe, pyinstallerArgs, { cwd: backendDir });
+  let cmd = pythonExe;
+  let args = pyinstallerArgs;
+
+  if (process.platform === "darwin" && triple === "x86_64-apple-darwin") {
+    cmd = "arch";
+    args = ["-x86_64", pythonExe, ...pyinstallerArgs];
+  }
+
+  run(cmd, args, { cwd: backendDir });
 
   await fs.rm(tauriSidecarDir, { recursive: true, force: true });
   await fs.mkdir(tauriSidecarDir, { recursive: true });

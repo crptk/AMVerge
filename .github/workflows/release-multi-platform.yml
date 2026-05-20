@@ -216,12 +216,23 @@ jobs:
       - name: Install Tauri CLI (Rust)
         run: cargo install tauri-cli --version '^2.0'
 
+      - name: Install Rosetta 2 (Intel Mac emulation)
+        if: matrix.rust_target == 'x86_64-apple-darwin'
+        run: sudo softwareupdate --install-rosetta --agree-to-license
+
       - name: Create backend venv and install dependencies
         run: |
-          python -m venv backend/venv
-          backend/venv/bin/python -m pip install --upgrade pip
-          backend/venv/bin/pip install -r backend/requirements.txt
-          backend/venv/bin/pip install pyinstaller
+          if [ "${{ matrix.rust_target }}" = "x86_64-apple-darwin" ]; then
+            arch -x86_64 python -m venv backend/venv
+            arch -x86_64 backend/venv/bin/python -m pip install --upgrade pip
+            arch -x86_64 backend/venv/bin/pip install -r backend/requirements.txt
+            arch -x86_64 backend/venv/bin/pip install pyinstaller
+          else
+            python -m venv backend/venv
+            backend/venv/bin/python -m pip install --upgrade pip
+            backend/venv/bin/pip install -r backend/requirements.txt
+            backend/venv/bin/pip install pyinstaller
+          fi
 
       - name: Install FFmpeg binaries
         run: |
@@ -265,22 +276,28 @@ jobs:
         run: |
           ls -la frontend/src-tauri/bin/${{ matrix.sidecar_dir }}
 
+          SIDECAR_EXE="frontend/src-tauri/bin/${{ matrix.sidecar_dir }}/backend_script"
           SIDECAR_FFMPEG="frontend/src-tauri/bin/${{ matrix.sidecar_dir }}/_internal/ffmpeg"
           SIDECAR_FFPROBE="frontend/src-tauri/bin/${{ matrix.sidecar_dir }}/_internal/ffprobe"
 
+          [ -f "$SIDECAR_EXE" ] || { echo "Missing sidecar backend_script at $SIDECAR_EXE"; exit 1; }
           [ -f "$SIDECAR_FFMPEG" ] || { echo "Missing sidecar ffmpeg at $SIDECAR_FFMPEG"; exit 1; }
           [ -f "$SIDECAR_FFPROBE" ] || { echo "Missing sidecar ffprobe at $SIDECAR_FFPROBE"; exit 1; }
 
-          echo "Validating sidecar FFmpeg architecture for target ${{ matrix.rust_target }}"
+          echo "Validating sidecar executable architecture for target ${{ matrix.rust_target }}"
+          SIDECAR_EXE_INFO="$(file "$SIDECAR_EXE")"
           SIDECAR_FFMPEG_INFO="$(file "$SIDECAR_FFMPEG")"
           SIDECAR_FFPROBE_INFO="$(file "$SIDECAR_FFPROBE")"
+          echo "$SIDECAR_EXE_INFO"
           echo "$SIDECAR_FFMPEG_INFO"
           echo "$SIDECAR_FFPROBE_INFO"
 
           if [ "${{ matrix.rust_target }}" = "x86_64-apple-darwin" ]; then
+            echo "$SIDECAR_EXE_INFO" | grep -q "x86_64" || { echo "sidecar backend_script arch mismatch: expected x86_64"; exit 1; }
             echo "$SIDECAR_FFMPEG_INFO" | grep -q "x86_64" || { echo "sidecar ffmpeg arch mismatch: expected x86_64"; exit 1; }
             echo "$SIDECAR_FFPROBE_INFO" | grep -q "x86_64" || { echo "sidecar ffprobe arch mismatch: expected x86_64"; exit 1; }
           else
+            echo "$SIDECAR_EXE_INFO" | grep -q "arm64" || { echo "sidecar backend_script arch mismatch: expected arm64"; exit 1; }
             echo "$SIDECAR_FFMPEG_INFO" | grep -q "arm64" || { echo "sidecar ffmpeg arch mismatch: expected arm64"; exit 1; }
             echo "$SIDECAR_FFPROBE_INFO" | grep -q "arm64" || { echo "sidecar ffprobe arch mismatch: expected arm64"; exit 1; }
           fi
