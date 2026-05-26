@@ -425,7 +425,7 @@ export const LazyClip = memo(function LazyClip({
         proxyInFlightRef.current = true;
         setForceThumbnail(true);
 
-        const proxyPath = await ensurePreviewProxyPath(originalPath, isHovered);
+        const proxyPath = await ensurePreviewProxyPath(originalPath, isHovered, true);
 
         if (!proxyPath) return;
 
@@ -653,7 +653,7 @@ export const LazyClip = memo(function LazyClip({
                 const clipPath = originalPath;
                 (async () => {
                   try {
-                    const proxyPath = await ensurePreviewProxyPath(clipPath, true);
+                    const proxyPath = await ensurePreviewProxyPath(clipPath, true, true);
 
                     if (originalPath !== clipPath) return;
                     if (!proxyPath) {
