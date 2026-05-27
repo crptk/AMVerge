@@ -1,3 +1,6 @@
+## v1.2.1
+- Fixed hovered videos sometimes not displaying full clip content
+
 ## v1.2.0
 - Added audio stream change for previewing
 - Added an "Update Available!" notification in case the download button doesn't work on update notification

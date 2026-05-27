@@ -80,9 +80,20 @@ export const LazyClip = memo(function LazyClip({
   const [isVideoReady, setIsVideoReady] = useState(false);
   // the actual video source (original or proxy)
   const [effectiveSrc, setEffectiveSrc] = useState(clip.src);
+  const [mergedPreviewSrc, setMergedPreviewSrc] = useState<string | null>(null);
+  const [mergedPreviewFailed, setMergedPreviewFailed] = useState(false);
   const mergedSrcsKey = clip.mergedSrcs
     ? `${clip.mergedSrcs.join("|")}::audio:${previewAudioStreamIndex ?? "default"}`
     : null;
+  const hasMergedSources = (clip.mergedSrcs?.length ?? 0) > 1;
+  const needsAudioMappedPreview = selectedMappedAudioStreamIndex !== null;
+  const shouldUseMergedPreview =
+    hasMergedSources &&
+    !(videoIsHEVC === true && userHasHEVC === false && !needsAudioMappedPreview);
+  const waitingForMergedPreview =
+    shouldUseMergedPreview &&
+    mergedPreviewSrc === null &&
+    !mergedPreviewFailed;
   const originalPath = clip.src;
 
   // Is this clip currently being merged or split on the backend?
@@ -101,7 +112,7 @@ export const LazyClip = memo(function LazyClip({
   // only mount video if allowed by stagger queue or hover
   const staggerGate = !gridPreview || isHovered || staggerReady;
   const shouldMountVideo =
-    showVideo && !forceThumbnail && !waitingForRequiredProxy && !waitingForCodecInfo && staggerGate;
+    showVideo && !forceThumbnail && !waitingForRequiredProxy && !waitingForCodecInfo && !waitingForMergedPreview && staggerGate;
   const shouldShowThumbnail = !showVideo || !shouldMountVideo || !isVideoReady;
 
   // when Preview-all is enabled and we need an HEVC proxy, register demand only while visible.
@@ -126,11 +137,6 @@ export const LazyClip = memo(function LazyClip({
 
   // reset state when clip/import/audio-stream changes
   useEffect(() => {
-    const needsMappedNow =
-      previewAudioStreamIndex !== null &&
-      isHovered &&
-      audioPlaybackHover;
-
     const v = videoRef.current;
     if (v) {
       v.pause();
@@ -147,6 +153,8 @@ export const LazyClip = memo(function LazyClip({
     proxyInFlightRef.current = false;
     mergedPreviewInFlightRef.current = false;
     mergedPreviewFetchedKeyRef.current = null;
+    setMergedPreviewSrc(null);
+    setMergedPreviewFailed(false);
 
     const callbackVideo = videoRef.current;
     if (callbackVideo && videoFrameCallbackIdRef.current && (callbackVideo as any).cancelVideoFrameCallback) {
@@ -159,10 +167,10 @@ export const LazyClip = memo(function LazyClip({
     videoFrameCallbackIdRef.current = null;
     staggerDoneRef.current = false;
     setStaggerReady(false);
-    setForceThumbnail(needsMappedNow);
+    setForceThumbnail(false);
     setIsVideoReady(false);
     setEffectiveSrc(clip.src);
-  }, [clip.src, importToken, previewAudioStreamIndex, isHovered, audioPlaybackHover]);
+  }, [clip.src, importToken, previewAudioStreamIndex]);
 
   const ensurePreviewProxyPath = useCallback(
     async (clipPath: string, priority: boolean, transcodeVideo: boolean): Promise<string> => {
@@ -256,16 +264,23 @@ export const LazyClip = memo(function LazyClip({
 
     mergedPreviewFetchedKeyRef.current = mergedSrcsKey;
     mergedPreviewInFlightRef.current = true;
+    setMergedPreviewFailed(false);
 
     invoke<string>("ensure_merged_preview", {
       srcs: clip.mergedSrcs,
       audioStreamIndex: previewAudioStreamIndex ?? undefined,
     })
       .then((path) => {
+        if (!path) {
+          setMergedPreviewFailed(true);
+          return;
+        }
+        setMergedPreviewSrc(path);
         setEffectiveSrc(path);
       })
       .catch((err) => {
         console.warn("ensure_merged_preview failed", err);
+        setMergedPreviewFailed(true);
         mergedPreviewFetchedKeyRef.current = null; // allow retry
       })
       .finally(() => {
