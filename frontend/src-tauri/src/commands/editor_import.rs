@@ -1219,7 +1219,7 @@ fn should_stage_windows_editor_import_path(path: &str) -> bool {
     let lowered = normalized.to_ascii_lowercase();
     lowered.contains("\\appdata\\roaming\\")
         || lowered.contains("\\appdata\\local\\")
-        || lowered.contains("\\com.amiri.amverge\\episodes\\")
+        || lowered.contains("\\app.amverge\\episodes\\")
 }
 
 #[cfg(target_os = "windows")]
