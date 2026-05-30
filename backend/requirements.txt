@@ -12,6 +12,7 @@ ffmpeg-python>=0.2
 torch>=2.1
 torchvision>=0.16
 open-clip-torch>=2.24
+trasnetv2-pytorch
 
 # Vector search
 faiss-cpu>=1.7
