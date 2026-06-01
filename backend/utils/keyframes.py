@@ -193,3 +193,23 @@ def generate_keyframes(
     safe_progress(done_percent, f"Extracting keyframes… done found={len(normalized)}")
 
     return normalized
+
+import av
+
+def get_keyframes_fast(video_path: str) -> list[float]:
+    keyframes: list[float] = []
+
+    with av.open(video_path) as container:
+        stream = container.streams.video[0]
+
+        for packet in container.demux(stream):
+            if not packet.is_keyframe:
+                continue
+
+            if packet.pts is None:
+                continue
+
+            timestamp = float(packet.pts * stream.time_base)
+            keyframes.append(timestamp)
+
+    return sorted(set(round(t, 6) for t in keyframes))
