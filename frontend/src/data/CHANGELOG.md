@@ -1,3 +1,7 @@
+## v1.2.2
+- Fixed episodes disappearing on startup (let me know if this is still an issue)
+- Fixed some windows users experiencing python build errors
+
 ## v1.2.1
 - Fixed hovered videos sometimes not displaying full clip content
 
