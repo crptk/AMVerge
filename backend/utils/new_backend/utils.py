@@ -207,14 +207,16 @@ def _split_keyframes(input_file, keyframed_scenes_to_copy, output_dir, manifest)
             })
             pbar.update(1)    
 
-def _split_reencoded_scenes(input_file, scenes_to_reencode, output_dir, manifest):
+def _split_reencoded_scenes(input_file, scenes_to_reencode, output_dir, manifest, device="cpu"):
     total_reencode_scenes = len(scenes_to_reencode)
 
+    if device == "cuda":
+        print(f"Cuda detected! Decoding using cuda..")
     with tqdm(
         total=total_reencode_scenes,
         desc="Splitting scenes that need reencoding..",
         unit="scene",
-        file=sys.stdout
+        file=sys.stdout,
     ) as pbar:
         for scene in scenes_to_reencode:
             scene_id = int(scene["scene_id"])
@@ -227,22 +229,43 @@ def _split_reencoded_scenes(input_file, scenes_to_reencode, output_dir, manifest
                 continue
 
             out_path = output_dir / f"scene_{scene_id:04d}_reencode.mp4"
+            duration = end_sec - start_sec
 
-            cmd_reencode = [
-                "ffmpeg",
-                "-y",
-                "-ss", str(start_sec),
-                "-to", str(end_sec),
-                "-i", str(input_file),
-                "-map", "0:v:0",
-                "-an",
-                "-c:v", "libx264",
-                "-preset", "slow",
-                "-crf", "16",
-                "-pix_fmt", "yuv420p",
-                str(out_path),
-            ]
+            use_cuda = str(device).lower() == "cuda"
 
+            if use_cuda:
+                cmd_reencode = [
+                    "ffmpeg",
+                    "-y",
+                    "-ss", str(start_sec),
+                    "-i", str(input_file),
+                    "-t", str(duration),
+                    "-map", "0:v:0",
+                    "-an",
+                    "-c:v", "h264_nvenc",
+                    "-preset", "p1",
+                    "-rc", "vbr",
+                    "-cq", "19",
+                    "-b:v", "0",
+                    "-pix_fmt", "yuv420p",
+                    str(out_path),
+                ]
+            else:
+                cmd_reencode = [
+                    "ffmpeg",
+                    "-y",
+                    "-ss", str(start_sec),
+                    "-i", str(input_file),
+                    "-t", str(duration),
+                    "-map", "0:v:0",
+                    "-an",
+                    "-c:v", "libx264",
+                    "-preset", "ultrafast",
+                    "-crf", "16",
+                    "-pix_fmt", "yuv420p",
+                    str(out_path),
+                ]
+            
             cmd_results = run_ffmpeg_checked(cmd_reencode)
             manifest["reencode_outputs"].append({
                 "scene_id": scene_id,
@@ -252,7 +275,7 @@ def _split_reencoded_scenes(input_file, scenes_to_reencode, output_dir, manifest
             pbar.update(1)
 
 
-def split_final_video(input_file, scenes_to_reencode, keyframed_scenes_to_copy, output_dir):
+def split_final_video(input_file, scenes_to_reencode, keyframed_scenes_to_copy, output_dir, device="cpu"):
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -267,7 +290,7 @@ def split_final_video(input_file, scenes_to_reencode, keyframed_scenes_to_copy, 
 
     print("Splitting and re-encoding non-keyframe candidates...")
 
-    _split_reencoded_scenes(input_file, scenes_to_reencode, output_dir, manifest)
+    _split_reencoded_scenes(input_file, scenes_to_reencode, output_dir, manifest, device=device)
     print("Done splitting scenes.")
     print(f"Copy scenes: {len(manifest['copy_outputs'])}")
     print(f"Re-encoded scenes: {len(manifest['reencode_outputs'])}")

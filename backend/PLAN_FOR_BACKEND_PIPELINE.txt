@@ -1,0 +1,9 @@
+Now that the backend pipeline is complete, we need to plug it into the app itself
+
+STEP 1:
+The first step is to identify the hyperparameters. Obviously we want everything to be tuneable, so we need to figure out 
+what parameters should be passed into python.
+Parameter list:
+- Threshold of keyframe detection (default 0.2s)
+- Quality of reencoded scenes (crf)
+- Preset of reencoded scenes (slow, medium, fast)
