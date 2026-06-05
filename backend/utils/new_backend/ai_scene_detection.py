@@ -1,11 +1,20 @@
 from transnetv2_pytorch import TransNetV2
 import torch
 import numpy as np
-from utils import check_if_path_exists, convert_scenes_to_timestamps
+from utils import (
+    check_if_path_exists, convert_scenes_to_timestamps, 
+    probe_video_total_frames, scenes_frames_to_seconds, 
+    probe_video_fps, probe_video_duration,
+    get_keyframe_timestamps_pyav, 
+    classify_scenes_by_keyframe_alignment,
+    split_final_video
+)
 import subprocess
 from constants import FRAME_CHANNELS, FRAME_HEIGHT, FRAME_WIDTH, WINDOW_SIZE, STRIDE, FRAME_BYTES
 import sys
 from tqdm import tqdm
+from pathlib import Path
+import os
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -22,29 +31,34 @@ def decode_and_detect_scenes(input_video):
         "-f", "rawvideo",
         "pipe:1"
     ]
-
+    video_fps = probe_video_fps(input_video)
+    video_duration = probe_video_duration(input_video)
+    total_frames = probe_video_total_frames(input_video, video_fps, video_duration)
+    
     process = subprocess.Popen(
         cmd,
         stdout=subprocess.PIPE,
-        stderr=subprocess.DEVNULL, 
+        stderr=subprocess.DEVNULL,
     )
     if process.stdout is None:
         raise RuntimeError("Failed to create stdout pipe")
     
-    pbar = tqdm(
-        desc = "Decoding video..",
-        unit="frames",
-        file=sys.stdout
-    ) # progressbar obj
+    print(f"Creating model..")
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    model = TransNetV2(device=device)
+    model.eval()
 
     window_start_index = 0
     buffer = []
     scores = []
     counts = []
 
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    model = TransNetV2(device=device)
-    model.eval()
+    pbar = tqdm(
+        desc = "Decoding video..",
+        unit="frames",
+        file=sys.stdout,
+        total=total_frames
+    ) # progressbar obj
 
     while True:
         raw_frame = process.stdout.read(FRAME_BYTES)
@@ -66,8 +80,7 @@ def decode_and_detect_scenes(input_video):
         # this is where the gpu runs on the batch
         if len(buffer) >= WINDOW_SIZE:
             batch = np.stack(buffer[:WINDOW_SIZE])
-            
-            run_model(model=model,
+            _run_model(model=model,
                       batch=batch,
                       start_index=window_start_index,
                       scores=scores,
@@ -83,7 +96,7 @@ def decode_and_detect_scenes(input_video):
     if len(buffer) > 0:
         batch = np.stack(buffer)
 
-        run_model(
+        _run_model(
             model=model,
             batch=batch,
             start_index=window_start_index,
@@ -96,17 +109,20 @@ def decode_and_detect_scenes(input_video):
     counts = np.array(counts)
     
     final_scores = scores / counts
-    scenes = model.predictions_to_scenes(final_scores)
+    scenes_frames = model.predictions_to_scenes(final_scores)
 
     second_timestamps, frame_timestamps = convert_scenes_to_timestamps(
         input_video, 
-        scenes
+        scenes_frames
     )
+    scenes_secs = scenes_frames_to_seconds(scenes_frames, video_fps)
 
+    np.save("franxx_scenes_secs.npy", scenes_secs)
+    np.save("franxx_scenes_frames.npy", scenes_frames)
 
-    return second_timestamps, frame_timestamps
+    return scenes_secs, scenes_frames
 
-def run_model(model, batch, start_index, scores, counts, device):    
+def _run_model(model, batch, start_index, scores, counts, device):    
     tensor = torch.from_numpy(batch).unsqueeze(dim=0).to(device)
 
     with torch.inference_mode():
@@ -121,19 +137,40 @@ def run_model(model, batch, start_index, scores, counts, device):
         scores[global_index] += pred
         counts[global_index] += 1
 
+def split_scenes_final_step(input_video, scenes_secs, output_dir):
+    keyframes = get_keyframe_timestamps_pyav(input_video)
+
+    keyframed_scenes_to_copy, scenes_to_reencode = classify_scenes_by_keyframe_alignment(scenes_secs=scenes_secs,
+                                                                               keyframe_timestamps=keyframes,
+                                                                               threshold=0.2)
+    final_video_results = split_final_video(input_file=input_video,
+                                            scenes_to_reencode=scenes_to_reencode,
+                                            keyframed_scenes_to_copy=keyframed_scenes_to_copy,
+                                            output_dir=output_dir
+                                            )
+    
 def main() -> int:
     try:
         print(f"Loading video...")
-        input_file = sys.argv[1]
-        output_dir = sys.argv[2]
+        input_file = Path(sys.argv[1])
+        output_dir = Path(sys.argv[2])
 
-        if check_if_path_exists(input_file):
-            print(f"DECODING VIDEO...")
+        print(f"input_file: {input_file}")
 
-            sec_timestamps, frame_timestamps = decode_and_detect_scenes(input_file)
-
-            print(f"FRAMES: \n{frame_timestamps}")
-
+        print(f"DECODING VIDEO...")
+        
+        scenes_secs_paths = "franxx_scenes_secs.npy"
+        scenes_frames_paths = "franxx_scenes_frames.npy"
+        scenes_secs, scenes_frames = None, None
+        
+        if os.path.exists(scenes_secs_paths) and os.path.exists(scenes_frames_paths):
+            print(f"Found cached model output scenes! Skipping model build..")
+            scenes_secs = np.load(scenes_secs_paths)
+            scenes_frames = np.load(scenes_frames_paths)
+        else:
+            scenes_secs, scenes_frames = decode_and_detect_scenes(input_file)
+    
+        split_scenes_final_step(input_video=input_file, scenes_secs=scenes_secs, output_dir=output_dir)
             # run the model on input_file to find places where it should be split
             # sec_timestamps, frame_timestamps = run_model(frames, input_file)
         # TODO:cut the video on those parts, send it to output_dir

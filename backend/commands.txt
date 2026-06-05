@@ -1,0 +1,2 @@
+from backend/utils/new_backend
+python ai_scene_detection.py ../../notebooks/ffmpeg_practice/input/franxx_ep.mkv ./output_test

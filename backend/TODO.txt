@@ -1,0 +1,4 @@
+TODO:
+2) Figure out the full pipeline for merging. By this I mean cutting the actual episode itself, storing all the clips in a folder in 10 fps
+sprite, creating the DB schema and integrating the DB within the pipeline. The DB should store the timestamps for where it should cut on the 
+original video.

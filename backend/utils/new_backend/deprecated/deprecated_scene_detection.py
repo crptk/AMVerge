@@ -243,3 +243,241 @@ def run_model_one_pass(frames, input_file, batch_size=100, overlap=50):
     )
     progress.close()
     return second_timestamps, frame_timestamps
+
+
+# deprecated method of splitting scenes to webp compressed
+# Good for app performance but slow and a hassle.
+def create_scene_previews_deprecated(
+    input_video,
+    scenes_secs,
+    output_folder,
+    frame_step=3,
+    preview_fps=7,
+    preview_width=320,
+    preview_crf=36,
+    preview_preset="veryfast",
+    thumbnail_width=640,
+    thumbnail_webp_quality=78,
+    thumbnail_time_ratio=0.30,
+    max_workers=None,
+    skip_existing=True,
+):
+    print("Hitting scene previews func")
+
+    input_video = Path(input_video)
+    output_root = resolve_paths(output_folder)
+    os.makedirs(output_root, exist_ok=True)
+
+    print(f"name of video: {input_video.name}")
+
+    if max_workers is None:
+        cpu_count = os.cpu_count() or 1
+        max_workers = max(1, min(4, cpu_count))
+
+    def _scene_paths(scene_index):
+        scene_dir_name = f"{input_video.stem}_SCENE_{scene_index:04d}"
+        output_dir = output_root / scene_dir_name
+        os.makedirs(output_dir, exist_ok=True)
+        preview_video_path = output_dir / "preview.mp4"
+        poster_path = output_dir / "poster.webp"
+        return output_dir, preview_video_path, poster_path
+
+    def _scene_info(scene_index, scene):
+        start_sec = float(scene[0])
+        end_sec = float(scene[1])
+        duration = end_sec - start_sec
+
+        return start_sec, end_sec, duration
+
+    def _generate_thumbnail_for_scene(scene_index, scene):
+        print(f"Generating thumbnail for scene {scene_index}")
+        start_sec, _end_sec, duration = _scene_info(scene_index, scene)
+
+        output_dir, _preview_video_path, poster_path = _scene_paths(scene_index)
+
+        if duration <= 0:
+            return {
+                "scene_id": scene_index,
+                "preview_dir": str(output_dir),
+                "poster_path": None,
+                "thumbnail_status": "skipped_invalid_duration",
+            }
+
+        thumb_time = start_sec + (duration * float(thumbnail_time_ratio))
+        if thumb_time >= (start_sec + duration):
+            thumb_time = start_sec
+
+        if skip_existing and poster_path.exists():
+            return {
+                "scene_id": scene_index,
+                "preview_dir": str(output_dir),
+                "poster_path": str(poster_path),
+                "thumbnail_status": "cached",
+            }
+
+        thumbnail_cmd = [
+            "ffmpeg",
+            "-y",
+            "-ss",
+            str(thumb_time),
+            "-i",
+            str(input_video),
+            "-frames:v",
+            "1",
+            "-vf",
+            f"scale={thumbnail_width}:-2:flags=bicubic",
+            "-c:v",
+            "libwebp",
+            "-compression_level",
+            "5",
+            "-quality",
+            str(thumbnail_webp_quality),
+            str(poster_path),
+        ]
+
+        thumb_process = subprocess.run(thumbnail_cmd, capture_output=True, text=True)
+        if thumb_process.returncode != 0:
+            print(thumb_process.stderr)
+            raise RuntimeError(f"Failed to create thumbnail for scene {scene_index}")
+
+        return {
+            "scene_id": scene_index,
+            "preview_dir": str(output_dir),
+            "poster_path": str(poster_path),
+            "thumbnail_status": "ok",
+        }
+
+    def _generate_preview_video_for_scene(scene_index, scene):
+        print(f"Generating preview video for scene {scene_index}")
+        start_sec, _end_sec, duration = _scene_info(scene_index, scene)
+
+        output_dir, preview_video_path, _poster_path = _scene_paths(scene_index)
+
+        if duration <= 0:
+            return {
+                "scene_id": scene_index,
+                "preview_dir": str(output_dir),
+                "preview_video": None,
+                "video_status": "skipped_invalid_duration",
+            }
+
+        if skip_existing and preview_video_path.exists():
+            return {
+                "scene_id": scene_index,
+                "preview_dir": str(output_dir),
+                "preview_video": str(preview_video_path),
+                "video_status": "cached",
+            }
+
+        cmd = [
+            "ffmpeg",
+            "-y",
+            "-ss",
+            str(start_sec),
+            "-i",
+            str(input_video),
+            "-t",
+            str(duration),
+            "-vf",
+            f"fps={preview_fps},scale={preview_width}:-2:flags=fast_bilinear",
+            "-c:v",
+            "libx264",
+            "-preset",
+            str(preview_preset),
+            "-crf",
+            str(preview_crf),
+            "-pix_fmt",
+            "yuv420p",
+            "-movflags",
+            "+faststart",
+            "-an",
+            str(preview_video_path),
+        ]
+
+        process = subprocess.run(cmd, capture_output=True, text=True)
+
+        if process.returncode != 0:
+            print(process.stderr)
+            raise RuntimeError(f"Failed to create preview video for scene {scene_index}")
+
+        return {
+            "scene_id": scene_index,
+            "preview_dir": str(output_dir),
+            "preview_video": str(preview_video_path),
+            "video_status": "ok",
+        }
+
+    # Stage 1: generate thumbnails first so the UI can paint all static cards early.
+    thumb_results_by_scene = {}
+    with ThreadPoolExecutor(max_workers=max_workers) as thumbnail_executor:
+        thumbnail_futures = [
+            thumbnail_executor.submit(_generate_thumbnail_for_scene, i, scene)
+            for i, scene in enumerate(scenes_secs)
+        ]
+        for future in as_completed(thumbnail_futures):
+            result = future.result()
+            thumb_results_by_scene[result["scene_id"]] = result
+
+    # Stage 2: generate lower-quality hover preview videos in parallel.
+    preview_results_by_scene = {}
+    with ThreadPoolExecutor(max_workers=max_workers) as video_executor:
+        video_futures = [
+            video_executor.submit(_generate_preview_video_for_scene, i, scene)
+            for i, scene in enumerate(scenes_secs)
+        ]
+        for future in as_completed(video_futures):
+            result = future.result()
+            preview_results_by_scene[result["scene_id"]] = result
+
+    preview_metadata = []
+    for i in range(len(scenes_secs)):
+        thumb_result = thumb_results_by_scene.get(i, {})
+        video_result = preview_results_by_scene.get(i, {})
+
+        preview_metadata.append(
+            {
+                "scene_id": i,
+                "preview_dir": thumb_result.get("preview_dir") or video_result.get("preview_dir"),
+                "poster_path": thumb_result.get("poster_path"),
+                "preview_video": video_result.get("preview_video"),
+                "thumbnail_status": thumb_result.get("thumbnail_status", "unknown"),
+                "video_status": video_result.get("video_status", "unknown"),
+                "frame_step": frame_step,
+                "status": "ok"
+                if thumb_result.get("thumbnail_status") in ("ok", "cached")
+                and video_result.get("video_status") in ("ok", "cached")
+                else "partial",
+            }
+        )
+
+    return preview_metadata
+
+# compresses entire video so react frontend could pull from it. This also takes too long so deprecated
+def compress_video_for_proxy_deprecated(input_video, output_video):
+    cmd = [
+        "ffmpeg",
+        "-y",
+        "-i", str(input_video),
+        "-vf", "fps=10,scale=-2:360",
+        "-c:v", "libx264",
+        "-preset", "veryfast",
+        "-crf", "30",
+        "-an",
+        str(output_video),
+    ]
+
+    start = time.time()
+    result = subprocess.run(cmd, capture_output=True, text=True)
+
+    if result.returncode != 0:
+        print(result.stderr)
+        raise RuntimeError("Failed to create proxy video")
+
+    end = time.time()
+
+    print(f"TOTAL TIME TAKEN FOR PROXY: {end - start}")
+
+    return output_video
+
+def insert_table():
+    pass
