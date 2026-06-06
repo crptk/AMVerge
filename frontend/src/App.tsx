@@ -17,7 +17,7 @@ import useDragDropImport from "./hooks/useDragDropImport";
 import useImportExport from "./hooks/useImportExport";
 import useStartupUpdateNotification from "./hooks/useStartupUpdateNotification";
 
-import { remapPathRoot } from "./utils/episodeUtils";
+import { remapEpisodeCachePath } from "./utils/episodeUtils";
 
 import { useAppStateStore } from "./stores/appStore";
 import { useUIStateStore } from "./stores/UIStore";
@@ -139,8 +139,10 @@ function App() {
         ...episode,
         clips: episode.clips.map((clip) => ({
           ...clip,
-          src: remapPathRoot(clip.src, oldRoot, newRoot),
-          thumbnail: remapPathRoot(clip.thumbnail, oldRoot, newRoot),
+          src: remapEpisodeCachePath(clip.src, oldRoot, newRoot),
+          thumbnail: remapEpisodeCachePath(clip.thumbnail, oldRoot, newRoot),
+          srcList: clip.srcList?.map((src) => remapEpisodeCachePath(src, oldRoot, newRoot)),
+          mergedSrcs: clip.mergedSrcs?.map((src) => remapEpisodeCachePath(src, oldRoot, newRoot)),
         })),
       }))
     }));
@@ -148,8 +150,10 @@ function App() {
     useAppStateStore.setState((s) => ({
       clips: s.clips.map((clip) => ({
         ...clip,
-        src: remapPathRoot(clip.src, oldRoot, newRoot),
-        thumbnail: remapPathRoot(clip.thumbnail, oldRoot, newRoot),
+        src: remapEpisodeCachePath(clip.src, oldRoot, newRoot),
+        thumbnail: remapEpisodeCachePath(clip.thumbnail, oldRoot, newRoot),
+        srcList: clip.srcList?.map((src) => remapEpisodeCachePath(src, oldRoot, newRoot)),
+        mergedSrcs: clip.mergedSrcs?.map((src) => remapEpisodeCachePath(src, oldRoot, newRoot)),
       }))
     }));
   };

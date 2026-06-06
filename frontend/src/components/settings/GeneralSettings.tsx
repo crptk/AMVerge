@@ -23,7 +23,7 @@ export default function GeneralSettings({
   const factoryResetConfirmation =
     "This will restore AMVerge to its default settings and move your episode storage folder back to AppData. Any custom settings or storage location changes you made will be reset.";
   const clearPanelConfirmation =
-    "This will remove ALL episodes from the Episode Panel and delete their cached files on disk. This cannot be undone.";
+    "This will remove ALL episodes from the Episode Panel and move cached files to Recycle Bin/Trash. This action can affect many files in your episode cache folder.";
   useEffect(() => {
     if (!showFactoryResetConfirm) return;
 
@@ -50,16 +50,19 @@ export default function GeneralSettings({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [showClearPanelConfirm]);
 
-  const handleClearEpisodePanel = async () => {
-    setClearingPanel(true);
+  const runClearEpisodePanelInBackground = async () => {
     try {
       await clearEpisodePanelCache();
     } catch (err) {
-      window.alert("Failed to clear episode panel: " + String(err));
     } finally {
       setClearingPanel(false);
-      setShowClearPanelConfirm(false);
     }
+  };
+
+  const handleClearEpisodePanel = () => {
+    setClearingPanel(true);
+    setShowClearPanelConfirm(false);
+    void runClearEpisodePanelInBackground();
   };
 
   const handlePickDir = async () => {
@@ -95,21 +98,13 @@ export default function GeneralSettings({
     <section className="panel menu-panel settings-panel">
       <h3>General</h3>
       <div className="about-content">
-        {loading && (
-          <div className="settings-row">
-            <span className="settings-value" style={{ color: "#ff0" }}>
-              Moving episodes to new directory...
-            </span>
-          </div>
-        )}
-
         <SettingRow
           label="Application Version"
           description=""
           control={
           <div className="settings-control">
             <span className="settings-value" style={{ width: "auto" }}>
-              v1.2.2
+              v1.2.3
             </span>
           </div>
           }
@@ -188,7 +183,7 @@ export default function GeneralSettings({
 
         <SettingRow
           label="Clear Episode Panel"
-          description="Remove all episodes from the panel and delete their cached files on disk."
+          description="Remove all episodes from the panel and move their cached files to Recycle Bin/Trash."
           control={
             <div className="settings-control">
               <button
@@ -277,7 +272,7 @@ export default function GeneralSettings({
                   type="button"
                   className="episode-modal-btn primary"
                   onClick={() => {
-                    void handleClearEpisodePanel();
+                    handleClearEpisodePanel();
                   }}
                   disabled={clearingPanel}
                 >

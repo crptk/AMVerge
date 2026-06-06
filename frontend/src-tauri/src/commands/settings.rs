@@ -8,6 +8,32 @@ use tauri::{AppHandle, Manager};
 use crate::utils::ffmpeg::resolve_bundled_tool;
 use crate::utils::process::apply_no_window;
 
+fn is_uuid_cache_dir_name(name: &str) -> bool {
+    if name.len() != 36 {
+        return false;
+    }
+
+    for (idx, ch) in name.chars().enumerate() {
+        let is_hyphen_slot = matches!(idx, 8 | 13 | 18 | 23);
+        if is_hyphen_slot {
+            if ch != '-' {
+                return false;
+            }
+            continue;
+        }
+
+        if !ch.is_ascii_hexdigit() {
+            return false;
+        }
+    }
+
+    true
+}
+
+fn is_probably_root_path(path: &Path) -> bool {
+    path.parent().is_none() || path.components().count() <= 2
+}
+
 #[tauri::command]
 pub fn get_default_episodes_dir(app: AppHandle) -> Result<String, String> {
     let path = app
@@ -25,6 +51,11 @@ pub fn move_episodes_to_new_dir(
     old_dir: Option<String>,
     new_dir: Option<String>,
 ) -> Result<String, String> {
+    let using_custom_old = old_dir
+        .as_deref()
+        .map(|v| !v.trim().is_empty())
+        .unwrap_or(false);
+
     let old_path = match old_dir {
         Some(path) if !path.trim().is_empty() => PathBuf::from(path),
         _ => app
@@ -44,15 +75,20 @@ pub fn move_episodes_to_new_dir(
     };
     let old_path_string = old_path.to_string_lossy().to_string();
 
-    if old_path == new_path {
-        return Ok(old_path_string);
-    }
-
     if !old_path.exists() {
         return Ok(old_path_string);
     }
 
     fs::create_dir_all(&new_path).map_err(|e| format!("Failed to create new directory: {e}"))?;
+
+    let old_canonical = fs::canonicalize(&old_path)
+        .map_err(|e| format!("Failed to resolve current episodes directory: {e}"))?;
+    let new_canonical = fs::canonicalize(&new_path)
+        .map_err(|e| format!("Failed to resolve target episodes directory: {e}"))?;
+
+    if old_canonical == new_canonical {
+        return Ok(old_path_string);
+    }
 
     for entry in
         fs::read_dir(&old_path).map_err(|e| format!("Failed to read old directory: {e}"))?
@@ -60,12 +96,30 @@ pub fn move_episodes_to_new_dir(
         let entry = entry.map_err(|e| format!("Failed to read entry: {e}"))?;
 
         let src = entry.path();
+        if src == new_canonical {
+            continue;
+        }
+
+        if using_custom_old {
+            if !src.is_dir() {
+                continue;
+            }
+
+            let name = entry.file_name();
+            let name = name.to_string_lossy();
+            let is_supported_cache_dir = is_uuid_cache_dir_name(&name) || name.eq_ignore_ascii_case("episodes");
+            if !is_supported_cache_dir {
+                continue;
+            }
+        }
+
         let dest = new_path.join(entry.file_name());
 
         fs::rename(&src, &dest).or_else(|_| {
             if src.is_dir() {
                 let mut options = fs_extra::dir::CopyOptions::new();
                 options.copy_inside = true;
+                options.overwrite = true;
 
                 fs::create_dir_all(&dest)
                     .map_err(|e| format!("Failed to create destination folder: {e}"))?;
@@ -76,6 +130,17 @@ pub fn move_episodes_to_new_dir(
                 fs::remove_dir_all(&src)
                     .map_err(|e| format!("Failed to remove old directory: {e}"))?;
             } else {
+                if dest.exists() {
+                    if dest.is_file() {
+                        fs::remove_file(&dest)
+                            .map_err(|e| format!("Failed to replace existing file: {e}"))?;
+                    } else {
+                        return Err(
+                            "Failed to copy file: destination exists as a directory.".to_string(),
+                        );
+                    }
+                }
+
                 fs::copy(&src, &dest).map_err(|e| format!("Failed to copy file: {e}"))?;
 
                 fs::remove_file(&src).map_err(|e| format!("Failed to remove old file: {e}"))?;

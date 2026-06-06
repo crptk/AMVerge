@@ -100,3 +100,36 @@ export function remapPathRoot(path: string, oldRoot: string, newRoot: string): s
 
   return cleanNewRoot + relativePath;
 }
+
+export function remapEpisodeCachePath(path: string, oldRoot: string, newRoot: string): string {
+  const remapped = remapPathRoot(path, oldRoot, newRoot);
+
+  const normalize = (p: string) => p.replace(/\\/g, "/").replace(/\/+/g, "/");
+  const normalizedOldRoot = normalize(oldRoot).replace(/\/+$/, "").toLowerCase();
+  const normalizedPath = normalize(path).toLowerCase();
+
+  if (
+    normalizedPath !== normalizedOldRoot &&
+    !normalizedPath.startsWith(normalizedOldRoot + "/")
+  ) {
+    return path;
+  }
+
+  const normalizedRemapped = normalize(remapped);
+  const relative = normalizedRemapped
+    .slice(normalize(newRoot).replace(/\/+$/, "").length)
+    .replace(/^\/+/, "");
+
+  // Supported cache layouts:
+  // - <root>/<uuid>/...
+  // - <root>/episodes/<uuid>/...
+  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(\/|$)/i;
+  const matchesRootUuid = isUuid.test(relative);
+  const matchesEpisodesUuid = /^episodes\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(\/|$)/i.test(relative);
+
+  if (!matchesRootUuid && !matchesEpisodesUuid) {
+    return path;
+  }
+
+  return remapped;
+}
