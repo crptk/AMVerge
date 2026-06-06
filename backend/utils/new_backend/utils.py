@@ -295,3 +295,11 @@ def split_final_video(input_file, scenes_to_reencode, keyframed_scenes_to_copy, 
     print(f"Copy scenes: {len(manifest['copy_outputs'])}")
     print(f"Re-encoded scenes: {len(manifest['reencode_outputs'])}")
     return manifest
+
+def log(message: str) -> None:
+    text = str(message)
+
+    try:
+        print(text, file=sys.stderr, flush=True)
+    except Exception:
+        pass

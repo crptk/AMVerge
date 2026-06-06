@@ -24,10 +24,8 @@ _REQUIRED_FFMPEG_DLLS = (
     "swscale-9.dll",
 )
 
-
 def _directory_has_required_nelux_dlls(directory: Path) -> bool:
     return all((directory / dll_name).exists() for dll_name in _REQUIRED_FFMPEG_DLLS)
-
 
 def _iter_common_windows_ffmpeg_dirs():
     common_roots = (

@@ -3,12 +3,14 @@ import numpy as np
 from utils import (
     get_keyframe_timestamps_pyav, 
     classify_scenes_by_keyframe_alignment,
-    split_final_video
+    split_final_video, log
 )
 import sys
 from pathlib import Path
 import os
 from scene_detection_methods import decode_and_detect_scenes, decode_video_frames_nelux, run_model_one_pass
+import json
+import uuid
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -51,16 +53,37 @@ def main() -> int:
             ## METHOD 2:
             frames = decode_video_frames_nelux(input_file)
             scenes_secs, scenes_frames = run_model_one_pass(frames, input_file)
-    
-        print(f"result (manifest):\n {result}")
-        # TODO:cut the video on those parts, send it to output_dir
+        
+        result = {
+            "schema_version": "1.0",
+            "run_id": str(uuid.uuid4()),
+            "video": {
+                "video_file_path": str(input_file),
+                "display_name": "",
+                "duration_sec": duration,
+                "width": ,
+                "height" ,
+                "fps", ,
+            },
+            "scenes_secs": str(scenes_secs),
+            "detector": {
+                "method": "run_model_one_pass",
+                "device"
+            },
+            "warnings": [],
+            "error": [],
+        }
+        print(json.dumps(result))
+        sys.stdout.flush()
         
         return 0
     except Exception as error:
         import traceback
 
-        print(f"ERROR: {error}")
+        log(f"FATAL ERROR: {error}")
+        log(traceback.format_exc())
 
+        print(json.dumps([]))
         sys.stdout.flush()
         
         return 1
