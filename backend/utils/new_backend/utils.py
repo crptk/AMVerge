@@ -8,7 +8,7 @@ from bisect import bisect_left
 from tqdm import tqdm
 import sys
 import av
-
+import torch
 def resolve_paths(path_str):
     BASE_DIR = Path.cwd().resolve()
 

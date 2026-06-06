@@ -1,9 +1,10 @@
 Now that the backend pipeline is complete, we need to plug it into the app itself
 
-STEP 1:
-The first step is to identify the hyperparameters. Obviously we want everything to be tuneable, so we need to figure out 
-what parameters should be passed into python.
-Parameter list:
-- Threshold of keyframe detection (default 0.2s)
-- Quality of reencoded scenes (crf)
-- Preset of reencoded scenes (slow, medium, fast)
+STEP 1: Decide on different modes
+    MODE 1: GPU TransNetV2 -> Creates SQL Table of scenes to cut from as a backup/fallback
+    MODE 2: CPU PySceneDetect -> Gets timestamps or scenes to send to frontend, creates SQL as well
+    MODE 3: Keyframe Detection -> Creates scenes based on keyframe analysis, sends all "scenes" to frontend
+
+STEP 2: Formatting
+Now we create the SQL and format it the exact same way as Scene Scout does, then figure out how to create the request for 
+frontend to d

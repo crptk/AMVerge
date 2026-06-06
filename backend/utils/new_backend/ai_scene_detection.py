@@ -51,10 +51,8 @@ def main() -> int:
             ## METHOD 2:
             frames = decode_video_frames_nelux(input_file)
             scenes_secs, scenes_frames = run_model_one_pass(frames, input_file)
-
-        split_scenes_final_step(input_video=input_file, scenes_secs=scenes_secs, output_dir=output_dir)
-            # run the model on input_file to find places where it should be split
-            # sec_timestamps, frame_timestamps = run_model(frames, input_file)
+    
+        print(f"result (manifest):\n {result}")
         # TODO:cut the video on those parts, send it to output_dir
         
         return 0
