@@ -7,11 +7,14 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "build:sidecar": "node ./scripts/build-sidecar.mjs",
+    "build:sidecar:linux": "node ./scripts/build-sidecar.mjs --target x86_64-unknown-linux-gnu",
     "build:all": "npm run build:sidecar && npm run build",
+    "build:linux": "npm run build:sidecar:linux && npm run build && npm run tauri:build:linux",
     "preview": "vite preview",
     "tauri": "tauri",
     "tauri:dev": "dotenv -e ../.env -- tauri dev",
-    "tauri:build": "dotenv -e ../.env -- tauri build"
+    "tauri:build": "dotenv -e ../.env -- tauri build",
+    "tauri:build:linux": "dotenv -e ../.env -- tauri build --target x86_64-unknown-linux-gnu --config src-tauri/tauri.linux.conf.json"
   },
   "dependencies": {
     "@tanstack/react-virtual": "^3.13.18",
