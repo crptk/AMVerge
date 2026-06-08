@@ -334,6 +334,13 @@ def run_ffmpeg_segment(
             end_time,
         )
 
+def get_video_dimensions(video_path: str) -> tuple[int, int] | None:
+    try:
+        with av.open(video_path) as container:
+            stream = container.streams.video[0]
+            return stream.width, stream.height
+    except Exception:
+        return None
 
 def collect_scenes(
     output_dir: str,
@@ -354,17 +361,18 @@ def collect_scenes(
         thumb_path = os.path.join(output_dir, f"{file_name}_{index:04d}.jpg")
 
         if os.path.exists(out_path) and os.path.getsize(out_path) > 0:
-            final_scenes.append(
-                {
-                    "scene_index": index,
-                    "start": start,
-                    "end": end,
-                    "path": out_path,
-                    "thumbnail": thumb_path,
-                    "original_file": file_name,
-                }
-            )
-
+            dims = get_video_dimensions(out_path)
+            scene_dict = {
+                "scene_index": index,
+                "start": start,
+                "end": end,
+                "path": out_path,
+                "thumbnail": thumb_path,
+                "original_file": file_name,
+                "width": dims[0] if dims else None,
+                "height": dims[1] if dims else None,
+            }
+            final_scenes.append(scene_dict)
     return final_scenes
 
 

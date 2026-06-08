@@ -564,6 +564,11 @@ export const LazyClip = memo(function LazyClip({
       className={`clip-wrapper ${isFocused ? "focused" : ""} ${isSelected ? "selected" : ""}`}
       onClick={handleClick}
       onDoubleClick={handleDoubleClick}
+      style={
+        clip.width && clip.height
+          ? { aspectRatio: `${clip.width} / ${clip.height}` }
+          : undefined
+      }
       // hover toggles isHovered, which controls whether the <video> mounts and whether playback starts.
       onMouseEnter={() => {
         // IntersectionObserver can lag by a tick; hovering should always mount/play immediately.

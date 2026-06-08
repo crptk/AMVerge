@@ -98,6 +98,8 @@ export default function useImportExport(props?: ImportExportProps) {
         start: s.start,
         end: s.end,
         thumbnailReady: s.thumbnail_ready !== false,
+        width: s.width ?? null,
+        height: s.height ?? null,
       };
     });
   }
