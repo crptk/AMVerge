@@ -53,6 +53,7 @@ export type GeneralSettingsStore = GeneralSettings & {
     setRpcShowButtons: (enabled: boolean) => void;
     setRpcShowMiniIcons: (enabled: boolean) => void;
     resetGeneralSettings: () => void;
+    setThumbnailFrameOffset: (offset: number) => void;
 };
 
 export const DEFAULT_GENERAL_SETTINGS: GeneralSettings = {
@@ -368,9 +369,8 @@ export function applyThemeSettings(settings: ThemeSettings) {
     root.style.setProperty("--app-bg-blur", `${settings.backgroundBlur}px`);
     body.style.setProperty("--app-bg-blur", `${settings.backgroundBlur}px`);
 
-    const clipTileAspect = settings.widescreenClipTiles ? "16 / 9" : "1 / 1";
-    root.style.setProperty("--clip-tile-aspect", clipTileAspect);
-    body.style.setProperty("--clip-tile-aspect", clipTileAspect);
+    root.style.setProperty("--clip-tile-aspect", "1 / 1");
+    body.style.setProperty("--clip-tile-aspect", "1 / 1");
 }
 
 export function getDarkerColor(hex: string, factor = 0.5): string {

@@ -57,6 +57,7 @@ export const LazyClip = memo(function LazyClip({
   const gridPreviewSpeed = useThemeSettingsStore(s => s.gridPreviewSpeed ?? 1);
   const showDownloadButton = useThemeSettingsStore(s => s.showDownloadButton);
   const showClipTimestamps = useThemeSettingsStore(s => s.showClipTimestamps);
+  const widescreenClipTiles = useThemeSettingsStore(s => s.widescreenClipTiles);
   // state and refs for tile visibility, hover, video element, and proxy state
   const [isVisible, setIsVisible] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
@@ -565,7 +566,7 @@ export const LazyClip = memo(function LazyClip({
       onClick={handleClick}
       onDoubleClick={handleDoubleClick}
       style={
-        clip.width && clip.height
+        clip.width && clip.height && widescreenClipTiles
           ? { aspectRatio: `${clip.width} / ${clip.height}` }
           : undefined
       }

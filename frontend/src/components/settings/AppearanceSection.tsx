@@ -328,8 +328,8 @@ export default function AppearanceSection({
         />
 
         <SettingRow
-          label="Widescreen clip tiles"
-          description="Switch clip tiles between square (1080x1080) and widescreen (1920x1080)."
+          label="Adaptive clip tiles"
+          description="Switch clip tiles between square (1:1) and their original aspect ratio."
           control={
             <div className="settings-control">
               <label className="custom-checkbox">
