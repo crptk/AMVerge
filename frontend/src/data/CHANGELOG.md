@@ -1,3 +1,5 @@
+# v2.0.0
+
 ## v1.2.1
 - Fixed hovered videos sometimes not displaying full clip content
 

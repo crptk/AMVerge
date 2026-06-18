@@ -10,25 +10,34 @@ import { invoke } from "@tauri-apps/api/core";
 import { LazyClip } from "./LazyClip.tsx"
 import { useStaggeredMountQueue } from "./staggeredMountQueue.ts";
 import useViewportAwareProxyQueue from "./proxyQueue.ts";
+import useViewportAwareWebpQueue from "./webpQueue.ts";
 import { useAppStateStore } from "../../stores/appStore.ts";
 import { useUIStateStore } from "../../stores/UIStore.ts";
 import { useGeneralSettingsStore } from "../../stores/settingsStore.ts";
+import { useEpisodePanelRuntimeStore } from "../../stores/episodeStore.ts";
 
 export default function ClipsContainer({ cols }: { cols?: number }) {
   const clips = useAppStateStore((state) => state.clips);
   const loading = useAppStateStore((state) => state.loading);
   const importToken = useAppStateStore((state) => state.importToken);
   const setFocusedClip = useAppStateStore((state) => state.setFocusedClip);
+  const setFocusedClipId = useAppStateStore((state) => state.setFocusedClipId);
   const setSelectedClips = useAppStateStore((state) => state.setSelectedClips);
   const setLoading = useAppStateStore((state) => state.setLoading);
 
   const defaultCols = useUIStateStore((state) => state.cols);
   const generalSettings = useGeneralSettingsStore();
+  const openedEpisodeId = useEpisodePanelRuntimeStore((state) => state.openedEpisodeId);
 
   const activeCols = cols ?? defaultCols;
 
   // Proxy queue: manages HEVC/H.264 proxy generation and prioritization
   const { requestProxySequential, reportProxyDemand } = useViewportAwareProxyQueue();
+  // WebP queue: generates scene previews using viewport/hover priority
+  const { animatedByClipId, reportWebpDemand, primeFromDiskCache, resetWebpQueue } = useViewportAwareWebpQueue({
+    episodeCacheId: openedEpisodeId,
+    customPath: generalSettings.episodesPath,
+  });
   // Staggered mount queue: mounts videos one at a time in grid preview
   const { reportStaggerDemand } = useStaggeredMountQueue();
 
@@ -103,8 +112,8 @@ export default function ClipsContainer({ cols }: { cols?: number }) {
 
       // Shift-click: select a range of clips
       if (isShift) {
-        const anchorIndex = state.focusedClip
-          ? clips.findIndex((c) => c.src === state.focusedClip)
+        const anchorIndex = state.focusedClipId
+          ? clips.findIndex((c) => c.id === state.focusedClipId)
           : -1;
         const startIndex = anchorIndex !== -1 ? anchorIndex : index;
         const [start, end] = [startIndex, index].sort((a, b) => a - b);
@@ -130,8 +139,9 @@ export default function ClipsContainer({ cols }: { cols?: number }) {
 
       // Single click: focus this clip for preview without toggling selection
       setFocusedClip(clipSrc);
+      setFocusedClipId(clipId);
     },
-    [clips, setFocusedClip, setSelectedClips]
+    [clips, setFocusedClip, setFocusedClipId, setSelectedClips]
   );
 
   const handleToggleSelection = useCallback(
@@ -195,7 +205,46 @@ export default function ClipsContainer({ cols }: { cols?: number }) {
     // New import - discard any pending scroll restore and go to the top.
     savedScrollRef.current = null;
     containerRef.current?.scrollTo({ top: 0 });
-  }, [importToken]);
+    resetWebpQueue();
+  }, [importToken, resetWebpQueue]);
+
+  useEffect(() => {
+    if (generalSettings.importMethod === "webp_files") {
+      return;
+    }
+
+    if (!openedEpisodeId || clips.length === 0) return;
+
+    const jobs = clips
+      .map((clip) => {
+        const sourcePath = clip.originalPath || clip.src;
+        const start =
+          typeof clip.startSec === "number"
+            ? clip.startSec
+            : typeof clip.start === "number"
+              ? clip.start
+              : 0;
+        const rawEnd =
+          typeof clip.endSec === "number"
+            ? clip.endSec
+            : typeof clip.end === "number"
+              ? clip.end
+              : start + 2;
+        const end = Math.min(rawEnd > start ? rawEnd : start + 2, start + 2.5);
+
+        if (!sourcePath) return null;
+        return {
+          clipId: clip.id,
+          sourcePath,
+          start,
+          end,
+          fps: 8,
+        };
+      })
+      .filter((job): job is NonNullable<typeof job> => Boolean(job));
+
+    void primeFromDiskCache(jobs);
+  }, [clips, generalSettings.importMethod, openedEpisodeId, primeFromDiskCache]);
 
   // Ctrl + wheel to adjust the grid column count
   const setStoreCols = useUIStateStore((state) => state.setCols);
@@ -249,8 +298,10 @@ export default function ClipsContainer({ cols }: { cols?: number }) {
                   key={clip.id}
                   clip={clip}
                   index={index}
+                  previewWebpPath={animatedByClipId[clip.id]}
                   requestProxySequential={requestProxySequential}
                   reportProxyDemand={reportProxyDemand}
+                  reportWebpDemand={reportWebpDemand}
                   reportStaggerDemand={reportStaggerDemand}
                   onClipClick={handleClipClick}
                   onClipDoubleClick={handleClipDoubleClick}

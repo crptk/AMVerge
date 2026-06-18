@@ -1,152 +1,48 @@
 from transnetv2_pytorch import TransNetV2
 import torch
 import numpy as np
-from utils import (
+from utils.utils import (
     check_if_path_exists, convert_scenes_to_timestamps, 
     probe_video_total_frames, scenes_frames_to_seconds, 
-    probe_video_fps, probe_video_duration,
+    probe_video_fps, probe_video_duration, emit_progress, log
 )
+from utils.initialize_nelux import _get_nelux_video_reader
 import subprocess
-import os
-from constants import FRAME_CHANNELS, FRAME_HEIGHT, FRAME_WIDTH, WINDOW_SIZE, STRIDE, FRAME_BYTES
+from utils.constants import FRAME_CHANNELS, FRAME_HEIGHT, FRAME_WIDTH, WINDOW_SIZE, STRIDE, FRAME_BYTES
 import sys
 from tqdm import tqdm
-from pathlib import Path
 
-_NELUX_DLL_DIR_HANDLES = []
-_NELUX_RUNTIME_CONFIGURED = False
-_LAST_NELUX_CANDIDATE_DIRS = []
-_REQUIRED_FFMPEG_DLLS = (
-    "avcodec-62.dll",
-    "avformat-62.dll",
-    "avutil-60.dll",
-    "swresample-6.dll",
-    "swscale-9.dll",
-)
 
-def _directory_has_required_nelux_dlls(directory: Path) -> bool:
-    return all((directory / dll_name).exists() for dll_name in _REQUIRED_FFMPEG_DLLS)
+def _safe_total_frames(total_frames):
+    return max(1, int(total_frames) if total_frames else 0)
 
-def _iter_common_windows_ffmpeg_dirs():
-    common_roots = (
-        Path("C:/ffmpeg-shared"),
-        Path("C:/ffmpeg"),
-        Path("C:/tools/ffmpeg"),
-        Path("C:/Program Files/ffmpeg"),
-        Path("C:/Program Files (x86)/ffmpeg"),
-    )
 
-    for root in common_roots:
-        if not root.exists():
-            continue
-        yield root
-        yield root / "bin"
-        try:
-            for child in root.iterdir():
-                if child.is_dir():
-                    yield child
-                    yield child / "bin"
-        except PermissionError:
-            continue
+def _emit_loop_progress(
+    processed_frames,
+    total_frames,
+    base_percent,
+    span_percent,
+    message_prefix,
+    last_emitted_percent,
+):
+    """Emit progress only used for loops"""
+    safe_total = _safe_total_frames(total_frames)
+    fraction = min(1.0, max(0.0, processed_frames / safe_total))
+    current_percent = int(base_percent + (fraction * span_percent))
 
-def _iter_ffmpeg_dll_candidate_dirs():
-    env_vars = ("AMVERGE_FFMPEG_BIN", "FFMPEG_BIN", "NELUX_FFMPEG_BIN")
-    for env_var in env_vars:
-        env_value = os.environ.get(env_var)
-        if env_value:
-            yield Path(env_value)
-
-    script_dir = Path(__file__).resolve().parent
-    search_roots = [
-        Path.cwd(),
-        script_dir,
-        script_dir.parent,
-        script_dir.parent.parent,
-        script_dir.parent.parent.parent,
-        Path(sys.executable).resolve().parent,
-    ]
-
-    meipass = getattr(sys, "_MEIPASS", None)
-    if meipass:
-        search_roots.append(Path(meipass))
-
-    seen = set()
-    suffixes = (
-        Path("."),
-        Path("bin"),
-        Path("backend/bin"),
-        Path("ffmpeg/bin"),
-        Path("src-tauri/bin"),
-    )
-
-    for root in search_roots:
-        for suffix in suffixes:
-            candidate = (root / suffix).resolve()
-            key = str(candidate).lower()
-            if key in seen:
-                continue
-            seen.add(key)
-            yield candidate
-
-    if os.name == "nt":
-        for candidate in _iter_common_windows_ffmpeg_dirs():
-            key = str(candidate.resolve()).lower()
-            if key in seen:
-                continue
-            seen.add(key)
-            yield candidate.resolve()
-
-def _configure_nelux_windows_runtime() -> None:
-    global _NELUX_RUNTIME_CONFIGURED, _LAST_NELUX_CANDIDATE_DIRS
-    if _NELUX_RUNTIME_CONFIGURED:
-        return
-
-    if os.name != "nt" or not hasattr(os, "add_dll_directory"):
-        _NELUX_RUNTIME_CONFIGURED = True
-        return
-
-    selected_dirs = []
-    candidate_dirs = []
-    for candidate_dir in _iter_ffmpeg_dll_candidate_dirs():
-        candidate_dirs.append(candidate_dir)
-        if candidate_dir.is_dir() and _directory_has_required_nelux_dlls(candidate_dir):
-            selected_dirs.append(candidate_dir)
-
-    _LAST_NELUX_CANDIDATE_DIRS = candidate_dirs
-
-    for directory in selected_dirs:
-        handle = os.add_dll_directory(str(directory))
-        _NELUX_DLL_DIR_HANDLES.append(handle)
-
-    if selected_dirs:
-        existing_path = os.environ.get("PATH", "")
-        prepended = os.pathsep.join(str(path) for path in selected_dirs)
-        os.environ["PATH"] = (
-            f"{prepended}{os.pathsep}{existing_path}" if existing_path else prepended
+    if current_percent > last_emitted_percent:
+        emit_progress(
+            current_percent,
+            f"{message_prefix} ({processed_frames}/{safe_total} frames)",
         )
+        return current_percent
 
-    _NELUX_RUNTIME_CONFIGURED = True
-
-def _get_nelux_video_reader():
-    _configure_nelux_windows_runtime()
-    try:
-        from nelux import VideoReader
-    except ImportError as exc:
-        searched_preview = ", ".join(str(path) for path in _LAST_NELUX_CANDIDATE_DIRS[:8])
-        if not searched_preview:
-            searched_preview = "<none>"
-        raise ImportError(
-            "Failed to import nelux. Configure FFmpeg shared DLL location via "
-            "AMVERGE_FFMPEG_BIN (or FFMPEG_BIN) and ensure required DLLs are present. "
-            f"Searched first paths: {searched_preview}"
-        ) from exc
-
-    return VideoReader
+    return last_emitted_percent
 
 
 ## METHOD 1: Decode using FFMPEG and run GPU Scene Detection in parallel
 def decode_and_detect_scenes(input_video):
-    print(f"Calculating frame bytes..")
+    emit_progress(10, f"Calculating frame bytes..")
 
     check_if_path_exists(input_video)
 
@@ -170,7 +66,7 @@ def decode_and_detect_scenes(input_video):
     if process.stdout is None:
         raise RuntimeError("Failed to create stdout pipe")
     
-    print(f"Creating model..")
+    emit_progress(20, "Creating model..")
     device = "cuda" if torch.cuda.is_available() else "cpu"
     model = TransNetV2(device=device)
     model.eval()
@@ -183,9 +79,12 @@ def decode_and_detect_scenes(input_video):
     pbar = tqdm(
         desc = "Decoding video..",
         unit="frames",
-        file=sys.stdout,
+        file=sys.stderr,
         total=total_frames
     ) # progressbar obj
+
+    processed_frames = 0
+    last_decode_progress = 19
 
     while True:
         raw_frame = process.stdout.read(FRAME_BYTES)
@@ -194,7 +93,7 @@ def decode_and_detect_scenes(input_video):
             break
         
         if len(raw_frame) != FRAME_BYTES:
-            print(f"[ATTENTION] raw frame is not equal to frame bytes")
+            log(f"[ATTENTION] raw frame is not equal to frame bytes")
 
         # converting the raw bytes frame to (r, g, b) values each
         frame = np.frombuffer(raw_frame, dtype=np.uint8).reshape(
@@ -217,8 +116,19 @@ def decode_and_detect_scenes(input_video):
             buffer = buffer[STRIDE:]
             window_start_index += STRIDE
 
-        pbar.update(1)
-    pbar.close()
+        processed_frames += 1
+
+        if processed_frames % 10 == 0:
+            last_decode_progress = _emit_loop_progress(
+                processed_frames=processed_frames,
+                total_frames=total_frames,
+                base_percent=20,
+                span_percent=30,
+                message_prefix="Decoding video...",
+                last_emitted_percent=last_decode_progress,
+            )
+    #     pbar.update(1)
+    # pbar.close()
 
     if len(buffer) > 0:
         batch = np.stack(buffer)
@@ -231,6 +141,9 @@ def decode_and_detect_scenes(input_video):
             counts=counts,
             device=device,
         )
+
+    # Ensure decode phase reaches its terminal milestone.
+    emit_progress(50, f"Decoding video... ({processed_frames}/{_safe_total_frames(total_frames)})")
 
     scores = np.array(scores)
     counts = np.array(counts)
@@ -271,7 +184,7 @@ def decode_video_frames_nelux(input_video):
     Returns a numpy array with shape:
     (num_frames, FRAME_HEIGHT, FRAME_WIDTH, FRAME_CHANNELS), dtype=uint8
     """
-    print(f"Running decode video nelux function..")
+    log("Running decode video nelux function..")
     check_if_path_exists(input_video)
 
     VideoReader = _get_nelux_video_reader()
@@ -289,10 +202,11 @@ def decode_video_frames_nelux(input_video):
     )
 
     actual_frames = 0
+    last_decode_progress = 19
     with tqdm(
         desc="Decoding video with nelux..",
         unit="frames",
-        file=sys.stdout,
+        file=sys.stderr,
         total=total_frames,
     ) as pbar:
         for i in range(total_frames):
@@ -321,15 +235,26 @@ def decode_video_frames_nelux(input_video):
 
             frames[i] = frame_np
             actual_frames += 1
-            pbar.update(1)
-
+            if actual_frames % 10 == 0:
+                last_decode_progress = _emit_loop_progress(
+                    processed_frames=actual_frames,
+                    total_frames=total_frames,
+                    base_percent=20,
+                    span_percent=35,
+                    message_prefix="Decoding video...",
+                    last_emitted_percent=last_decode_progress,
+                )
+            # pbar.update(1)
+    # pbar.close()
     if actual_frames < total_frames:
         frames = frames[:actual_frames]
+
+    emit_progress(55, f"Decoding video... ({actual_frames}/{_safe_total_frames(total_frames)})")
 
     return frames
 
 def run_model_one_pass(frames, input_file, batch_size=100, overlap=50):
-    print(f"Running model one pass.")
+    log("Running model one pass.")
     num_frames = len(frames)
 
     scores = np.zeros(len(frames))
@@ -346,8 +271,11 @@ def run_model_one_pass(frames, input_file, batch_size=100, overlap=50):
     progress = tqdm(
         total = len(frames),
         desc="Scene Detection",
-        unit="frames"
+        unit="frames",
+        file=sys.stderr,
     )
+
+    last_model_progress = 54
 
     for start in range(0, len(frames), stride):
         end = min(start + batch_size, num_frames)
@@ -360,10 +288,21 @@ def run_model_one_pass(frames, input_file, batch_size=100, overlap=50):
 
         scores[start : end] += preds
         counts[start : end] += 1
-        progress.update(stride)
+
+        last_model_progress = _emit_loop_progress(
+            processed_frames=end,
+            total_frames=num_frames,
+            base_percent=55,
+            span_percent=20,
+            message_prefix="Running TransNetV2 scene detection...",
+            last_emitted_percent=last_model_progress,
+        )
+        # progress.update(stride)
 
     final_scores = scores / counts
     scenes_frames = model.predictions_to_scenes(final_scores)
+
+    emit_progress(75, f"Running TransNetV2 scene detection... ({num_frames}/{_safe_total_frames(num_frames)})")
 
     progress.close()
 

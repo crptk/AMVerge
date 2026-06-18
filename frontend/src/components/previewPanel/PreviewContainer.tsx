@@ -1,7 +1,6 @@
-import VideoPlayer from "./videoPlayer/VideoPlayer.tsx"
 import HowToUse from "./HowToUse.tsx"
 import React from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke, convertFileSrc } from "@tauri-apps/api/core";
 import {
   FaFolderOpen,
   FaFileExport,
@@ -12,6 +11,8 @@ import { useAppStateStore } from "../../stores/appStore.ts";
 import { useAppPersistedStore } from "../../stores/appStore.ts";
 import { useUIStateStore } from "../../stores/UIStore.ts";
 import { useGeneralSettingsStore } from "../../stores/settingsStore.ts";
+import { useEpisodePanelRuntimeStore } from "../../stores/episodeStore.ts";
+import { useScenePreviewStore } from "../../stores/scenePreviewStore.ts";
 import useImportExport from "../../hooks/useImportExport";
 import { renderProfileIcon } from "../../features/export/profileIconUtils.tsx";
 import {
@@ -37,9 +38,8 @@ export default function PreviewContainer(props: PreviewContainerProps) {
   const clips = useAppStateStore(s => s.clips);
   const selectedClips = useAppStateStore(s => s.selectedClips);
   const importedVideoPath = useAppStateStore(s => s.importedVideoPath);
+  const focusedClipId = useAppStateStore(s => s.focusedClipId);
 
-  const videoIsHEVC = useAppStateStore(s => s.videoIsHEVC);
-  const userHasHEVC = useAppStateStore(s => s.userHasHEVC);
   const importToken = useAppStateStore(s => s.importToken);
   const exportDir = useAppPersistedStore(s => s.exportDir);
   const setExportDir = useAppPersistedStore(s => s.setExportDir);
@@ -51,8 +51,10 @@ export default function PreviewContainer(props: PreviewContainerProps) {
   const setMergeClipsEnabled = useGeneralSettingsStore(s => s.setMergeClipsEnabled);
   const previewAudioStreamIndex = useGeneralSettingsStore(s => s.previewAudioStreamIndex);
   const setPreviewAudioStreamIndex = useGeneralSettingsStore(s => s.setPreviewAudioStreamIndex);
+  const importMethod = useGeneralSettingsStore(s => s.importMethod);
   const { handleExport, handlePickExportDir } = useImportExport();
   const [audioStreams, setAudioStreams] = React.useState<PreviewAudioStream[]>([]);
+  const webpPreviewMode = importMethod === "webp_files";
 
   const defaultMergedName = (clips[0]?.originalName || "episode") + "_merged";
   const activeExportProfile = React.useMemo(
@@ -81,9 +83,58 @@ export default function PreviewContainer(props: PreviewContainerProps) {
 
   const hasSelectedClips = selectedClips.size > 0;
 
-  const sourceClipObj = props.sourceClip ? clips.find(c => c.src === props.sourceClip) : null;
-  const mergedSrcs = sourceClipObj?.mergedSrcs;
-  const hasSource = !!props.sourceClip;
+  const openedEpisodeId = useEpisodePanelRuntimeStore(s => s.openedEpisodeId);
+  const animatedByClipId = useScenePreviewStore(s => s.animatedByClipId);
+
+  const sourceClipObj = React.useMemo(
+    () => (focusedClipId ? clips.find(c => c.id === focusedClipId) ?? null : null),
+    [clips, focusedClipId]
+  );
+  const hasSource = !!props.sourceClip && !!sourceClipObj;
+
+  const previewImageSrc = focusedClipId ? (animatedByClipId[focusedClipId] ?? null) : null;
+
+  // Source-anchored time window for the focused scene (mirrors the grid's WebP window).
+  const sourcePath = sourceClipObj ? (sourceClipObj.originalPath || sourceClipObj.src) : null;
+  const sceneStart =
+    typeof sourceClipObj?.startSec === "number"
+      ? sourceClipObj.startSec
+      : typeof sourceClipObj?.start === "number"
+        ? sourceClipObj.start
+        : 0;
+  const sceneRawEnd =
+    typeof sourceClipObj?.endSec === "number"
+      ? sourceClipObj.endSec
+      : typeof sourceClipObj?.end === "number"
+        ? sourceClipObj.end
+        : sceneStart + 2;
+  const sceneEnd = Math.min(sceneRawEnd > sceneStart ? sceneRawEnd : sceneStart + 2, sceneStart + 2.5);
+
+  // Generate the animated WebP for the focused clip on demand (never play the original video).
+  React.useEffect(() => {
+    if (!focusedClipId || !sourcePath || previewImageSrc) return;
+    let cancelled = false;
+    invoke<{ path?: string }>("generate_scene_webp", {
+      sceneId: focusedClipId,
+      sourcePath,
+      start: sceneStart,
+      end: sceneEnd,
+      fps: 8,
+      episodeCacheId: openedEpisodeId ?? null,
+      customPath: generalSettings.episodesPath ?? null,
+      kind: "animated",
+    })
+      .then((res) => {
+        if (cancelled || !res?.path) return;
+        useScenePreviewStore.getState().setAnimated(focusedClipId, res.path);
+      })
+      .catch(() => {
+        // best-effort; poster (if any) remains shown
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [focusedClipId, sourcePath, previewImageSrc, sceneStart, sceneEnd, openedEpisodeId, generalSettings.episodesPath]);
 
   React.useEffect(() => {
     if (showMergeNameModal) {
@@ -160,16 +211,23 @@ export default function PreviewContainer(props: PreviewContainerProps) {
         {hasSource && (
           <div className="preview-window-wrapper source" key="source-wrapper">
             <div className="preview-window">
-              <VideoPlayer
-                key={`source-player-${props.sourceClip}`}
-                selectedClip={props.sourceClip!}
-                mergedSrcs={mergedSrcs}
-                videoIsHEVC={videoIsHEVC}
-                userHasHEVC={userHasHEVC}
-                posterPath={props.sourceClipThumbnail}
-                importToken={importToken}
-                onTimeUpdate={props.onTimeUpdate}
-              />
+              {previewImageSrc ? (
+                <img
+                  className="preview-webp"
+                  src={`${convertFileSrc(previewImageSrc)}?v=${importToken}`}
+                  draggable={false}
+                  onDragStart={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                  }}
+                  style={{ width: "100%", height: "100%", objectFit: "contain" }}
+                  alt=""
+                />
+              ) : (
+                <div className="preview-window empty">
+                  <p>Loading preview...</p>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -260,7 +318,7 @@ export default function PreviewContainer(props: PreviewContainerProps) {
                   value={previewAudioStreamIndex ?? (audioStreams[0]?.audioStreamIndex ?? 0)}
                   onChange={setPreviewAudioStreamIndex}
                   preferredDirection="up"
-                  disabled={audioStreamOptions.length === 0}
+                  disabled={audioStreamOptions.length === 0 || webpPreviewMode}
                 />
               </div>
             </div>

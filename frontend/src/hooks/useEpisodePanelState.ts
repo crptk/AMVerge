@@ -20,6 +20,7 @@ export default function useEpisodePanelState() {
 
 		appState.setSelectedClips(new Set());
 		appState.setFocusedClip(null);
+		appState.setFocusedClipId(null);
 		episodeRuntimeState.setSelectedEpisodeId(episodeId);
 		episodeRuntimeState.setOpenedEpisodeId(episodeId);
 		episodeRuntimeState.setSelectedFolderId(null);
@@ -211,6 +212,7 @@ export default function useEpisodePanelState() {
 			appState.setClips([]);
 			appState.setSelectedClips(new Set());
 			appState.setFocusedClip(null);
+			appState.setFocusedClipId(null);
 			appState.setImportedVideoPath(null);
 		}
 	};

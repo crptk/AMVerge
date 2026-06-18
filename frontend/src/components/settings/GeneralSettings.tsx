@@ -1,6 +1,7 @@
 import { open } from "@tauri-apps/plugin-dialog";
 import { invoke } from "@tauri-apps/api/core";
-import { useGeneralSettingsStore } from "../../stores/settingsStore";
+import { importMethod, SceneDetectionMethod, useGeneralSettingsStore } from "../../stores/settingsStore";
+import { useUIStateStore } from "../../stores/UIStore";
 import { useEffect, useState} from "react";
 import SettingRow from "../common/SettingRow";
 import { clearEpisodePanelCache } from "../../utils/episodeUtils";
@@ -16,6 +17,9 @@ export default function GeneralSettings({
 }: GeneralSettingsProps) {
   const generalSettings = useGeneralSettingsStore();
   const setGeneralSettings = useGeneralSettingsStore.setState;
+  const setSceneDetectionMethod = useGeneralSettingsStore((s) => s.setSceneDetectionMethod);
+  const setImportMethod = useGeneralSettingsStore((s) => s.setImportMethod);
+  const setGridPreview = useUIStateStore((s) => s.setGridPreview);
   const [loading, setLoading] = useState(false);
   const [showFactoryResetConfirm, setShowFactoryResetConfirm] = useState(false);
   const [showClearPanelConfirm, setShowClearPanelConfirm] = useState(false);
@@ -102,6 +106,47 @@ export default function GeneralSettings({
             </span>
           </div>
         )}
+        
+        <SettingRow
+          label="Scene Detection Method"
+          description="Click the info icon to get more info about each method."
+          control={
+            <div className="settings-control">
+              <select
+                className="settings-wide-dropdown export-profile-dropdown"
+                value={generalSettings.sceneDetectionMethod}
+                onChange={(e) => setSceneDetectionMethod(e.target.value as SceneDetectionMethod)}
+              >
+                <option value="transnetv2_gpu">GPU using TransNetV2</option>
+                <option value="pyscenedetect_cpu">CPU using PySceneDetect (not implemented yet)</option>
+                <option value="keyframe_detection">Keyframe detection (placeholder)</option>
+              </select>
+            </div>
+          }
+        />
+
+        <SettingRow
+          label="Preview Method"
+          description="Choose whether grid preview should use source videos or generated WebP files."
+          control={
+            <div className="settings-control">
+              <select
+                className="settings-wide-dropdown export-profile-dropdown"
+                value={generalSettings.importMethod}
+                onChange={(e) => {
+                  const nextMethod = e.target.value as importMethod;
+                  setImportMethod(nextMethod);
+                  if (nextMethod === "webp_files") {
+                    setGridPreview(true);
+                  }
+                }}
+              >
+                <option value="video_files">Video files</option>
+                <option value="webp_files">WebP files</option>
+              </select>
+            </div>
+          }
+        />
 
         <SettingRow
           label="Application Version"

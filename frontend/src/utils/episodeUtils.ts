@@ -24,6 +24,7 @@ export async function clearEpisodePanelCache(): Promise<void> {
   episodeRuntime.setOpenedEpisodeId(null);
   appState.setSelectedClips(new Set());
   appState.setFocusedClip(null);
+  appState.setFocusedClipId(null);
   appState.setClips([]);
   appState.setImportedVideoPath(null);
   appState.setVideoIsHEVC(null);
@@ -45,13 +46,15 @@ export const truncateFileName = (name: string): string => {
 export const detectScenes = async (
   videoPath: string,
   episodeCacheId: string,
-  customPath: string | null = null
+  customPath: string | null = null,
+  sceneDetectionMethod: string = "transnetv2_gpu"
 ) => {
     // calls backend passing in video file and threshold
     const result = await invoke<string>("detect_scenes", {
       videoPath: videoPath,
       episodeCacheId: episodeCacheId,
       customPath: customPath,
+      sceneDetectionMethod,
     });
 
     // contains path to all clips along w other metadata
@@ -70,6 +73,18 @@ export const detectScenes = async (
       start: s.start,
       end: s.end
     }));
+};
+
+export const loadEpisodeManifest = async (
+  episodeCacheId: string,
+  customPath: string | null = null
+) => {
+  const raw = await invoke<string>("load_episode_manifest", {
+    episodeCacheId,
+    customPath,
+  });
+
+  return JSON.parse(raw);
 };
 
 export function fileNameFromPath(path: string): string {

@@ -9,6 +9,10 @@ from tqdm import tqdm
 import sys
 import av
 import torch
+import threading
+
+_progress_lock = threading.Lock()
+
 def resolve_paths(path_str):
     BASE_DIR = Path.cwd().resolve()
 
@@ -45,30 +49,62 @@ def probe_video_fps(input_video):
 
     return fps
 
+def probe_video_dimensions(input_video):
+    cmd_to_get_dims = [
+        "ffprobe",
+        "-v", "error",
+        "-select_streams", "v:0",
+        "-show_entries", "stream=width,height",
+        "-of", "csv=s=x:p=0",
+        str(input_video)
+    ]
+    result = subprocess.run(
+        cmd_to_get_dims,
+        capture_output=True,
+        text=True,
+        check=True
+    )
+
+    width, height = map(int, result.stdout.strip().split("x"))
+
+    return width, height
+
 def probe_video_duration(input_video):
     cmd = [
         "ffprobe",
         "-v", "error",
         "-show_entries", "format=duration",
         "-of", "default=noprint_wrappers=1:nokey=1",
-        input_video
+        str(input_video)
     ]
 
     result = subprocess.run(
         cmd,
         capture_output=True,
-        text=True
+        text=True,
+        check=True
     )
 
     duration = float(result.stdout.strip())
 
-    print(duration)
     return duration
 
 def probe_video_total_frames(input_video, video_fps, video_duration):
     total_frames = int(video_fps * video_duration)
     return total_frames
 
+
+def emit_progress(percent: int, message: str) -> None:
+    """Emit progress to stderr.
+
+    stdout is reserved for final JSON responses.
+    Rust listens to stderr for PROGRESS lines.
+    """
+
+    clamped = max(0, min(100, int(percent)))
+
+    with _progress_lock:
+        print(f"PROGRESS|{clamped}|{message}", file=sys.stderr, flush=True)
 
 def _nearest_within_threshold(sorted_keyframes, ts, threshold):
     i = bisect_left(sorted_keyframes, ts)

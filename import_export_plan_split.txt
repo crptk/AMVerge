@@ -1,0 +1,18 @@
+WEBP Imports:
+1) Would import by cutting from raw episode and running webp generation
+2) Storage would be the .npy files and the webp files in the folder
+3) Preview all button would be disabled
+4) No timeline for webp or audio button
+
+Video Imports
+1) Would import by running keyframe + scene detection video generation via python backend
+2) Storage would be the video files generated, would NOT copy the episode
+3) Would have options for user to define what reencoding settings the import would use if the cut is not on a keyframe
+
+NOTE: For all scene detection methods, I can allow both import methods. For keyframe analysis it's the most ideal since video import method is fastest and webp
+will also be fast. For the other methods, webp is ideal with more performance but wont have sound, no option to toggle preview all off, no timeline.
+
+This will add complexity for exporting--What will export? 
+
+1) For webp, the original video will be cut and reencoded according to the user's settings on the timestamps from the original video using the metadata
+2) For video, the original video will be exported or reencoded accordingly, merged accordingly to the user's settings. The only real issue is that if they change the quality at which the reencoded videos are imported to something lower, those scenes may be lower quality on export, so I'll have to see what I can do about this. Another issue is that the scenes which are reencoded might be different codec, especially if the user reencodes using nvedc hardware acceleration.

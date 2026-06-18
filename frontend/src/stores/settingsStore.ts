@@ -12,6 +12,8 @@ import {
     GENERAL SETTINGS 
 =====================*/
 export type ExportFormat = "mp4" | "mkv" | "mov" | "xml";
+export type SceneDetectionMethod = "transnetv2_gpu" | "pyscenedetect_cpu" | "keyframe_detection";
+export type importMethod = "video_files" | "webp_files";
 
 export type GeneralSettings = {
     episodesPath: string | null;
@@ -30,6 +32,8 @@ export type GeneralSettings = {
     rpcShowFilename: boolean;
     rpcShowButtons: boolean;
     rpcShowMiniIcons: boolean;
+    sceneDetectionMethod: SceneDetectionMethod;
+    importMethod: importMethod;
 };
 
 export type GeneralSettingsStore = GeneralSettings & {
@@ -53,6 +57,8 @@ export type GeneralSettingsStore = GeneralSettings & {
     setRpcShowButtons: (enabled: boolean) => void;
     setRpcShowMiniIcons: (enabled: boolean) => void;
     resetGeneralSettings: () => void;
+    setSceneDetectionMethod: (method: SceneDetectionMethod) => void;
+    setImportMethod: (method: importMethod) => void;
 };
 
 export const DEFAULT_GENERAL_SETTINGS: GeneralSettings = {
@@ -72,6 +78,8 @@ export const DEFAULT_GENERAL_SETTINGS: GeneralSettings = {
     rpcShowFilename: true,
     rpcShowButtons: true,
     rpcShowMiniIcons: true,
+    sceneDetectionMethod: "transnetv2_gpu",
+    importMethod: "video_files",
 };
 
 export const useGeneralSettingsStore = create<GeneralSettingsStore>()(
@@ -160,6 +168,10 @@ export const useGeneralSettingsStore = create<GeneralSettingsStore>()(
                         exportProfiles,
                     };
                 }),
+            setSceneDetectionMethod: (method) => 
+                set({ sceneDetectionMethod: method }),
+            setImportMethod: (method) =>
+                set({ importMethod: method }),
             setAudioPlaybackHover: (enabled) =>
                 set({ audioPlaybackHover: enabled }),
             setPreviewAudioEnabled: (enabled) =>
@@ -175,7 +187,7 @@ export const useGeneralSettingsStore = create<GeneralSettingsStore>()(
                 set({ rpcShowButtons: enabled }),
             setRpcShowMiniIcons: (enabled) =>
                 set({ rpcShowMiniIcons: enabled }),
-
+            
             resetGeneralSettings: () => set(DEFAULT_GENERAL_SETTINGS),
         }),
         {
@@ -207,6 +219,17 @@ export const useGeneralSettingsStore = create<GeneralSettingsStore>()(
                     exportProfiles: persistedProfiles,
                     activeExportProfileId,
                     exportFormat,
+                    sceneDetectionMethod:
+                        persisted.sceneDetectionMethod === "pyscenedetect_cpu" ||
+                        persisted.sceneDetectionMethod === "keyframe_detection" ||
+                        persisted.sceneDetectionMethod === "transnetv2_gpu"
+                            ? persisted.sceneDetectionMethod
+                            : currentState.sceneDetectionMethod,
+                    importMethod:
+                        persisted.importMethod === "webp_files" ||
+                        persisted.importMethod === "video_files"
+                            ? persisted.importMethod
+                            : currentState.importMethod,
                 };
             },
         }

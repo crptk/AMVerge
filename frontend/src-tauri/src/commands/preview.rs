@@ -1,17 +1,22 @@
-use std::path::PathBuf;
+use std::fs::File;
+use std::io::{Read, Seek, SeekFrom};
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::Arc;
+use std::collections::{BTreeSet, HashMap};
+use std::time::Instant;
 
 #[cfg(not(windows))]
 use std::os::unix::process::CommandExt;
 
-use tauri::{AppHandle, State};
-use serde::Serialize;
+use tauri::{AppHandle, Manager, State};
+use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 
 use crate::state::{ActiveFfmpegPids, PreviewProxyLocks};
 use crate::utils::ffmpeg::resolve_bundled_tool;
 use crate::utils::logging::console_log;
-use crate::utils::paths::file_name_only;
+use crate::utils::paths::{file_name_only, sanitize_episode_cache_id};
 use crate::utils::process::apply_no_window;
 
 #[derive(Serialize)]
@@ -19,6 +24,608 @@ use crate::utils::process::apply_no_window;
 pub struct PreviewAudioStream {
     pub audio_stream_index: u32,
     pub label: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SceneWebpJob {
+    pub scene_id: String,
+    pub source_path: String,
+    pub start: f64,
+    pub end: f64,
+    pub fps: Option<u32>,
+    pub episode_cache_id: Option<String>,
+    pub custom_path: Option<String>,
+    /// "poster" for a static first-frame image, "animated" (default) for the looping WebP.
+    pub kind: Option<String>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SceneWebpResult {
+    pub scene_id: String,
+    pub path: String,
+    pub duration: f64,
+    pub cached: bool,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SceneWebpBatchItem {
+    pub scene_id: String,
+    pub path: Option<String>,
+    pub duration: Option<f64>,
+    pub cached: bool,
+    pub error: Option<String>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SceneWebpBatchResult {
+    pub items: Vec<SceneWebpBatchItem>,
+}
+
+fn sanitize_scene_time_window(start: f64, end: f64) -> (f64, f64, f64) {
+    let safe_start = if start.is_finite() { start.max(0.0) } else { 0.0 };
+    let mut safe_end = if end.is_finite() { end.max(safe_start) } else { safe_start };
+    if safe_end - safe_start < 0.10 {
+        safe_end = safe_start + 0.10;
+    }
+    // Keep grid previews short for fast first paint; long scenes are expensive to encode.
+    let max_preview_secs = 2.5;
+    if safe_end - safe_start > max_preview_secs {
+        safe_end = safe_start + max_preview_secs;
+    }
+    let duration = safe_end - safe_start;
+    (safe_start, safe_end, duration)
+}
+
+fn sampled_offsets(size: u64, sample_len: usize) -> Vec<u64> {
+    let mut offsets = BTreeSet::new();
+    offsets.insert(0);
+
+    if size > sample_len as u64 {
+        offsets.insert(size.saturating_sub(sample_len as u64));
+    }
+
+    if size > (sample_len as u64) * 2 {
+        let half = size / 2;
+        let middle = half.saturating_sub((sample_len as u64) / 2);
+        offsets.insert(middle);
+    }
+
+    offsets.into_iter().collect()
+}
+
+fn content_fingerprint(path: &Path) -> Result<String, String> {
+    const SAMPLE_BYTES: usize = 1024 * 1024;
+
+    let metadata = std::fs::metadata(path)
+        .map_err(|e| format!("Failed to read source metadata '{}': {e}", path.display()))?;
+    let size = metadata.len();
+
+    let mut file = File::open(path)
+        .map_err(|e| format!("Failed to open source '{}' for fingerprinting: {e}", path.display()))?;
+    let mut hasher = Sha256::new();
+    hasher.update(size.to_le_bytes());
+
+    let mut buffer = vec![0_u8; SAMPLE_BYTES];
+    for offset in sampled_offsets(size, SAMPLE_BYTES) {
+        file.seek(SeekFrom::Start(offset))
+            .map_err(|e| format!("Failed to seek source '{}' for fingerprinting: {e}", path.display()))?;
+        let read = file
+            .read(&mut buffer)
+            .map_err(|e| format!("Failed to read source '{}' for fingerprinting: {e}", path.display()))?;
+        if read > 0 {
+            hasher.update(&buffer[..read]);
+        }
+    }
+
+    Ok(hex::encode(hasher.finalize()))
+}
+
+fn preview_cache_key(
+    source: &Path,
+    start: f64,
+    end: f64,
+    fps: u32,
+    is_poster: bool,
+) -> Result<String, String> {
+    let fingerprint = content_fingerprint(source)?;
+    Ok(preview_cache_key_with_fingerprint(
+        &fingerprint,
+        start,
+        end,
+        fps,
+        is_poster,
+    ))
+}
+
+fn preview_cache_key_with_fingerprint(
+    fingerprint: &str,
+    start: f64,
+    end: f64,
+    fps: u32,
+    is_poster: bool,
+) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(fingerprint.as_bytes());
+    hasher.update(format!("{start:.3}:{end:.3}:{fps}:{}:webp_v3", if is_poster { "poster" } else { "animated" }).as_bytes());
+    let digest = hex::encode(hasher.finalize());
+    digest.chars().take(24).collect()
+}
+
+fn resolve_scene_webp_cache_base(
+    app: &AppHandle,
+    episode_cache_id: Option<&str>,
+    custom_path: Option<&str>,
+) -> Result<PathBuf, String> {
+    let base = if let Some(raw_id) = episode_cache_id {
+        let id = sanitize_episode_cache_id(raw_id)?;
+        let episodes_base = if let Some(path) = custom_path {
+            PathBuf::from(path)
+        } else {
+            app.path()
+                .app_data_dir()
+                .map_err(|e| e.to_string())?
+                .join("episodes")
+        };
+        episodes_base.join(id).join("scenes")
+    } else {
+        app.path()
+            .app_data_dir()
+            .map_err(|e| e.to_string())?
+            .join("preview_webp_cache")
+    };
+
+    std::fs::create_dir_all(&base)
+        .map_err(|e| format!("Failed to create WebP cache directory '{}': {e}", base.display()))?;
+
+    Ok(base)
+}
+
+fn scene_webp_cache_path(
+    app: &AppHandle,
+    source_path: &str,
+    start: f64,
+    end: f64,
+    fps: u32,
+    is_poster: bool,
+    episode_cache_id: Option<&str>,
+    custom_path: Option<&str>,
+) -> Result<PathBuf, String> {
+    let source = PathBuf::from(source_path);
+    if !source.is_file() {
+        return Err(format!("Scene source is missing or not a file: {}", source.display()));
+    }
+    let key = preview_cache_key(&source, start, end, fps, is_poster)?;
+    let base = resolve_scene_webp_cache_base(app, episode_cache_id, custom_path)?;
+
+    let prefix = if is_poster { "poster" } else { "scene" };
+    Ok(base.join(format!("{prefix}_{key}.webp")))
+}
+
+async fn generate_scene_webp_inner(
+    app: &AppHandle,
+    proxy_locks: &State<'_, PreviewProxyLocks>,
+    ffmpeg_pids: &State<'_, ActiveFfmpegPids>,
+    scene_id: String,
+    source_path: String,
+    start: f64,
+    end: f64,
+    fps: Option<u32>,
+    episode_cache_id: Option<String>,
+    custom_path: Option<String>,
+    kind: Option<String>,
+) -> Result<SceneWebpResult, String> {
+    let input_path = PathBuf::from(&source_path);
+    if !input_path.exists() {
+        return Err(format!("Scene source not found: {}", input_path.display()));
+    }
+
+    let is_poster = kind.as_deref() == Some("poster");
+    let frame_rate = fps.unwrap_or(8).clamp(1, 24);
+    let (safe_start, safe_end, duration) = sanitize_scene_time_window(start, end);
+    let webp_path = scene_webp_cache_path(
+        app,
+        &source_path,
+        safe_start,
+        safe_end,
+        frame_rate,
+        is_poster,
+        episode_cache_id.as_deref(),
+        custom_path.as_deref(),
+    )?;
+    let webp_tmp_path = webp_path.with_extension("tmp.webp");
+
+    let lock_key = webp_path.to_string_lossy().to_string();
+    let clip_lock = {
+        let mut map = proxy_locks.inner.lock().await;
+        map.retain(|_, v| Arc::strong_count(v) > 1);
+        map.entry(lock_key)
+            .or_insert_with(|| Arc::new(tokio::sync::Mutex::new(())))
+            .clone()
+    };
+    let _guard = clip_lock.lock().await;
+
+    if let Ok(meta) = std::fs::metadata(&webp_path) {
+        if meta.is_file() && meta.len() > 1024 {
+            return Ok(SceneWebpResult {
+                scene_id,
+                path: webp_path.to_string_lossy().to_string(),
+                duration,
+                cached: true,
+            });
+        }
+    }
+
+    let ffmpeg = resolve_bundled_tool(app, "ffmpeg")?;
+    let vf = if is_poster {
+        "scale=-2:240:flags=bicubic".to_string()
+    } else {
+        format!("fps={frame_rate},scale=-2:240:flags=bicubic")
+    };
+    let _ = std::fs::remove_file(&webp_tmp_path);
+
+    let ffmpeg_clone = ffmpeg.clone();
+    let input = input_path.clone();
+    let output = webp_tmp_path.clone();
+    let pids = ffmpeg_pids.pids.clone();
+
+    let ffmpeg_output = tokio::task::spawn_blocking(move || {
+        let mut cmd = Command::new(&ffmpeg_clone);
+        apply_no_window(&mut cmd);
+        #[cfg(not(windows))]
+        cmd.process_group(0);
+        cmd.args([
+            "-y",
+            "-ss",
+            &format!("{safe_start:.3}"),
+        ]);
+        if !is_poster {
+            cmd.args(["-t", &format!("{duration:.3}")]);
+        }
+        cmd.arg("-i");
+        cmd.arg(&input);
+        if is_poster {
+            cmd.args([
+                "-frames:v",
+                "1",
+                "-an",
+                "-vf",
+                &vf,
+                "-c:v",
+                "libwebp",
+                "-threads",
+                "2",
+                "-lossless",
+                "0",
+                "-compression_level",
+                "4",
+                "-q:v",
+                "70",
+            ]);
+        } else {
+            cmd.args([
+                "-an",
+                "-vf",
+                &vf,
+                "-c:v",
+                "libwebp",
+                "-threads",
+                "2",
+                "-lossless",
+                "0",
+                "-compression_level",
+                "2",
+                "-q:v",
+                "48",
+                "-loop",
+                "0",
+            ]);
+        }
+        cmd.arg(&output);
+
+        let child = cmd
+            .stdout(Stdio::null())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(|e| format!("Failed to run ffmpeg: {e}"))?;
+        let pid = child.id();
+        if let Ok(mut l) = pids.lock() { l.push(pid); }
+        let result = child.wait_with_output().map_err(|e| format!("Failed waiting for ffmpeg: {e}"))?;
+        if let Ok(mut l) = pids.lock() { l.retain(|p| *p != pid); }
+        Ok::<std::process::Output, String>(result)
+    })
+    .await
+    .map_err(|e| format!("ffmpeg task panicked: {e}"))??;
+
+    if !ffmpeg_output.status.success() {
+        let _ = std::fs::remove_file(&webp_tmp_path);
+        let stderr = String::from_utf8_lossy(&ffmpeg_output.stderr).trim().to_string();
+        return Err(if stderr.is_empty() {
+            "FFmpeg WebP generation failed".to_string()
+        } else {
+            format!("FFmpeg WebP generation failed: {stderr}")
+        });
+    }
+
+    let meta = std::fs::metadata(&webp_tmp_path).map_err(|e| e.to_string())?;
+    if meta.len() <= 1024 {
+        let _ = std::fs::remove_file(&webp_tmp_path);
+        return Err("WebP generation produced an invalid file".to_string());
+    }
+
+    match std::fs::remove_file(&webp_path) {
+        Ok(_) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => return Err(format!("Failed to remove existing WebP: {e}")),
+    }
+
+    if let Err(e) = std::fs::rename(&webp_tmp_path, &webp_path) {
+        std::fs::copy(&webp_tmp_path, &webp_path)
+            .map_err(|copy_err| format!("Failed to publish WebP (rename={e}, copy={copy_err})"))?;
+        let _ = std::fs::remove_file(&webp_tmp_path);
+    }
+
+    console_log(
+        "WEBP|ready",
+        &format!(
+            "scene={} path={}",
+            scene_id,
+            file_name_only(&webp_path.to_string_lossy())
+        ),
+    );
+
+    Ok(SceneWebpResult {
+        scene_id,
+        path: webp_path.to_string_lossy().to_string(),
+        duration,
+        cached: false,
+    })
+}
+
+async fn run_scene_webp_job(
+    app: &AppHandle,
+    proxy_locks: &State<'_, PreviewProxyLocks>,
+    ffmpeg_pids: &State<'_, ActiveFfmpegPids>,
+    job: SceneWebpJob,
+) -> Result<SceneWebpResult, String> {
+    generate_scene_webp_inner(
+        app,
+        proxy_locks,
+        ffmpeg_pids,
+        job.scene_id,
+        job.source_path,
+        job.start,
+        job.end,
+        job.fps,
+        job.episode_cache_id,
+        job.custom_path,
+        job.kind,
+    )
+    .await
+}
+
+fn lookup_scene_webp_cache_item(
+    app: &AppHandle,
+    fingerprint_cache: &mut HashMap<String, String>,
+    job: SceneWebpJob,
+) -> SceneWebpBatchItem {
+    let scene_id = job.scene_id.clone();
+    let is_poster = job.kind.as_deref() == Some("poster");
+    let frame_rate = job.fps.unwrap_or(8).clamp(1, 24);
+    let (safe_start, safe_end, duration) = sanitize_scene_time_window(job.start, job.end);
+
+    let source = PathBuf::from(&job.source_path);
+    if !source.is_file() {
+        return SceneWebpBatchItem {
+            scene_id,
+            path: None,
+            duration: Some(duration),
+            cached: false,
+            error: Some(format!("Scene source is missing or not a file: {}", source.display())),
+        };
+    }
+
+    let base = match resolve_scene_webp_cache_base(
+        app,
+        job.episode_cache_id.as_deref(),
+        job.custom_path.as_deref(),
+    ) {
+        Ok(base) => base,
+        Err(error) => {
+            return SceneWebpBatchItem {
+                scene_id,
+                path: None,
+                duration: Some(duration),
+                cached: false,
+                error: Some(error),
+            }
+        }
+    };
+
+    let source_key = source.to_string_lossy().to_string();
+    let fingerprint = if let Some(cached) = fingerprint_cache.get(&source_key) {
+        cached.clone()
+    } else {
+        match content_fingerprint(&source) {
+            Ok(fp) => {
+                fingerprint_cache.insert(source_key.clone(), fp.clone());
+                fp
+            }
+            Err(error) => {
+                return SceneWebpBatchItem {
+                    scene_id,
+                    path: None,
+                    duration: Some(duration),
+                    cached: false,
+                    error: Some(error),
+                }
+            }
+        }
+    };
+
+    let key = preview_cache_key_with_fingerprint(
+        &fingerprint,
+        safe_start,
+        safe_end,
+        frame_rate,
+        is_poster,
+    );
+    let prefix = if is_poster { "poster" } else { "scene" };
+    let cache_path = base.join(format!("{prefix}_{key}.webp"));
+
+    let exists = std::fs::metadata(&cache_path)
+        .map(|meta| meta.is_file() && meta.len() > 1024)
+        .unwrap_or(false);
+
+    SceneWebpBatchItem {
+        scene_id,
+        path: if exists {
+            Some(cache_path.to_string_lossy().to_string())
+        } else {
+            None
+        },
+        duration: Some(duration),
+        cached: exists,
+        error: None,
+    }
+}
+
+fn batch_item_from_result(
+    scene_id: String,
+    result: Result<SceneWebpResult, String>,
+) -> SceneWebpBatchItem {
+    match result {
+        Ok(ok) => SceneWebpBatchItem {
+            scene_id: ok.scene_id,
+            path: Some(ok.path),
+            duration: Some(ok.duration),
+            cached: ok.cached,
+            error: None,
+        },
+        Err(error) => SceneWebpBatchItem {
+            scene_id,
+            path: None,
+            duration: None,
+            cached: false,
+            error: Some(error),
+        },
+    }
+}
+
+#[tauri::command]
+pub async fn generate_scene_webp(
+    app: AppHandle,
+    proxy_locks: State<'_, PreviewProxyLocks>,
+    ffmpeg_pids: State<'_, ActiveFfmpegPids>,
+    scene_id: String,
+    source_path: String,
+    start: f64,
+    end: f64,
+    fps: Option<u32>,
+    episode_cache_id: Option<String>,
+    custom_path: Option<String>,
+    kind: Option<String>,
+) -> Result<SceneWebpResult, String> {
+    run_scene_webp_job(
+        &app,
+        &proxy_locks,
+        &ffmpeg_pids,
+        SceneWebpJob {
+            scene_id,
+            source_path,
+            start,
+            end,
+            fps,
+            episode_cache_id,
+            custom_path,
+            kind,
+        },
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn generate_scene_webp_batch(
+    app: AppHandle,
+    proxy_locks: State<'_, PreviewProxyLocks>,
+    ffmpeg_pids: State<'_, ActiveFfmpegPids>,
+    jobs: Vec<SceneWebpJob>,
+) -> Result<SceneWebpBatchResult, String> {
+    let mut items: Vec<SceneWebpBatchItem> = Vec::with_capacity(jobs.len());
+    let mut iter = jobs.into_iter();
+    while let Some(job_a) = iter.next() {
+        let job_b = iter.next();
+
+        if let Some(job_b) = job_b {
+            let scene_a = job_a.scene_id.clone();
+            let scene_b = job_b.scene_id.clone();
+
+            let (res_a, res_b) = tokio::join!(
+                run_scene_webp_job(&app, &proxy_locks, &ffmpeg_pids, job_a),
+                run_scene_webp_job(&app, &proxy_locks, &ffmpeg_pids, job_b),
+            );
+            items.push(batch_item_from_result(scene_a, res_a));
+            items.push(batch_item_from_result(scene_b, res_b));
+            continue;
+        }
+
+        let scene_a = job_a.scene_id.clone();
+        let res_a = run_scene_webp_job(&app, &proxy_locks, &ffmpeg_pids, job_a).await;
+        items.push(batch_item_from_result(scene_a, res_a));
+    }
+
+    Ok(SceneWebpBatchResult { items })
+}
+
+#[tauri::command]
+pub async fn lookup_scene_webp_cache_batch(
+    app: AppHandle,
+    jobs: Vec<SceneWebpJob>,
+) -> Result<SceneWebpBatchResult, String> {
+    let started = Instant::now();
+    let requested = jobs.len();
+    let episode_hint = jobs
+        .first()
+        .and_then(|job| job.episode_cache_id.clone())
+        .unwrap_or_else(|| "none".to_string());
+
+    let mut fingerprint_cache: HashMap<String, String> = HashMap::new();
+    let items: Vec<SceneWebpBatchItem> = jobs
+        .into_iter()
+        .map(|job| lookup_scene_webp_cache_item(&app, &mut fingerprint_cache, job))
+        .collect();
+
+    let hits = items.iter().filter(|item| item.path.is_some()).count();
+    let misses = requested.saturating_sub(hits);
+    let sample_hit = items
+        .iter()
+        .find_map(|item| item.path.as_deref())
+        .map(file_name_only)
+        .unwrap_or_else(|| "none".to_string());
+    let sample_error = items
+        .iter()
+        .find_map(|item| item.error.as_deref())
+        .unwrap_or("none");
+
+    console_log(
+        "WEBP|cache_lookup",
+        &format!(
+            "episode={} requested={} hits={} misses={} unique_sources={} elapsed_ms={} sample_hit={} sample_error={}",
+            episode_hint,
+            requested,
+            hits,
+            misses,
+            fingerprint_cache.len(),
+            started.elapsed().as_millis(),
+            sample_hit,
+            sample_error,
+        ),
+    );
+
+    Ok(SceneWebpBatchResult { items })
 }
 
 fn normalize_language_label(raw: &str) -> String {

@@ -16,6 +16,24 @@ export type ProxyDemand = {
   seq: number; // higher = more recent
 };
 
+export type SceneWebpJob = {
+  sceneId: string;
+  sourcePath: string;
+  start: number;
+  end: number;
+  fps?: number;
+  episodeCacheId?: string | null;
+  customPath?: string | null;
+  kind?: "animated";
+};
+
+export type SceneWebpDemand = {
+  sceneId: string;
+  order: number;
+  priority: boolean;
+  job: SceneWebpJob;
+};
+
 export type LazyClipProps = {
   clip: ClipItem;
   index: number;
@@ -36,4 +54,14 @@ export type LazyClipProps = {
   onToggleSelection: (clipId: string, e: React.MouseEvent) => void;
   reportStaggerDemand: (key: string, demand: { order: number; onReady: () => void } | null) => void;
   onDownloadClip: (clip: ClipItem) => void;
+  previewWebpPath?: string;
+  reportWebpDemand: (
+    clipId: string,
+    demand: {
+      isVisible: boolean;
+      order: number;
+      priority: boolean;
+      job: Omit<SceneWebpJob, "sceneId">;
+    } | null
+  ) => void;
 };
