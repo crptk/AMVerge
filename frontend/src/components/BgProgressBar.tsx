@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 type BgProgress = {
   clipDone?: number;
   clipTotal?: number;
+  clipLabel?: string;
   importDone?: number;
   importTotal?: number;
   onClose: () => void;
@@ -11,6 +12,7 @@ type BgProgress = {
 export default function BgProgressBar({
   clipDone = 0,
   clipTotal = 0,
+  clipLabel = "Processing clips",
   importDone = 0,
   importTotal = 0,
   onClose,
@@ -114,7 +116,7 @@ export default function BgProgressBar({
       </div>
       {showClipProgress ? (
         <>
-          <p className="bg-progress-label">Processing clips {clipDone}/{clipTotal}</p>
+          <p className="bg-progress-label">{clipLabel} {clipDone}/{clipTotal}</p>
           <div className="progress-bar" style={{ width: "100%", marginTop: 4, marginLeft: 0, marginRight: 0 }}>
             <div className="progress-fill" style={{ width: `${clipPercent}%` }} />
           </div>

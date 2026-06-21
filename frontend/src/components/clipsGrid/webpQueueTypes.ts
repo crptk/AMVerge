@@ -1,6 +1,6 @@
 import { SceneWebpJob } from "./types";
 
-export type WebpKind = "poster" | "animated";
+export type WebpKind = "animated";
 
 export type QueueDemand = {
   demandKey: string;

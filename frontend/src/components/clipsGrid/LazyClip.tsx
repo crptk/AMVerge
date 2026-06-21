@@ -8,6 +8,7 @@ import { memo, useState, useRef, useEffect, useCallback } from "react"
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { LazyClipProps } from "./types.ts"
 import { DownloadButton } from "./DownloadButton.tsx";
+import { useWebpPreview } from "./useWebpPreview.ts";
 import { FaCheck, FaPlus } from "react-icons/fa";
 import { useAppStateStore } from "../../stores/appStore.ts";
 import { useUIStateStore } from "../../stores/UIStore.ts";
@@ -32,6 +33,7 @@ function formatClipTime(seconds?: number | null): string | null {
 export const LazyClip = memo(function LazyClip({
   clip,
   index,
+  videoPreviewMode,
   previewWebpPath,
   requestProxySequential,
   reportProxyDemand,
@@ -49,7 +51,6 @@ export const LazyClip = memo(function LazyClip({
   const gridPreview = useUIStateStore(s => s.gridPreview);
   const videoIsHEVC = useAppStateStore(s => s.videoIsHEVC);
   const userHasHEVC = useAppStateStore(s => s.userHasHEVC);
-  const importMethod = useGeneralSettingsStore(s => s.importMethod);
   const audioPlaybackHover = useGeneralSettingsStore(s => s.audioPlaybackHover);
   const previewAudioStreamIndex = useGeneralSettingsStore(s => s.previewAudioStreamIndex);
   const selectedMappedAudioStreamIndex =
@@ -61,12 +62,21 @@ export const LazyClip = memo(function LazyClip({
   const showDownloadButton = useThemeSettingsStore(s => s.showDownloadButton);
   const showClipTimestamps = useThemeSettingsStore(s => s.showClipTimestamps);
 
-  // state and refs for tile visibility, hover, video element, and proxy state
+  // ============================ SHARED tile state ============================
   const [isVisible, setIsVisible] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
   const wrapperRef = useRef<HTMLDivElement>(null);
-  const videoRef = useRef<HTMLVideoElement | null>(null);
   const thumbnailRef = useRef<HTMLImageElement | null>(null);
+  const [downloadTone, setDownloadTone] = useState<"light" | "dark">("light");
+
+  const originalPath = clip.src;
+  // Video-file import mode: clip has a pre-cut video file on disk.
+  const isVideoMode = Boolean(clip.clipPath) && clip.clipMode !== "failed";
+  // Is this clip currently being merged or split on the backend?
+  const isProcessing = clip.originalName === "Merging..." || clip.originalName === "Splitting...";
+
+  // ========================= VIDEO playback state/refs =======================
+  const videoRef = useRef<HTMLVideoElement | null>(null);
   const hasReportedErrorRef = useRef(false);
   const hasFirstFrameRef = useRef(false);
   const videoFrameCallbackIdRef = useRef<number | null>(null);
@@ -74,8 +84,9 @@ export const LazyClip = memo(function LazyClip({
   const mergedPreviewInFlightRef = useRef(false);
   const mergedPreviewFetchedKeyRef = useRef<string | null>(null);
 
-  // staggered mount: only mount video when it's this tile's turn
-  const [, setStaggerReady] = useState(false);
+  // staggered mount: only start playback when it's this tile's turn (preview-all
+  // lights tiles up top-left → bottom-right instead of all at once).
+  const [staggerReady, setStaggerReady] = useState(false);
   const staggerDoneRef = useRef(false);
 
   // if playback fails, keep showing the thumbnail until proxy is ready
@@ -84,54 +95,50 @@ export const LazyClip = memo(function LazyClip({
   const [isVideoReady, setIsVideoReady] = useState(false);
   // the actual video source (original or proxy)
   const [effectiveSrc, setEffectiveSrc] = useState(clip.src);
+  // video mode: cut clip remuxed to the selected audio track, used on hover so
+  // hover audio plays the chosen Preview Language (null = play the default track).
+  const [videoAudioProxySrc, setVideoAudioProxySrc] = useState<string | null>(null);
   const [, setMergedPreviewSrc] = useState<string | null>(null);
   const [, setMergedPreviewFailed] = useState(false);
   const mergedSrcsKey = clip.mergedSrcs
     ? `${clip.mergedSrcs.join("|")}::audio:${previewAudioStreamIndex ?? "default"}`
     : null;
-  const originalPath = clip.src;
-  const webpSourcePath = clip.originalPath || clip.src;
-  const webpStart =
-    typeof clip.startSec === "number"
-      ? clip.startSec
-      : typeof clip.start === "number"
-        ? clip.start
-        : 0;
-  const rawWebpEnd =
-    typeof clip.endSec === "number"
-      ? clip.endSec
-      : typeof clip.end === "number"
-        ? clip.end
-        : webpStart + 2;
-  const normalizedWebpEnd = rawWebpEnd > webpStart ? rawWebpEnd : webpStart + 2;
-  const webpEnd = Math.min(normalizedWebpEnd, webpStart + 2.5);
-  const hasAnimatedWebp = Boolean(previewWebpPath);
-  const webpImportMode = importMethod === "webp_files";
-  const previewAllEnabled = webpImportMode || gridPreview;
-  // Animation is controlled ONLY by Preview-all. At rest we show the static first-frame poster.
-  const shouldAnimateWebp = hasAnimatedWebp && previewAllEnabled;
-  const displayThumbnailPath = shouldAnimateWebp
-    ? (previewWebpPath as string)
-    : (clip.thumbnail || clip.src);
-
-  // Is this clip currently being merged or split on the backend?
-  const isProcessing = clip.originalName === "Merging..." || clip.originalName === "Splitting...";
-
-  const [downloadTone, setDownloadTone] = useState<"light" | "dark">("light");
-  const [thumbnailSrc, setThumbnailSrc] = useState(displayThumbnailPath);
-  const [thumbnailLoaded, setThumbnailLoaded] = useState(false);
-  const [thumbnailFailed, setThumbnailFailed] = useState(false);
-
   // determine if we need a proxy:
   const needsHevcProxy = videoIsHEVC === true && userHasHEVC === false;
 
-  // Video playback is intentionally disabled for now; hover/focus/preview-all use animated WebP.
-  const showVideo = false;
-  const shouldMountVideo = false;
-  const shouldShowThumbnail = !showVideo || !shouldMountVideo || !isVideoReady;
+  // In video mode, clip files are pre-cut H.264 — mount video element when visible/hovered.
+  // In WebP mode, video playback is disabled; hover/preview-all use animated WebP instead.
+  const showVideo = isVideoMode;
+  const shouldMountVideo = isVideoMode && (isVisible || isHovered);
+  const shouldShowThumbnail = isVideoMode ? false : (!showVideo || !shouldMountVideo || !isVideoReady);
+
+  // In video-preview mode, a tile whose clip hasn't been cut yet (and hasn't
+  // failed) shows a skeleton until its video arrives via the clip_ready stream.
+  const videoClipPending = videoPreviewMode && !isVideoMode && clip.clipMode !== "failed";
+
+  // ============================ WEBP preview state ===========================
+  // All thumbnail/animated-WebP state and demand reporting lives in this hook.
+  const webp = useWebpPreview({
+    clip,
+    index,
+    importToken,
+    isVisible,
+    isHovered,
+    videoPreviewMode,
+    isVideoMode,
+    previewWebpPath,
+    reportWebpDemand,
+  });
+  // Show animated WebP on hover, or always when preview-all is enabled.
+  const shouldShowWebpOverlay = webp.hasAnimatedWebp && (isHovered || gridPreview);
 
   // when Preview-all is enabled and we need an HEVC proxy, register demand only while visible.
   useEffect(() => {
+    if (isVideoMode) {
+      reportProxyDemand(originalPath, null);
+      return;
+    }
+
     if (!gridPreview) {
       reportProxyDemand(originalPath, null);
       return;
@@ -147,44 +154,7 @@ export const LazyClip = memo(function LazyClip({
     } else {
       reportProxyDemand(originalPath, null);
     }
-  }, [gridPreview, needsHevcProxy, isVisible, effectiveSrc, originalPath, index, isHovered, reportProxyDemand]);
-
-  // Request scene preview assets using viewport and hover priority.
-  useEffect(() => {
-    if (!webpSourcePath) {
-      reportWebpDemand(clip.id, null);
-      return;
-    }
-
-    if (previewWebpPath) {
-      reportWebpDemand(clip.id, null);
-      return;
-    }
-
-    reportWebpDemand(clip.id, {
-      isVisible,
-      order: index,
-      priority: isHovered,
-      job: {
-        sourcePath: webpSourcePath,
-        start: webpStart,
-        end: webpEnd,
-        fps: 8,
-        kind: "animated",
-      },
-    });
-  }, [
-    clip.id,
-    index,
-    isHovered,
-    isVisible,
-    previewWebpPath,
-    reportWebpDemand,
-    webpEnd,
-    webpSourcePath,
-    webpStart,
-  ]);
-
+  }, [gridPreview, isVideoMode, needsHevcProxy, isVisible, effectiveSrc, originalPath, index, isHovered, reportProxyDemand]);
 
   // reset state when clip/import/audio-stream changes
   useEffect(() => {
@@ -221,7 +191,28 @@ export const LazyClip = memo(function LazyClip({
     setForceThumbnail(false);
     setIsVideoReady(false);
     setEffectiveSrc(clip.src);
+    setVideoAudioProxySrc(null);
   }, [clip.src, importToken, previewAudioStreamIndex]);
+
+  // Video mode: when a non-default Preview Language is selected and the user
+  // hovers with audio enabled, remux the cut clip to that audio track (video
+  // copied — fast) and play it so hover audio is in the chosen language.
+  useEffect(() => {
+    if (!isVideoMode || !clip.clipPath) return;
+    if (selectedMappedAudioStreamIndex === null) return;
+    if (!isHovered || !audioPlaybackHover) return;
+    if (videoAudioProxySrc) return;
+
+    let cancelled = false;
+    invoke<string>("ensure_preview_proxy", {
+      clipPath: clip.clipPath,
+      audioStreamIndex: selectedMappedAudioStreamIndex,
+      transcodeVideo: false,
+    })
+      .then((path) => { if (!cancelled && path) setVideoAudioProxySrc(path); })
+      .catch((err) => { console.warn("video language proxy failed", err); });
+    return () => { cancelled = true; };
+  }, [isVideoMode, clip.clipPath, selectedMappedAudioStreamIndex, isHovered, audioPlaybackHover, videoAudioProxySrc]);
 
   const ensurePreviewProxyPath = useCallback(
     async (clipPath: string, priority: boolean, transcodeVideo: boolean): Promise<string> => {
@@ -244,6 +235,8 @@ export const LazyClip = memo(function LazyClip({
   // - HEVC without support always needs proxy.
   // - Hover audio with a non-default stream needs a mapped proxy.
   useEffect(() => {
+    if (isVideoMode) return; // clip files are pre-cut H.264, never need proxy
+
     const needsAudioMappedProxy =
       selectedMappedAudioStreamIndex !== null &&
       isHovered &&
@@ -293,6 +286,7 @@ export const LazyClip = memo(function LazyClip({
 
     void run();
   }, [
+    isVideoMode,
     needsHevcProxy,
     selectedMappedAudioStreamIndex,
     audioPlaybackHover,
@@ -302,7 +296,6 @@ export const LazyClip = memo(function LazyClip({
     effectiveSrc,
     originalPath,
     ensurePreviewProxyPath,
-    needsHevcProxy,
   ]);
 
   // Generate a stream-copy concat preview for merged clips (skipped for HEVC — proxy handles that).
@@ -416,14 +409,6 @@ export const LazyClip = memo(function LazyClip({
     setIsVideoReady(false);
   }, [effectiveSrc]);
 
-  // Keep thumbnail rendering resilient: reset load state when source changes.
-  useEffect(() => {
-    setThumbnailSrc(displayThumbnailPath);
-    setThumbnailLoaded(false);
-    setThumbnailFailed(false);
-  }, [displayThumbnailPath, importToken]);
-
-
   // only mark tile as visible when it's near the viewport
   useEffect(() => {
     const el = wrapperRef.current;
@@ -446,7 +431,12 @@ export const LazyClip = memo(function LazyClip({
     const v = videoRef.current;
     if (!v) return;
 
-    const shouldPlay = showVideo && shouldMountVideo;
+    // Video mode: always mounted when visible (for the first-frame poster), but
+    // only plays on hover, or in preview-all once the stagger queue reaches this
+    // tile — so preview-all lights up top-left → bottom-right, not all at once.
+    const shouldPlay = isVideoMode
+      ? (isHovered || (gridPreview && staggerReady))
+      : (showVideo && shouldMountVideo);
     if (shouldPlay) {
       // Audio logic: only play audio if hovered AND setting is enabled.
       // Grid preview (Preview-all) should remain muted unless specifically hovered.
@@ -475,11 +465,12 @@ export const LazyClip = memo(function LazyClip({
         // ignore
       }
     }
-  }, [showVideo, shouldMountVideo, effectiveSrc, isHovered, audioPlaybackHover, playbackVolume, gridPreviewSpeed]);
+  }, [isVideoMode, gridPreview, staggerReady, showVideo, shouldMountVideo, effectiveSrc, isHovered, audioPlaybackHover, playbackVolume, gridPreviewSpeed]);
 
   // Some HEVC variants (e.g. yuv444p10) can appear "supported" but stall/black-screen in HTML video.
   // If no frame becomes ready shortly after playback starts, force a proxy fallback.
   useEffect(() => {
+    if (isVideoMode) return; // clip files are pre-cut H.264, never need HEVC fallback
     if (!showVideo || !shouldMountVideo) return;
     if (videoIsHEVC !== true) return;
     if (effectiveSrc !== originalPath) return;
@@ -522,6 +513,7 @@ export const LazyClip = memo(function LazyClip({
       window.clearTimeout(timeout);
     };
   }, [
+    isVideoMode,
     showVideo,
     shouldMountVideo,
     videoIsHEVC,
@@ -614,21 +606,11 @@ export const LazyClip = memo(function LazyClip({
     if (!img) return;
     if (!img.complete) return;
     updateDownloadToneFromThumbnail(img);
-  }, [displayThumbnailPath, importToken, showDownloadButton, updateDownloadToneFromThumbnail]);
+  }, [webp.displayThumbnailPath, importToken, showDownloadButton, updateDownloadToneFromThumbnail]);
 
-  const handleThumbnailError = useCallback(() => {
-    const fallbackCandidates = [clip.thumbnail, clip.src]
-      .filter((value): value is string => Boolean(value));
-    const next = fallbackCandidates.find((candidate) => candidate !== thumbnailSrc);
-    if (next) {
-      setThumbnailSrc(next);
-      setThumbnailLoaded(false);
-      return;
-    }
-    setThumbnailFailed(true);
-  }, [clip.src, clip.thumbnail, thumbnailSrc]);
-
-  const showTileLoadingOverlay = clip.thumbnailReady === false || !thumbnailLoaded || thumbnailFailed;
+  const showTileLoadingOverlay = isVideoMode
+    ? !isVideoReady
+    : (clip.thumbnailReady === false || !webp.thumbnailLoaded || webp.thumbnailFailed);
 
   return (
     <div
@@ -659,22 +641,31 @@ export const LazyClip = memo(function LazyClip({
       </button>
 
       {isVisible ? (
+        videoClipPending ? (
+          <div className="clip clip-skeleton" style={{ borderRadius: 15 }} />
+        ) : (
         <>
-          {/* Thumbnail — always rendered when visible, hidden on hover */}
-          {!thumbnailFailed && clip.thumbnailReady !== false && (
+          {/* ===================== WEBP layer: static thumbnail =====================
+              Rendered in WebP mode only; video mode uses the <video> for the poster. */}
+          {!isVideoMode && !webp.thumbnailFailed && clip.thumbnailReady !== false && (
             <img
               ref={thumbnailRef}
               className="clip"
-              src={`${convertFileSrc(thumbnailSrc)}?v=${importToken}`}
+              src={
+                webp.webpThumbnail
+                ?? (webp.hasAnimatedWebp
+                  ? `${convertFileSrc(previewWebpPath!)}?v=${importToken}`
+                  : `${convertFileSrc(webp.thumbnailSrc)}?v=${importToken}`)
+              }
               style={{ opacity: shouldShowThumbnail ? 1 : 0 }}
               draggable={false}
               onLoad={(e) => {
-                setThumbnailLoaded(true);
+                webp.setThumbnailLoaded(true);
                 if (showDownloadButton) {
                   updateDownloadToneFromThumbnail(e.currentTarget);
                 }
               }}
-              onError={handleThumbnailError}
+              onError={webp.handleThumbnailError}
               onDragStart={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
@@ -682,17 +673,22 @@ export const LazyClip = memo(function LazyClip({
             />
           )}
 
+          {/* SHARED layer: skeleton shown until the thumbnail/video is ready */}
           {showTileLoadingOverlay && (
             <div
               className="clip clip-skeleton clip-thumb-loading-overlay"
               style={{ opacity: shouldShowThumbnail ? 1 : 0 }}
             />
           )}
-          {/* Video - only mounted when hovered or gridPreview, otherwise skip the DOM node entirely */}
+          {/* ===================== VIDEO layer: cut clip playback =====================
+              In video mode: mounted when visible/hovered to show the first frame.
+              In WebP mode: intentionally disabled (showVideo=false → shouldMountVideo=false). */}
           {shouldMountVideo && (
             <video
               className="clip"
-              src={`${convertFileSrc(effectiveSrc)}?v=${importToken}`}
+              src={`${isVideoMode
+                ? convertFileSrc(videoAudioProxySrc ?? clip.clipPath!)
+                : convertFileSrc(effectiveSrc)}?v=${importToken}`}
               muted={!(isHovered && audioPlaybackHover)}
               loop
               autoPlay
@@ -779,21 +775,27 @@ export const LazyClip = memo(function LazyClip({
             />
           )}
 
-          {/* Status Overlays */}
+          {/* WEBP layer: animated preview, shown over the static thumbnail on hover/preview-all */}
+          {shouldShowWebpOverlay && previewWebpPath && (
+            <img
+              className="clip"
+              style={{ position: "absolute", inset: 0, objectFit: "cover", zIndex: 3 }}
+              src={`${convertFileSrc(previewWebpPath)}?v=${importToken}`}
+              draggable={false}
+              onDragStart={(e) => { e.preventDefault(); e.stopPropagation(); }}
+            />
+          )}
+
+          {/* SHARED layer: status / timestamp / download chrome */}
           {isProcessing && (
             <div className="clip-status-overlay">
               <span className="status-text">{clip.originalName}</span>
             </div>
           )}
-          {/* {!isProcessing && forceThumbnail && needsHevcProxy && (
-            <div className="clip-status-overlay">
-              <span className="status-text">Processing...</span>
-            </div>
-          )} */}
 
-          {showClipTimestamps && (clip.startSec ?? clip.start) !== undefined && (
+          {showClipTimestamps && clip.startSec !== undefined && (
             <div className="clip-original-timestamp">
-              {formatClipTime(clip.startSec ?? clip.start)}
+              {formatClipTime(clip.startSec)}
             </div>
           )}
 
@@ -801,6 +803,7 @@ export const LazyClip = memo(function LazyClip({
             <DownloadButton tone={downloadTone} onClick={() => onDownloadClip(clip)} />
           )}
         </>
+        )
       ) : (
         <div className="clip clip-skeleton" style={{ borderRadius: 15 }} />
       )}

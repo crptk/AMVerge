@@ -14,9 +14,11 @@ import {
 // Two-lane scheduler:
 // - visible tiles: quick batches
 // - offscreen tiles: slow background trickle
-const VISIBLE_BATCH_SIZE = 2;
+// Sized to keep the backend's concurrent WebP encode pool (capped at 4) fed
+// across a request, amortizing IPC roundtrips.
+const VISIBLE_BATCH_SIZE = 8;
 const OFFSCREEN_BATCH_SIZE = 1;
-const OFFSCREEN_BATCH_DELAY_MS = 100;
+const OFFSCREEN_BATCH_DELAY_MS = 250;
 
 const WEBP_DEBUG = false;
 
@@ -161,7 +163,6 @@ export default function useViewportAwareWebpQueue(context: WebpQueueContext = {}
     (clipId: string, demand: WebpDemandInput | null) => {
       if (!demand) {
         // Clearing demand for a clip removes both kinds (tile left viewport).
-        demandRef.current.delete(makeDemandKey(clipId, "poster"));
         demandRef.current.delete(makeDemandKey(clipId, "animated"));
         return;
       }

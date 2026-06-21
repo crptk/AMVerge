@@ -13,8 +13,8 @@ export function parseDemandKey(demandKey: string): { clipId: string; kind: WebpK
   return { clipId, kind };
 }
 
-export function normalizeWebpKind(kind?: string): WebpKind {
-  return kind === "poster" ? "poster" : "animated";
+export function normalizeWebpKind(_kind?: string): WebpKind {
+  return "animated";
 }
 
 export function buildDemandJob(

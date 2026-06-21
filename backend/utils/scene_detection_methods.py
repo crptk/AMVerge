@@ -1,14 +1,12 @@
 from transnetv2_pytorch import TransNetV2
 import torch
 import numpy as np
-from utils.utils import (
-    check_if_path_exists, convert_scenes_to_timestamps, 
-    probe_video_total_frames, scenes_frames_to_seconds, 
-    probe_video_fps, probe_video_duration, emit_progress, log
-)
-from utils.initialize_nelux import _get_nelux_video_reader
+from backend.utils.general_utils import (check_if_path_exists, emit_progress, log)
+from backend.utils.scene_utils import (convert_scenes_to_timestamps, scenes_frames_to_seconds)
+from backend.utils.probe_utils import (probe_video_total_frames, probe_video_fps, probe_video_duration)
+from backend.utils.nelux_runtime import _get_nelux_video_reader
 import subprocess
-from utils.constants import FRAME_CHANNELS, FRAME_HEIGHT, FRAME_WIDTH, WINDOW_SIZE, STRIDE, FRAME_BYTES
+from backend.utils.transnet_constants import FRAME_CHANNELS, FRAME_HEIGHT, FRAME_WIDTH, WINDOW_SIZE, STRIDE, FRAME_BYTES
 import sys
 from tqdm import tqdm
 
@@ -42,6 +40,10 @@ def _emit_loop_progress(
 
 ## METHOD 1: Decode using FFMPEG and run GPU Scene Detection in parallel
 def decode_and_detect_scenes(input_video):
+    """Decode video via ffmpeg pipe and run TransNetV2 inference (Method 1).
+    
+    Slower but works without native nelux DLLs.
+    """
     emit_progress(10, f"Calculating frame bytes..")
 
     check_if_path_exists(input_video)
@@ -179,10 +181,9 @@ def _run_model(model, batch, start_index, scores, counts, device):
 
 ## METHOD 2: Decode using Nelux and run GPU Scene Detection after
 def decode_video_frames_nelux(input_video):
-    """Decode frames with nelux into the same shape consumed by TransNetV2.
-
-    Returns a numpy array with shape:
-    (num_frames, FRAME_HEIGHT, FRAME_WIDTH, FRAME_CHANNELS), dtype=uint8
+    """Decode video via nelux VideoReader and run TransNetV2 inference (Method 2).
+    
+    Faster than the ffmpeg pipe method; requires nelux DLLs on Windows.
     """
     log("Running decode video nelux function..")
     check_if_path_exists(input_video)

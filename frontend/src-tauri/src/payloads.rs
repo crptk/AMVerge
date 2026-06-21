@@ -24,8 +24,22 @@ pub struct ThumbnailReadyPayload {
 }
 
 #[derive(Serialize, Clone)]
+pub struct ClipReadyPayload {
+    pub scene_index: u32,
+    /// Absolute path to the cut clip, or None if cutting failed.
+    pub clip_path: Option<String>,
+    pub clip_mode: String,
+}
+
+#[derive(Serialize, Clone)]
 pub struct PairResultPayload {
     pub pos_a: u32,
     pub pos_b: u32,
     pub should_merge: bool,
+}
+
+#[derive(Serialize, Clone)]
+pub struct ReencodeProgressPayload {
+    pub done: u32,
+    pub total: u32,
 }

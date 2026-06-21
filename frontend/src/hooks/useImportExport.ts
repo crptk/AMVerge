@@ -1,5 +1,6 @@
 import { useRef, startTransition, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { ClipItem, EpisodeEntry } from "../types/domain"
 import { fileNameFromPath, truncateFileName, loadEpisodeManifest } from "../utils/episodeUtils";
@@ -46,6 +47,16 @@ export default function useImportExport(props?: ImportExportProps) {
   const importGenRef = useRef(0);
   const localAbortedRef = useRef(false);
   const abortedRef = props?.abortedRef || localAbortedRef;
+  // Teardown for the currently active video-streaming listener set. A new import
+  // stops the previous one first so background phase-2 events from an earlier
+  // import can't cross-patch the new episode's grid.
+  const streamCleanupRef = useRef<(() => void) | null>(null);
+
+  // Import timeline by mode:
+  // 1) video_files: wire streaming listeners -> run detect_scenes -> stream clip updates
+  //    -> load final manifest -> hydrate final episode state.
+  // 2) webp_files: run detect_scenes -> load final manifest -> hydrate final episode state.
+  //    (WebP previews are generated later by the preview queue, not during detect_scenes.)
 
   const logImportError = useCallback((phase: string, error: unknown, context?: Record<string, unknown>) => {
     const details = {
@@ -92,10 +103,10 @@ export default function useImportExport(props?: ImportExportProps) {
       originalName: s.original_file,
       originalPath: s.original_path,
       sceneIndex: typeof s.scene_index === "number" ? s.scene_index : undefined,
-      startSec: typeof s.start === "number" ? s.start : undefined,
-      endSec: typeof s.end === "number" ? s.end : undefined,
-      start: s.start,
-      end: s.end,
+      startSec: typeof s.start_sec === "number" ? s.start_sec : undefined,
+      endSec: typeof s.end_sec === "number" ? s.end_sec : undefined,
+      clipPath: typeof s.clip_path === "string" ? s.clip_path : undefined,
+      clipMode: typeof s.clip_mode === "string" && s.clip_mode ? s.clip_mode : undefined,
     }));
 
     if (clipsFromInitial.length > 0) {
@@ -120,8 +131,6 @@ export default function useImportExport(props?: ImportExportProps) {
         sceneIndex,
         startSec,
         endSec,
-        start: startSec,
-        end: endSec,
       };
     });
   }
@@ -139,22 +148,209 @@ export default function useImportExport(props?: ImportExportProps) {
     return `${safeStem}_${shortSuffix}`;
   }
 
-  const importEpisodeFromManifest = useCallback(async (file: string, episodeId: string): Promise<{
+  const startVideoStreamingListeners = useCallback(async (
+    file: string,
+    episodeId: string,
+  ): Promise<{ stop: () => void; phase1Done: Promise<void> }> => {
+    let unlistenInitial: (() => void) | null = null;
+    let unlistenClip: (() => void) | null = null;
+    let unlistenPhase1: (() => void) | null = null;
+    let unlistenReencode: (() => void) | null = null;
+
+    let resolvePhase1: () => void = () => {};
+    const phase1Done = new Promise<void>((resolve) => {
+      resolvePhase1 = resolve;
+    });
+
+    unlistenInitial = await listen<{ clips_json: string }>("initial_clips_ready", (event) => {
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(event.payload.clips_json);
+      } catch {
+        return;
+      }
+      const clips = parseManifestInitialClips({ initialClips: parsed }, episodeId);
+      if (clips.length === 0) return;
+
+      const inferredName = clips[0]?.originalName || fileNameFromPath(file);
+      const entry: EpisodeEntry = {
+        id: episodeId,
+        displayName: inferredName,
+        videoPath: file,
+        folderId: episodeState.selectedFolderId,
+        importedAt: Date.now(),
+        clips,
+        importMethod: generalSettings.importMethod,
+      };
+      episodeState.setEpisodes((prev) => [entry, ...prev.filter((ep) => ep.id !== episodeId)]);
+      episodeState.setSelectedEpisodeId(episodeId);
+      episodeState.setOpenedEpisodeId(episodeId);
+      // Keep `loading` true: the full-screen skeleton stays up until phase-1
+      // (keyframe) clips are cut, so the grid appears already populated rather
+      // than flashing per-tile skeletons. clip_ready patches fill these clips in
+      // while still hidden under the loading screen.
+      useAppStateStore.setState({ clips });
+    });
+
+    // Coalesce clip_ready patches. Keyframe copies finish in bursts — applying
+    // each as its own setState re-renders the whole grid every time (two O(n)
+    // store maps per event), which freezes the UI during import. Instead we
+    // buffer patches by clip id and flush them all in a single update per frame.
+    const pendingPatches = new Map<string, Partial<ClipItem>>();
+    let flushHandle: number | null = null;
+
+    const flushPatches = () => {
+      flushHandle = null;
+      if (pendingPatches.size === 0) return;
+      const snapshot = new Map(pendingPatches);
+      pendingPatches.clear();
+      const applyPatch = (c: ClipItem): ClipItem => {
+        const p = snapshot.get(c.id);
+        return p ? { ...c, ...p } : c;
+      };
+      useAppStateStore.setState((s) => ({ clips: s.clips.map(applyPatch) }));
+      episodeState.setEpisodes((prev) =>
+        prev.map((ep) => (ep.id === episodeId ? { ...ep, clips: ep.clips.map(applyPatch) } : ep))
+      );
+    };
+
+    const scheduleFlush = () => {
+      if (flushHandle === null) flushHandle = requestAnimationFrame(flushPatches);
+    };
+
+    const cancelFlush = () => {
+      if (flushHandle !== null) {
+        cancelAnimationFrame(flushHandle);
+        flushHandle = null;
+      }
+    };
+
+    unlistenClip = await listen<{ scene_index: number; clip_path: string | null; clip_mode: string }>(
+      "clip_ready",
+      (event) => {
+        const { scene_index, clip_path, clip_mode } = event.payload;
+        pendingPatches.set(`${episodeId}_${scene_index}`, {
+          clipPath: clip_path ?? undefined,
+          clipMode: clip_mode || undefined,
+        });
+        scheduleFlush();
+      }
+    );
+
+    // Phase 1 (keyframe copies) done: drop the loading screen now. Phase-2
+    // re-encodes keep streaming via clip_ready and fill their tiles in the
+    // background while the user already sees the keyframe grid.
+    unlistenPhase1 = await listen("phase1_complete", () => {
+      // Flush synchronously so every keyframe clip path is in the store before
+      // the import resolves and the grid is revealed.
+      cancelFlush();
+      flushPatches();
+      useAppStateStore.setState({ loading: false });
+      resolvePhase1();
+    });
+
+    // Background phase-2 re-encode progress → drives the "Reencoding X/Y" count
+    // in the draggable background progress bar. Cleared once it reaches total.
+    unlistenReencode = await listen<{ done: number; total: number }>("reencode_progress", (event) => {
+      const { done, total } = event.payload;
+      useAppStateStore.setState({
+        reencodeProgress: total > 0 && done < total ? { done, total } : null,
+      });
+    });
+
+    const stop = () => {
+      // Apply any patches buffered right before teardown so none are dropped.
+      cancelFlush();
+      flushPatches();
+      if (unlistenInitial) unlistenInitial();
+      if (unlistenClip) unlistenClip();
+      if (unlistenPhase1) unlistenPhase1();
+      if (unlistenReencode) unlistenReencode();
+      // Clear any lingering re-encode indicator for this session.
+      useAppStateStore.setState({ reencodeProgress: null });
+    };
+
+    return { stop, phase1Done };
+  }, [episodeState, generalSettings.importMethod]);
+
+  const runImportPipeline = useCallback(async (
+    file: string,
+    episodeId: string,
+    streamToGrid = false,
+  ): Promise<{
     episodeEntry: EpisodeEntry;
     sceneCount: number;
   }> => {
-    await invoke("detect_scenes", {
-      videoPath: file,
-      episodeCacheId: episodeId,
-      customPath: generalSettings.episodesPath,
-      sceneDetectionMethod: generalSettings.sceneDetectionMethod,
-    });
+    // In video-preview mode we stream clips into the grid as the backend cuts
+    // them: keep the loading screen up through phase-1 (keyframe copies), then
+    // resolve the import as soon as those are done. Phase-2 re-encodes keep
+    // streaming via clip_ready and fill their tiles in the background.
+    const videoStreaming = streamToGrid && generalSettings.importMethod === "video_files";
+
+    if (videoStreaming) {
+      // Stop any previous streaming session so a still-running background
+      // phase-2 from an earlier import can't cross-patch this episode.
+      streamCleanupRef.current?.();
+      const { stop, phase1Done } = await startVideoStreamingListeners(file, episodeId);
+      streamCleanupRef.current = stop;
+
+      // Fire detection but DON'T block import completion on it — the process
+      // keeps running phase-2 after phase1_complete. Listeners are torn down
+      // only when the whole process ends (success or failure).
+      let invokeError: unknown = null;
+      const invokeSettled = invoke("detect_scenes", {
+        videoPath: file,
+        episodeCacheId: episodeId,
+        customPath: generalSettings.episodesPath,
+        sceneDetectionMethod: generalSettings.sceneDetectionMethod,
+        importMethod: generalSettings.importMethod,
+      })
+        .catch((err) => { invokeError = err; })
+        .finally(() => {
+          stop();
+          if (streamCleanupRef.current === stop) streamCleanupRef.current = null;
+        });
+
+      // Whichever happens first: phase-1 done (normal) or the process ending
+      // before phase-1 (error, or a video that produced no scenes).
+      const winner = await Promise.race([
+        phase1Done.then(() => "phase1" as const),
+        invokeSettled.then(() => "invoke" as const),
+      ]);
+
+      if (winner === "phase1") {
+        // Build the entry from the streamed clips already in the store (phase-1
+        // paths included); phase-2 patches continue arriving in the background.
+        const streamedClips = useAppStateStore.getState().clips;
+        const inferredName = streamedClips[0]?.originalName || fileNameFromPath(file);
+        const episodeEntry: EpisodeEntry = {
+          id: episodeId,
+          displayName: inferredName,
+          videoPath: file,
+          folderId: episodeState.selectedFolderId,
+          importedAt: Date.now(),
+          clips: streamedClips,
+          importMethod: "video_files",
+        };
+        return { episodeEntry, sceneCount: streamedClips.length };
+      }
+
+      // Process ended before any phase-1 signal.
+      if (invokeError) throw invokeError;
+      // Defensive fallback (no scenes / no phase-1 emitted): hydrate from manifest.
+    }
 
     const manifest = await loadEpisodeManifest(episodeId, generalSettings.episodesPath);
     const clips = parseManifestInitialClips(manifest, episodeId);
     if (clips.length === 0) {
       throw new Error("Manifest import path produced no clips.");
     }
+
+    const manifestMethod = manifest?.source?.importMethod;
+    const episodeImportMethod: EpisodeEntry["importMethod"] =
+      manifestMethod === "webp_files" || manifestMethod === "video_files"
+        ? manifestMethod
+        : generalSettings.importMethod;
 
     const inferredName = clips[0]?.originalName || fileNameFromPath(file);
     const episodeEntry: EpisodeEntry = {
@@ -164,11 +360,12 @@ export default function useImportExport(props?: ImportExportProps) {
       folderId: episodeState.selectedFolderId,
       importedAt: Date.now(),
       clips,
+      importMethod: episodeImportMethod,
     };
 
     const sceneCount = Array.isArray(manifest?.scenes) ? manifest.scenes.length : clips.length;
     return { episodeEntry, sceneCount };
-  }, [generalSettings.episodesPath, generalSettings.sceneDetectionMethod, episodeState.selectedFolderId]);
+  }, [generalSettings.episodesPath, generalSettings.sceneDetectionMethod, generalSettings.importMethod, episodeState.selectedFolderId, startVideoStreamingListeners]);
 
   const handleImport = useCallback(async (file: string | null) => {
     if (!file) return;
@@ -200,9 +397,10 @@ export default function useImportExport(props?: ImportExportProps) {
         buttons: generalSettings.rpcShowButtons,
       });
 
-      const { episodeEntry, sceneCount } = await importEpisodeFromManifest(file, episodeId);
+      const { episodeEntry, sceneCount } = await runImportPipeline(file, episodeId, true);
 
-      episodeState.setEpisodes((prev) => [episodeEntry, ...prev]);
+      // Replace (not duplicate) the entry the streaming listener may have added.
+      episodeState.setEpisodes((prev) => [episodeEntry, ...prev.filter((ep) => ep.id !== episodeId)]);
       episodeState.setSelectedEpisodeId(episodeId);
       episodeState.setOpenedEpisodeId(episodeId);
       useAppStateStore.setState({ clips: episodeEntry.clips });
@@ -227,7 +425,7 @@ export default function useImportExport(props?: ImportExportProps) {
       if (importGenRef.current === gen) setLoading(false);
       console.info("[import] finished", { mode: "single", file, episodeId, importGeneration: gen });
     }
-  }, [appState, episodeState, generalSettings, props?.onRPCUpdate, logImportError, importEpisodeFromManifest]);
+  }, [appState, episodeState, generalSettings, props?.onRPCUpdate, logImportError, runImportPipeline]);
 
   const handleBatchImport = useCallback(async (files: string[]) => {
     if (files.length === 0) return;
@@ -276,7 +474,7 @@ export default function useImportExport(props?: ImportExportProps) {
         });
 
         try {
-          const { episodeEntry, sceneCount: manifestSceneCount } = await importEpisodeFromManifest(file, episodeId);
+          const { episodeEntry, sceneCount: manifestSceneCount } = await runImportPipeline(file, episodeId);
           console.info("[import] manifest verified", {
             mode: "batch",
             episodeId,
@@ -351,7 +549,7 @@ export default function useImportExport(props?: ImportExportProps) {
         importGeneration: gen,
       });
     }
-  }, [appState, episodeState, generalSettings, abortedRef, setBgImportProgress, logImportError, importEpisodeFromManifest]);
+  }, [appState, episodeState, generalSettings, abortedRef, setBgImportProgress, logImportError, runImportPipeline]);
 
   const onImportClick = useCallback(async () => {
     const currentState = useAppStateStore.getState();

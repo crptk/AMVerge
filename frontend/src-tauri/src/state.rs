@@ -18,9 +18,14 @@ impl Default for ActiveSidecar {
     }
 }
 
+/// Per-output-path locks that serialize duplicate proxy/WebP encode requests.
+/// Wrapped in an `Arc` so the map can be cloned cheaply and shared into the
+/// concurrent WebP encode tasks spawned by `generate_scene_webp_batch`.
+pub type ProxyLockMap = Arc<AsyncMutex<HashMap<String, Arc<AsyncMutex<()>>>>>;
+
 #[derive(Default)]
 pub struct PreviewProxyLocks {
-    pub inner: AsyncMutex<HashMap<String, Arc<AsyncMutex<()>>>>,
+    pub inner: ProxyLockMap,
 }
 
 #[derive(Default)]

@@ -1,4 +1,5 @@
 import HowToUse from "./HowToUse.tsx"
+import VideoPlayer from "./VideoPlayer.tsx"
 import React from "react";
 import { invoke, convertFileSrc } from "@tauri-apps/api/core";
 import {
@@ -54,7 +55,14 @@ export default function PreviewContainer(props: PreviewContainerProps) {
   const importMethod = useGeneralSettingsStore(s => s.importMethod);
   const { handleExport, handlePickExportDir } = useImportExport();
   const [audioStreams, setAudioStreams] = React.useState<PreviewAudioStream[]>([]);
-  const webpPreviewMode = importMethod === "webp_files";
+  const openedEpisodeId = useEpisodePanelRuntimeStore(s => s.openedEpisodeId);
+  const episodes = useEpisodePanelRuntimeStore(s => s.episodes);
+  const openedEpisode = React.useMemo(
+    () => episodes.find((episode) => episode.id === openedEpisodeId),
+    [episodes, openedEpisodeId]
+  );
+  const previewMethod = openedEpisode?.importMethod ?? importMethod;
+  const webpPreviewMode = previewMethod === "webp_files";
 
   const defaultMergedName = (clips[0]?.originalName || "episode") + "_merged";
   const activeExportProfile = React.useMemo(
@@ -83,7 +91,6 @@ export default function PreviewContainer(props: PreviewContainerProps) {
 
   const hasSelectedClips = selectedClips.size > 0;
 
-  const openedEpisodeId = useEpisodePanelRuntimeStore(s => s.openedEpisodeId);
   const animatedByClipId = useScenePreviewStore(s => s.animatedByClipId);
 
   const sourceClipObj = React.useMemo(
@@ -91,27 +98,45 @@ export default function PreviewContainer(props: PreviewContainerProps) {
     [clips, focusedClipId]
   );
   const hasSource = !!props.sourceClip && !!sourceClipObj;
+  const previewVideoSrc = sourceClipObj?.clipPath || props.sourceClip;
+
+  // A non-default Preview Language needs the chosen audio track remuxed in; the
+  // default (index 0 / null) plays straight from the cut clip's default track.
+  const selectedMappedAudioStreamIndex =
+    previewAudioStreamIndex !== null && previewAudioStreamIndex > 0 ? previewAudioStreamIndex : null;
+  const [languageProxySrc, setLanguageProxySrc] = React.useState<string | null>(null);
+
+  // Remux the focused clip to the selected audio track (video copied — fast) and
+  // play that instead. WebP previews are image-only, so this is video-mode only.
+  React.useEffect(() => {
+    setLanguageProxySrc(null);
+    if (webpPreviewMode) return;
+    if (!previewVideoSrc) return;
+    if (selectedMappedAudioStreamIndex === null) return;
+    let cancelled = false;
+    invoke<string>("ensure_preview_proxy", {
+      clipPath: previewVideoSrc,
+      audioStreamIndex: selectedMappedAudioStreamIndex,
+      transcodeVideo: false,
+    })
+      .then((path) => { if (!cancelled && path) setLanguageProxySrc(path); })
+      .catch((err) => { console.warn("preview language proxy failed", err); });
+    return () => { cancelled = true; };
+  }, [previewVideoSrc, selectedMappedAudioStreamIndex, webpPreviewMode]);
+
+  const playableVideoSrc = languageProxySrc ?? previewVideoSrc;
 
   const previewImageSrc = focusedClipId ? (animatedByClipId[focusedClipId] ?? null) : null;
 
   // Source-anchored time window for the focused scene (mirrors the grid's WebP window).
   const sourcePath = sourceClipObj ? (sourceClipObj.originalPath || sourceClipObj.src) : null;
-  const sceneStart =
-    typeof sourceClipObj?.startSec === "number"
-      ? sourceClipObj.startSec
-      : typeof sourceClipObj?.start === "number"
-        ? sourceClipObj.start
-        : 0;
-  const sceneRawEnd =
-    typeof sourceClipObj?.endSec === "number"
-      ? sourceClipObj.endSec
-      : typeof sourceClipObj?.end === "number"
-        ? sourceClipObj.end
-        : sceneStart + 2;
+  const sceneStart = sourceClipObj?.startSec ?? 0;
+  const sceneRawEnd = sourceClipObj?.endSec ?? (sceneStart + 2);
   const sceneEnd = Math.min(sceneRawEnd > sceneStart ? sceneRawEnd : sceneStart + 2, sceneStart + 2.5);
 
   // Generate the animated WebP for the focused clip on demand (never play the original video).
   React.useEffect(() => {
+    if (!webpPreviewMode) return;
     if (!focusedClipId || !sourcePath || previewImageSrc) return;
     let cancelled = false;
     invoke<{ path?: string }>("generate_scene_webp", {
@@ -134,7 +159,7 @@ export default function PreviewContainer(props: PreviewContainerProps) {
     return () => {
       cancelled = true;
     };
-  }, [focusedClipId, sourcePath, previewImageSrc, sceneStart, sceneEnd, openedEpisodeId, generalSettings.episodesPath]);
+  }, [focusedClipId, sourcePath, previewImageSrc, sceneStart, sceneEnd, openedEpisodeId, generalSettings.episodesPath, webpPreviewMode]);
 
   React.useEffect(() => {
     if (showMergeNameModal) {
@@ -211,7 +236,7 @@ export default function PreviewContainer(props: PreviewContainerProps) {
         {hasSource && (
           <div className="preview-window-wrapper source" key="source-wrapper">
             <div className="preview-window">
-              {previewImageSrc ? (
+              {webpPreviewMode && previewImageSrc ? (
                 <img
                   className="preview-webp"
                   src={`${convertFileSrc(previewImageSrc)}?v=${importToken}`}
@@ -222,6 +247,13 @@ export default function PreviewContainer(props: PreviewContainerProps) {
                   }}
                   style={{ width: "100%", height: "100%", objectFit: "contain" }}
                   alt=""
+                />
+              ) : !webpPreviewMode && previewVideoSrc ? (
+                <VideoPlayer
+                  key={`${playableVideoSrc}-${importToken}`}
+                  src={convertFileSrc(playableVideoSrc!)}
+                  volume={generalSettings.playbackVolume}
+                  onTimeUpdate={props.onTimeUpdate}
                 />
               ) : (
                 <div className="preview-window empty">

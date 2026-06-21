@@ -7,11 +7,11 @@ export type ClipItem = {
   originalPath?: string;
   sceneIndex?: number;
   startSec?: number;
-  endSec?: number | null;
-  start?: number;
-  end?: number;
+  endSec?: number;
   thumbnailReady?: boolean;
   mergedSrcs?: string[];
+  clipPath?: string;
+  clipMode?: string;
 };
 
 export type EpisodeFolder = {
@@ -28,4 +28,7 @@ export type EpisodeEntry = {
   folderId: string | null;
   importedAt: number;
   clips: ClipItem[];
+  // How this episode was imported. Fixed at import time — the global
+  // import-method setting only affects new imports, not existing episodes.
+  importMethod?: "video_files" | "webp_files";
 };

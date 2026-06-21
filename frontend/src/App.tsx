@@ -34,7 +34,8 @@ function App() {
   const batchCurrentFile = useAppStateStore((s) => s.batchCurrentFile);
   const bgProgress = useAppStateStore((s) => s.bgProgress);
   const bgImportProgress = useAppStateStore((s) => s.bgImportProgress);
-  const clearBgProgress = () => useAppStateStore.setState((s) => ({ ...s, bgProgress: null, bgImportProgress: null }));
+  const reencodeProgress = useAppStateStore((s) => s.reencodeProgress);
+  const clearBgProgress = () => useAppStateStore.setState((s) => ({ ...s, bgProgress: null, bgImportProgress: null, reencodeProgress: null }));
   const setProgress = useAppStateStore((s) => s.setProgress);
   const setProgressMsg = useAppStateStore((s) => s.setProgressMsg);
   const setVideoIsHEVC = useAppStateStore((s) => s.setVideoIsHEVC);
@@ -324,10 +325,11 @@ function App() {
             batchCurrentFile={batchCurrentFile || ""}
             onAbort={handleAbort}
           />
-        ) : (bgProgress || bgImportProgress) ? (
+        ) : (bgProgress || bgImportProgress || reencodeProgress) ? (
           <BgProgressBar
-            clipDone={bgProgress?.done ?? 0}
-            clipTotal={bgProgress?.total ?? 0}
+            clipDone={(reencodeProgress ?? bgProgress)?.done ?? 0}
+            clipTotal={(reencodeProgress ?? bgProgress)?.total ?? 0}
+            clipLabel={reencodeProgress ? "Reencoding" : "Processing clips"}
             importDone={bgImportProgress?.done ?? 0}
             importTotal={bgImportProgress?.total ?? 0}
             onClose={handleAbortAndCloseBgProgress}

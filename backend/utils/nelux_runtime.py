@@ -1,6 +1,7 @@
 import os
 from pathlib import Path
 import sys
+
 _NELUX_DLL_DIR_HANDLES = []
 _NELUX_RUNTIME_CONFIGURED = False
 _LAST_NELUX_CANDIDATE_DIRS = []
@@ -85,6 +86,10 @@ def _iter_ffmpeg_dll_candidate_dirs():
             yield candidate.resolve()
 
 def _configure_nelux_windows_runtime() -> None:
+    """Register FFmpeg shared DLL directories so nelux can load them on Windows.
+    
+    No-op on non-Windows or after first successful call (idempotent).
+    """
     global _NELUX_RUNTIME_CONFIGURED, _LAST_NELUX_CANDIDATE_DIRS
     if _NELUX_RUNTIME_CONFIGURED:
         return

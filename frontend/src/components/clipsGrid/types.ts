@@ -55,6 +55,10 @@ export type LazyClipProps = {
   reportStaggerDemand: (key: string, demand: { order: number; onReady: () => void } | null) => void;
   onDownloadClip: (clip: ClipItem) => void;
   previewWebpPath?: string;
+  // Whether the opened episode was imported as video clips (vs WebP previews).
+  // Fixed per-episode at import time; controls whether this tile ever generates
+  // a WebP or instead waits for / shows its cut video clip.
+  videoPreviewMode: boolean;
   reportWebpDemand: (
     clipId: string,
     demand: {

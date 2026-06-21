@@ -43,37 +43,6 @@ export const truncateFileName = (name: string): string => {
     return name.slice(0, 10) + "..." + name.slice(-10);
 };
 
-export const detectScenes = async (
-  videoPath: string,
-  episodeCacheId: string,
-  customPath: string | null = null,
-  sceneDetectionMethod: string = "transnetv2_gpu"
-) => {
-    // calls backend passing in video file and threshold
-    const result = await invoke<string>("detect_scenes", {
-      videoPath: videoPath,
-      episodeCacheId: episodeCacheId,
-      customPath: customPath,
-      sceneDetectionMethod,
-    });
-
-    // contains path to all clips along w other metadata
-    const scenes = JSON.parse(result);
-
-    // turns to an array of objects
-    return scenes.map((s: any) => ({
-      id: crypto.randomUUID(),
-      src: s.path,
-      thumbnail: s.thumbnail,
-      originalName: s.original_file,
-      originalPath: s.original_path ?? videoPath,
-      sceneIndex: typeof s.scene_index === "number" ? s.scene_index : undefined,
-      startSec: typeof s.start === "number" ? s.start : undefined,
-      endSec: typeof s.end === "number" ? s.end : null,
-      start: s.start,
-      end: s.end
-    }));
-};
 
 export const loadEpisodeManifest = async (
   episodeCacheId: string,

@@ -2,9 +2,11 @@ use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::collections::{BTreeSet, HashMap};
 use std::time::Instant;
+
+use tokio::task::JoinSet;
 
 #[cfg(not(windows))]
 use std::os::unix::process::CommandExt;
@@ -13,7 +15,7 @@ use tauri::{AppHandle, Manager, State};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-use crate::state::{ActiveFfmpegPids, PreviewProxyLocks};
+use crate::state::{ActiveFfmpegPids, PreviewProxyLocks, ProxyLockMap};
 use crate::utils::ffmpeg::resolve_bundled_tool;
 use crate::utils::logging::console_log;
 use crate::utils::paths::{file_name_only, sanitize_episode_cache_id};
@@ -124,21 +126,35 @@ fn content_fingerprint(path: &Path) -> Result<String, String> {
     Ok(hex::encode(hasher.finalize()))
 }
 
-fn preview_cache_key(
-    source: &Path,
-    start: f64,
-    end: f64,
-    fps: u32,
-    is_poster: bool,
-) -> Result<String, String> {
+/// Shared cache of `source_path -> content fingerprint` so a batch of scenes
+/// from the same episode fingerprints the source once instead of per-scene.
+type FingerprintCache = Arc<Mutex<HashMap<String, String>>>;
+
+/// Upper bound on concurrent WebP encodes. `-hwaccel auto` decode shares the
+/// GPU, so going much wider risks contention / hwaccel fallback; 4 is a safe
+/// ceiling that still keeps several ffmpeg processes busy.
+const SCENE_WEBP_MAX_CONCURRENCY: usize = 4;
+
+fn scene_webp_concurrency() -> usize {
+    std::thread::available_parallelism()
+        .map(|n| (n.get() / 2).max(2))
+        .unwrap_or(2)
+        .min(SCENE_WEBP_MAX_CONCURRENCY)
+}
+
+/// Fingerprint `source`, reusing a previously computed value for the same path.
+fn cached_fingerprint(cache: &FingerprintCache, source: &Path) -> Result<String, String> {
+    let key = source.to_string_lossy().to_string();
+    if let Ok(map) = cache.lock() {
+        if let Some(fp) = map.get(&key) {
+            return Ok(fp.clone());
+        }
+    }
     let fingerprint = content_fingerprint(source)?;
-    Ok(preview_cache_key_with_fingerprint(
-        &fingerprint,
-        start,
-        end,
-        fps,
-        is_poster,
-    ))
+    if let Ok(mut map) = cache.lock() {
+        map.insert(key, fingerprint.clone());
+    }
+    Ok(fingerprint)
 }
 
 fn preview_cache_key_with_fingerprint(
@@ -184,31 +200,11 @@ fn resolve_scene_webp_cache_base(
     Ok(base)
 }
 
-fn scene_webp_cache_path(
-    app: &AppHandle,
-    source_path: &str,
-    start: f64,
-    end: f64,
-    fps: u32,
-    is_poster: bool,
-    episode_cache_id: Option<&str>,
-    custom_path: Option<&str>,
-) -> Result<PathBuf, String> {
-    let source = PathBuf::from(source_path);
-    if !source.is_file() {
-        return Err(format!("Scene source is missing or not a file: {}", source.display()));
-    }
-    let key = preview_cache_key(&source, start, end, fps, is_poster)?;
-    let base = resolve_scene_webp_cache_base(app, episode_cache_id, custom_path)?;
-
-    let prefix = if is_poster { "poster" } else { "scene" };
-    Ok(base.join(format!("{prefix}_{key}.webp")))
-}
-
 async fn generate_scene_webp_inner(
-    app: &AppHandle,
-    proxy_locks: &State<'_, PreviewProxyLocks>,
-    ffmpeg_pids: &State<'_, ActiveFfmpegPids>,
+    app: AppHandle,
+    proxy_locks: ProxyLockMap,
+    ffmpeg_pids: Arc<Mutex<Vec<u32>>>,
+    fingerprint_cache: FingerprintCache,
     scene_id: String,
     source_path: String,
     start: f64,
@@ -219,28 +215,35 @@ async fn generate_scene_webp_inner(
     kind: Option<String>,
 ) -> Result<SceneWebpResult, String> {
     let input_path = PathBuf::from(&source_path);
-    if !input_path.exists() {
-        return Err(format!("Scene source not found: {}", input_path.display()));
+    if !input_path.is_file() {
+        return Err(format!("Scene source is missing or not a file: {}", input_path.display()));
     }
 
     let is_poster = kind.as_deref() == Some("poster");
     let frame_rate = fps.unwrap_or(8).clamp(1, 24);
     let (safe_start, safe_end, duration) = sanitize_scene_time_window(start, end);
-    let webp_path = scene_webp_cache_path(
-        app,
-        &source_path,
+
+    // Resolve the cache path without re-fingerprinting the source per scene.
+    let fingerprint = cached_fingerprint(&fingerprint_cache, &input_path)?;
+    let key = preview_cache_key_with_fingerprint(
+        &fingerprint,
         safe_start,
         safe_end,
         frame_rate,
         is_poster,
+    );
+    let base = resolve_scene_webp_cache_base(
+        &app,
         episode_cache_id.as_deref(),
         custom_path.as_deref(),
     )?;
+    let prefix = if is_poster { "poster" } else { "scene" };
+    let webp_path = base.join(format!("{prefix}_{key}.webp"));
     let webp_tmp_path = webp_path.with_extension("tmp.webp");
 
     let lock_key = webp_path.to_string_lossy().to_string();
     let clip_lock = {
-        let mut map = proxy_locks.inner.lock().await;
+        let mut map = proxy_locks.lock().await;
         map.retain(|_, v| Arc::strong_count(v) > 1);
         map.entry(lock_key)
             .or_insert_with(|| Arc::new(tokio::sync::Mutex::new(())))
@@ -259,34 +262,42 @@ async fn generate_scene_webp_inner(
         }
     }
 
-    let ffmpeg = resolve_bundled_tool(app, "ffmpeg")?;
+    let ffmpeg = resolve_bundled_tool(&app, "ffmpeg")?;
     let vf = if is_poster {
-        "scale=-2:240:flags=bicubic".to_string()
+        "scale=-2:240:flags=fast_bilinear".to_string()
     } else {
-        format!("fps={frame_rate},scale=-2:240:flags=bicubic")
+        format!("fps={frame_rate},scale=-2:240:flags=fast_bilinear")
     };
     let _ = std::fs::remove_file(&webp_tmp_path);
 
     let ffmpeg_clone = ffmpeg.clone();
     let input = input_path.clone();
     let output = webp_tmp_path.clone();
-    let pids = ffmpeg_pids.pids.clone();
+    let pids = ffmpeg_pids.clone();
 
     let ffmpeg_output = tokio::task::spawn_blocking(move || {
         let mut cmd = Command::new(&ffmpeg_clone);
         apply_no_window(&mut cmd);
         #[cfg(not(windows))]
         cmd.process_group(0);
-        cmd.args([
-            "-y",
-            "-ss",
-            &format!("{safe_start:.3}"),
-        ]);
-        if !is_poster {
-            cmd.args(["-t", &format!("{duration:.3}")]);
+        // Two-stage seek: fast pre-seek to within 2s of target, then
+        // accurate post-input seek for the remainder. This gives frame
+        // accuracy without decoding from the file start every time.
+        const PRE_SEEK_OFFSET: f64 = 2.0;
+        let pre_seek = (safe_start - PRE_SEEK_OFFSET).max(0.0);
+        let post_seek = safe_start - pre_seek;
+
+        cmd.args(["-y"]);
+        cmd.args(["-hwaccel", "auto"]);
+        if pre_seek > 0.0 {
+            cmd.args(["-ss", &format!("{pre_seek:.3}")]);
         }
         cmd.arg("-i");
         cmd.arg(&input);
+        cmd.args(["-ss", &format!("{post_seek:.3}")]);
+        if !is_poster {
+            cmd.args(["-t", &format!("{duration:.3}")]);
+        }
         if is_poster {
             cmd.args([
                 "-frames:v",
@@ -317,7 +328,7 @@ async fn generate_scene_webp_inner(
                 "-lossless",
                 "0",
                 "-compression_level",
-                "2",
+                "0",
                 "-q:v",
                 "48",
                 "-loop",
@@ -386,15 +397,17 @@ async fn generate_scene_webp_inner(
 }
 
 async fn run_scene_webp_job(
-    app: &AppHandle,
-    proxy_locks: &State<'_, PreviewProxyLocks>,
-    ffmpeg_pids: &State<'_, ActiveFfmpegPids>,
+    app: AppHandle,
+    proxy_locks: ProxyLockMap,
+    ffmpeg_pids: Arc<Mutex<Vec<u32>>>,
+    fingerprint_cache: FingerprintCache,
     job: SceneWebpJob,
 ) -> Result<SceneWebpResult, String> {
     generate_scene_webp_inner(
         app,
         proxy_locks,
         ffmpeg_pids,
+        fingerprint_cache,
         job.scene_id,
         job.source_path,
         job.start,
@@ -530,9 +543,10 @@ pub async fn generate_scene_webp(
     kind: Option<String>,
 ) -> Result<SceneWebpResult, String> {
     run_scene_webp_job(
-        &app,
-        &proxy_locks,
-        &ffmpeg_pids,
+        app.clone(),
+        proxy_locks.inner.clone(),
+        ffmpeg_pids.pids.clone(),
+        Arc::new(Mutex::new(HashMap::new())),
         SceneWebpJob {
             scene_id,
             source_path,
@@ -554,27 +568,63 @@ pub async fn generate_scene_webp_batch(
     ffmpeg_pids: State<'_, ActiveFfmpegPids>,
     jobs: Vec<SceneWebpJob>,
 ) -> Result<SceneWebpBatchResult, String> {
+    let proxy_locks = proxy_locks.inner.clone();
+    let ffmpeg_pids = ffmpeg_pids.pids.clone();
+    let fingerprint_cache: FingerprintCache = Arc::new(Mutex::new(HashMap::new()));
+
+    // Fingerprint each unique source exactly once, off the async runtime, so the
+    // concurrent encode tasks below never block a worker thread computing cache
+    // keys (a batch of scenes from one episode all share the same fingerprint).
+    {
+        let unique_sources: BTreeSet<String> =
+            jobs.iter().map(|job| job.source_path.clone()).collect();
+        let cache = fingerprint_cache.clone();
+        let _ = tokio::task::spawn_blocking(move || {
+            for source in unique_sources {
+                let path = PathBuf::from(&source);
+                if path.is_file() {
+                    let _ = cached_fingerprint(&cache, &path);
+                }
+            }
+        })
+        .await;
+    }
+
+    let concurrency = scene_webp_concurrency().max(1);
     let mut items: Vec<SceneWebpBatchItem> = Vec::with_capacity(jobs.len());
+    let mut set: JoinSet<(String, Result<SceneWebpResult, String>)> = JoinSet::new();
     let mut iter = jobs.into_iter();
-    while let Some(job_a) = iter.next() {
-        let job_b = iter.next();
 
-        if let Some(job_b) = job_b {
-            let scene_a = job_a.scene_id.clone();
-            let scene_b = job_b.scene_id.clone();
+    // Keep up to `concurrency` encodes running at once: seed the pool, then spawn
+    // a replacement each time one finishes.
+    macro_rules! spawn_next {
+        () => {{
+            if let Some(job) = iter.next() {
+                let scene_id = job.scene_id.clone();
+                let app = app.clone();
+                let proxy_locks = proxy_locks.clone();
+                let ffmpeg_pids = ffmpeg_pids.clone();
+                let fingerprint_cache = fingerprint_cache.clone();
+                set.spawn(async move {
+                    let result =
+                        run_scene_webp_job(app, proxy_locks, ffmpeg_pids, fingerprint_cache, job)
+                            .await;
+                    (scene_id, result)
+                });
+            }
+        }};
+    }
 
-            let (res_a, res_b) = tokio::join!(
-                run_scene_webp_job(&app, &proxy_locks, &ffmpeg_pids, job_a),
-                run_scene_webp_job(&app, &proxy_locks, &ffmpeg_pids, job_b),
-            );
-            items.push(batch_item_from_result(scene_a, res_a));
-            items.push(batch_item_from_result(scene_b, res_b));
-            continue;
+    for _ in 0..concurrency {
+        spawn_next!();
+    }
+
+    while let Some(joined) = set.join_next().await {
+        match joined {
+            Ok((scene_id, result)) => items.push(batch_item_from_result(scene_id, result)),
+            Err(e) => console_log("ERROR|webp_batch", &format!("encode task failed: {e}")),
         }
-
-        let scene_a = job_a.scene_id.clone();
-        let res_a = run_scene_webp_job(&app, &proxy_locks, &ffmpeg_pids, job_a).await;
-        items.push(batch_item_from_result(scene_a, res_a));
+        spawn_next!();
     }
 
     Ok(SceneWebpBatchResult { items })

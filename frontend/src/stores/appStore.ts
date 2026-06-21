@@ -27,6 +27,10 @@ export type AppState = {
   progressMsg: string;
   bgProgress: { done: number; total: number } | null;
   bgImportProgress: { done: number; total: number } | null;
+  // Background phase-2 re-encode progress. Kept separate from bgProgress so it
+  // does NOT count as "import busy" — re-encodes run in the background and must
+  // not block starting a new import.
+  reencodeProgress: { done: number; total: number } | null;
   importToken: string;
   batchTotal: number;
   batchDone: number;
@@ -48,6 +52,7 @@ export type AppStateStore = AppState & {
   setProgress: (progress: number) => void;
   setProgressMsg: (msg: string) => void;
   setBgImportProgress: (progress: SetterValue<{ done: number; total: number } | null>) => void;
+  setReencodeProgress: (progress: SetterValue<{ done: number; total: number } | null>) => void;
   setImportToken: (token: SetterValue<string>) => void;
   setBatchTotal: (total: SetterValue<number>) => void;
   setBatchDone: (done: SetterValue<number>) => void;
@@ -70,6 +75,7 @@ export const DEFAULT_APP_STATE: AppState = {
   progressMsg: "",
   bgProgress: null,
   bgImportProgress: null,
+  reencodeProgress: null,
   importToken: "",
   batchTotal: 0,
   batchDone: 0,
@@ -93,6 +99,7 @@ export const useAppStateStore = create<AppStateStore>()((set) => ({
   setProgress: (progress) => set({ progress }),
   setProgressMsg: (progressMsg) => set({ progressMsg }),
   setBgImportProgress: (val) => set((s) => ({ bgImportProgress: resolveSetterValue(s.bgImportProgress, val) })),
+  setReencodeProgress: (val) => set((s) => ({ reencodeProgress: resolveSetterValue(s.reencodeProgress, val) })),
   setImportToken: (val) => set((s) => ({ importToken: resolveSetterValue(s.importToken, val) })),
   setBatchTotal: (val) => set((s) => ({ batchTotal: resolveSetterValue(s.batchTotal, val) })),
   setBatchDone: (val) => set((s) => ({ batchDone: resolveSetterValue(s.batchDone, val) })),

@@ -28,8 +28,17 @@ export default function ClipsContainer({ cols }: { cols?: number }) {
   const defaultCols = useUIStateStore((state) => state.cols);
   const generalSettings = useGeneralSettingsStore();
   const openedEpisodeId = useEpisodePanelRuntimeStore((state) => state.openedEpisodeId);
+  const episodes = useEpisodePanelRuntimeStore((state) => state.episodes);
 
   const activeCols = cols ?? defaultCols;
+
+  // Preview mode is a per-episode property fixed at import time — NOT the global
+  // import-method setting. Legacy episodes without a stored method are inferred
+  // from whether their clips have cut video paths.
+  const openedEpisode = episodes.find((e) => e.id === openedEpisodeId);
+  const episodeVideoPreview =
+    openedEpisode?.importMethod === "video_files" ||
+    (openedEpisode?.importMethod === undefined && clips.some((c) => Boolean(c.clipPath)));
 
   // Proxy queue: manages HEVC/H.264 proxy generation and prioritization
   const { requestProxySequential, reportProxyDemand } = useViewportAwareProxyQueue();
@@ -209,7 +218,9 @@ export default function ClipsContainer({ cols }: { cols?: number }) {
   }, [importToken, resetWebpQueue]);
 
   useEffect(() => {
-    if (generalSettings.importMethod === "webp_files") {
+    // The WebP disk-cache prime only applies to WebP-preview episodes; video
+    // episodes show cut clips and never touch the WebP cache.
+    if (episodeVideoPreview) {
       return;
     }
 
@@ -217,19 +228,11 @@ export default function ClipsContainer({ cols }: { cols?: number }) {
 
     const jobs = clips
       .map((clip) => {
+        if (clip.clipPath) return null; // video-mode clips don't use WebP queue
+
         const sourcePath = clip.originalPath || clip.src;
-        const start =
-          typeof clip.startSec === "number"
-            ? clip.startSec
-            : typeof clip.start === "number"
-              ? clip.start
-              : 0;
-        const rawEnd =
-          typeof clip.endSec === "number"
-            ? clip.endSec
-            : typeof clip.end === "number"
-              ? clip.end
-              : start + 2;
+        const start = clip.startSec ?? 0;
+        const rawEnd = clip.endSec ?? (start + 2);
         const end = Math.min(rawEnd > start ? rawEnd : start + 2, start + 2.5);
 
         if (!sourcePath) return null;
@@ -244,7 +247,7 @@ export default function ClipsContainer({ cols }: { cols?: number }) {
       .filter((job): job is NonNullable<typeof job> => Boolean(job));
 
     void primeFromDiskCache(jobs);
-  }, [clips, generalSettings.importMethod, openedEpisodeId, primeFromDiskCache]);
+  }, [clips, episodeVideoPreview, openedEpisodeId, primeFromDiskCache]);
 
   // Ctrl + wheel to adjust the grid column count
   const setStoreCols = useUIStateStore((state) => state.setCols);
@@ -298,6 +301,7 @@ export default function ClipsContainer({ cols }: { cols?: number }) {
                   key={clip.id}
                   clip={clip}
                   index={index}
+                  videoPreviewMode={episodeVideoPreview}
                   previewWebpPath={animatedByClipId[clip.id]}
                   requestProxySequential={requestProxySequential}
                   reportProxyDemand={reportProxyDemand}

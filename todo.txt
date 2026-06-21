@@ -1,0 +1,2 @@
+- Fix video import taking forever, figure out and describe exact pipeline/workflow for how
+video file workflows should work cuz claude is just shooting in the dark rn
