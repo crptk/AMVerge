@@ -52,6 +52,7 @@ export default function VideoPlayer({
 
         handleLoadedMetadata,
         handleLoadedData,
+        handleDurationChange,
         handleTimeUpdate,
         handlePlay,
         handlePause,
@@ -87,6 +88,7 @@ export default function VideoPlayer({
                     }}
                     onLoadedMetadata={(e) => handleLoadedMetadata(e.currentTarget)}
                     onLoadedData={handleLoadedData}
+                    onDurationChange={(e) => handleDurationChange(e.currentTarget)}
                     onTimeUpdate={handleTimeUpdate}
                     onPlay={(e) => handlePlay(e.currentTarget)}
                     onPause={handlePause}
@@ -106,7 +108,7 @@ export default function VideoPlayer({
                         ref={progressRef}
                         className="progress"
                         onClick={(e) => {
-                            if (!videoRef.current || !duration) return;
+                            if (!videoRef.current || !duration || !isFinite(duration)) return;
                             seekFromMouseEvent(e, e.currentTarget);
                         }}
                         onMouseDown={handleProgressMouseDown}

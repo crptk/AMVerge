@@ -163,7 +163,7 @@ export function useVideoPlayer({
 
     const seekFromMouseEvent = (e: MouseEvent | React.MouseEvent, target: HTMLDivElement) => {
         const video = videoRef.current;
-        if (!video || !duration) return;
+        if (!video || !duration || !isFinite(duration)) return;
 
         const rect = target.getBoundingClientRect();
         const x = Math.min(Math.max(0, e.clientX - rect.left), rect.width);
@@ -213,6 +213,12 @@ export function useVideoPlayer({
 
     const handleLoadedData = () => {
         setIsVideoReady(true);
+    };
+
+    const handleDurationChange = (video: HTMLVideoElement) => {
+        if (isFinite(video.duration) && video.duration > 0) {
+            setDuration(video.duration);
+        }
     };
 
     const handleTimeUpdate = () => {
@@ -349,7 +355,12 @@ export function useVideoPlayer({
 
         // 2. Cleanup old clip state
         proxyInFlightRef.current = false;
-        proxyAttemptedForClipRef.current = null;
+        // Only reset the proxy attempt key when the clip/audio changed — not when effectiveClip
+        // updates to the proxy path (that fires this effect again via its dep and would otherwise
+        // trigger a redundant second proxy request + spurious v.load() reset).
+        if (proxyAttemptedForClipRef.current !== selectedClipAudioKey) {
+            proxyAttemptedForClipRef.current = null;
+        }
         hasFirstFrameRef.current = false;
         if (videoFrameCallbackIdRef.current && (video as any).cancelVideoFrameCallback) {
             try {
@@ -605,6 +616,7 @@ export function useVideoPlayer({
 
         handleLoadedMetadata,
         handleLoadedData,
+        handleDurationChange,
         handleTimeUpdate,
         handlePlay,
         handlePause,

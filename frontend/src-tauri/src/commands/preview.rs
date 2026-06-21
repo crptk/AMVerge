@@ -231,7 +231,16 @@ pub async fn ensure_preview_proxy(
     let audio_suffix = audio_stream_index
         .map(|idx| format!("a{idx}"))
         .unwrap_or_else(|| "na".to_string());
-    let mode_suffix = if transcode_video { "x264" } else { "copy" };
+    // "aac" = copy video + transcode audio to AAC (stream-copying audio into MP4 breaks
+    // duration for codecs like FLAC, DTS, EAC3 — browser reports Infinity, seeks fail).
+    // "x264" = transcode both. "copy" = copy video, no audio (audio_stream_index = None).
+    let mode_suffix = if transcode_video {
+        "x264"
+    } else if audio_stream_index.is_some() {
+        "aac"
+    } else {
+        "copy"
+    };
     let clip_key = format!("{}::{audio_suffix}::{mode_suffix}", clip_path);
     let clip_lock = {
         let mut map = proxy_locks.inner.lock().await;
@@ -319,7 +328,10 @@ pub async fn ensure_preview_proxy(
         } else {
             cmd.args(["-c:v", "copy"]);
             if audio_stream_index.is_some() {
-                cmd.args(["-c:a", "copy"]);
+                // Always transcode audio to AAC — stream-copying from MKV into MP4 can
+                // produce a container the browser can't determine duration for (Infinity),
+                // which breaks timeline seeking regardless of -movflags +faststart.
+                cmd.args(["-c:a", "aac", "-b:a", "160k", "-ac", "2", "-ar", "48000"]);
             } else {
                 cmd.args(["-an"]);
             }

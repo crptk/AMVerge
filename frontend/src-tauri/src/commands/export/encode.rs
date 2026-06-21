@@ -420,6 +420,7 @@ pub(super) fn ffmpeg_reencode_args(
     options: Option<&ExportOptionsPayload>,
     input_seek_ms: Option<u64>,
     gpu_encoder: Option<&str>,
+    audio_stream_count: Option<u32>,
 ) -> Vec<String> {
     let mut args = vec!["-y".to_string()];
     let output_seek = input_seek_ms.filter(|ms| *ms > 0).map(|ms| {
@@ -431,15 +432,24 @@ pub(super) fn ffmpeg_reencode_args(
             .to_string()
     });
 
+    let selected_audio = options.and_then(|o| o.audio_stream_index);
+    let audio_mode = options.map(|o| o.audio_mode.as_str()).unwrap_or("aac");
+
     // Timestamp normalization to reduce editor import edge cases.
     args.extend([
         "-i".to_string(),
         input.to_string(),
         "-map".to_string(),
         "0:v:0".to_string(),
-        "-map".to_string(),
-        "0:a?".to_string(),
     ]);
+    if audio_mode != "none" {
+        match (selected_audio, audio_stream_count) {
+            (Some(idx), Some(total)) if total > 0 => {
+                args.extend(super::probe::ordered_audio_map_args(idx, total));
+            }
+            _ => args.extend(["-map".to_string(), "0:a?".to_string()]),
+        }
+    }
 
     if let Some(seek) = output_seek {
         // Keep seek on output side for frame-accurate trimming when re-encoding.
