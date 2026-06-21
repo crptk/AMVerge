@@ -9,8 +9,10 @@ use super::compat::append_container_codec_tag;
 use super::encode::{
     append_audio_encode_args, append_video_encode_args, select_gpu_encoder_for_codec,
 };
-use super::probe::{clip_first_presented_frame_is_key, clip_video_start_ms, ffprobe_duration_ms};
-use super::probe::clip_first_video_packet_is_copy_safe;
+use super::probe::{
+    clip_first_presented_frame_is_key, clip_video_start_ms, clip_first_video_packet_is_copy_safe,
+    ffprobe_audio_stream_count, ffprobe_duration_ms, ordered_audio_map_args,
+};
 use super::progress::{
     emit_export_progress, export_canceled_error, is_canceled_error_text, is_export_cancel_requested,
 };
@@ -103,6 +105,22 @@ pub(super) async fn run_merge_export(
             }
         }
     }
+
+    let audio_stream_count: Option<u32> = if runtime
+        .export_options
+        .as_ref()
+        .and_then(|o| o.audio_stream_index)
+        .is_some()
+    {
+        if let Some(first_clip) = clips.first() {
+            Some(ffprobe_audio_stream_count(runtime.ffprobe.clone(), first_clip.clone()).await)
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+    let selected_audio = runtime.export_options.as_ref().and_then(|o| o.audio_stream_index);
 
     emit_export_progress(
         &runtime.app,
@@ -204,6 +222,7 @@ pub(super) async fn run_merge_export(
             parallel_workers,
             total_ms,
             use_stream_copy,
+            audio_stream_count,
         )
         .await;
     }
@@ -218,9 +237,13 @@ pub(super) async fn run_merge_export(
         filelist_path.clone(),
         "-map".into(),
         "0:v:0".into(),
-        "-map".into(),
-        "0:a?".into(),
     ];
+    match (selected_audio, audio_stream_count) {
+        (Some(idx), Some(total)) if total > 0 => {
+            args.extend(ordered_audio_map_args(idx, total).into_iter().map(Into::into));
+        }
+        _ => args.extend(["-map".into(), "0:a?".into()]),
+    }
 
     if use_stream_copy {
         args.extend(["-c:v".into(), "copy".into(), "-c:a".into(), "copy".into()]);
@@ -345,11 +368,14 @@ pub(super) async fn run_merge_export(
                 filelist_path.clone(),
                 "-map".to_string(),
                 "0:v:0".to_string(),
-                "-map".to_string(),
-                "0:a?".to_string(),
-                "-vf".to_string(),
-                "setpts=PTS-STARTPTS".to_string(),
             ];
+            match (selected_audio, audio_stream_count) {
+                (Some(idx), Some(total)) if total > 0 => {
+                    retry_args.extend(ordered_audio_map_args(idx, total));
+                }
+                _ => retry_args.extend(["-map".to_string(), "0:a?".to_string()]),
+            }
+            retry_args.extend(["-vf".to_string(), "setpts=PTS-STARTPTS".to_string()]);
             if audio_mode != "none" && audio_mode != "copy" {
                 retry_args.extend(["-af".to_string(), "asetpts=PTS-STARTPTS".to_string()]);
             }
@@ -430,11 +456,14 @@ pub(super) async fn run_merge_export(
                         filelist_path.clone(),
                         "-map".to_string(),
                         "0:v:0".to_string(),
-                        "-map".to_string(),
-                        "0:a?".to_string(),
-                        "-vf".to_string(),
-                        "setpts=PTS-STARTPTS".to_string(),
                     ];
+                    match (selected_audio, audio_stream_count) {
+                        (Some(idx), Some(total)) if total > 0 => {
+                            cpu_args.extend(ordered_audio_map_args(idx, total));
+                        }
+                        _ => cpu_args.extend(["-map".to_string(), "0:a?".to_string()]),
+                    }
+                    cpu_args.extend(["-vf".to_string(), "setpts=PTS-STARTPTS".to_string()]);
                     let cpu_audio_mode = cpu_options
                         .as_ref()
                         .map(|options| options.audio_mode.as_str())
@@ -534,11 +563,14 @@ pub(super) async fn run_merge_export(
                 filelist_path.clone(),
                 "-map".to_string(),
                 "0:v:0".to_string(),
-                "-map".to_string(),
-                "0:a?".to_string(),
-                "-vf".to_string(),
-                "setpts=PTS-STARTPTS".to_string(),
             ];
+            match (selected_audio, audio_stream_count) {
+                (Some(idx), Some(total)) if total > 0 => {
+                    cpu_args.extend(ordered_audio_map_args(idx, total));
+                }
+                _ => cpu_args.extend(["-map".to_string(), "0:a?".to_string()]),
+            }
+            cpu_args.extend(["-vf".to_string(), "setpts=PTS-STARTPTS".to_string()]);
             let cpu_audio_mode = cpu_options
                 .as_ref()
                 .map(|options| options.audio_mode.as_str())
@@ -637,16 +669,22 @@ fn build_merge_segment_args(
     ext: &str,
     stream_copy: bool,
     source_video_codec: Option<&str>,
+    audio_stream_count: Option<u32>,
 ) -> Vec<String> {
+    let selected_audio = options.and_then(|o| o.audio_stream_index);
     let mut args = vec![
         "-y".to_string(),
         "-i".to_string(),
         input.to_string(),
         "-map".to_string(),
         "0:v:0".to_string(),
-        "-map".to_string(),
-        "0:a?".to_string(),
     ];
+    match (selected_audio, audio_stream_count) {
+        (Some(idx), Some(total)) if total > 0 => {
+            args.extend(ordered_audio_map_args(idx, total));
+        }
+        _ => args.extend(["-map".to_string(), "0:a?".to_string()]),
+    }
 
     if stream_copy {
         args.extend([
@@ -684,6 +722,7 @@ async fn run_segmented_merge(
     requested_workers: usize,
     total_ms: Option<u64>,
     stream_copy: bool,
+    audio_stream_count: Option<u32>,
 ) -> Result<String, String> {
     use std::sync::Mutex as StdMutex;
     use tempfile::{tempdir, NamedTempFile};
@@ -800,6 +839,7 @@ async fn run_segmented_merge(
                     &ext_clone,
                     segment_stream_copy,
                     src_codec.as_deref(),
+                    audio_stream_count,
                 );
                 let verb = if segment_stream_copy { "Remuxing" } else { "Encoding" };
                 let label = format!("{} segment {}/{}", verb, clip_idx + 1, total);
@@ -835,6 +875,7 @@ async fn run_segmented_merge(
                             &ext_clone,
                             false,
                             src_codec.as_deref(),
+                            audio_stream_count,
                         );
                         let reenc_label = format!(
                             "Encoding segment {}/{} (re-encode fallback)",
@@ -874,6 +915,7 @@ async fn run_segmented_merge(
                                     &ext_clone,
                                     false,
                                     src_codec.as_deref(),
+                                    audio_stream_count,
                                 );
                                 let cpu_label = format!(
                                     "Encoding segment {}/{} (cpu fallback)",
@@ -914,6 +956,7 @@ async fn run_segmented_merge(
                             &ext_clone,
                             false,
                             src_codec.as_deref(),
+                            audio_stream_count,
                         );
                         let cpu_label = format!(
                             "Encoding segment {}/{} (cpu fallback)",

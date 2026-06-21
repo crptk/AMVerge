@@ -9,7 +9,8 @@ use crate::utils::paths::file_name_only;
 
 use super::encode::{append_audio_encode_args, ffmpeg_reencode_args, select_gpu_encoder_for_codec};
 use super::probe::{
-    clip_video_start_ms, ffprobe_duration_ms, is_ae_copy_safe,
+    clip_video_start_ms, ffprobe_audio_stream_count, ffprobe_duration_ms, is_ae_copy_safe,
+    ordered_audio_map_args,
 };
 use super::progress::{
     emit_export_progress, export_canceled_error, is_canceled_error_text, is_export_cancel_requested,
@@ -32,9 +33,11 @@ fn build_copy_args(
     options: Option<&ExportOptionsPayload>,
     input_seek_ms: Option<u64>,
     bsf: Option<&str>,
+    audio_stream_count: Option<u32>,
 ) -> Vec<String> {
     let mut args = vec!["-y".into()];
     let audio_mode = options.map(|o| o.audio_mode.as_str()).unwrap_or("copy");
+    let selected_audio = options.and_then(|o| o.audio_stream_index);
 
     if let Some(ms) = input_seek_ms.filter(|ms| *ms > 0) {
         args.extend(["-ss".into(), format_seek_seconds(ms)]);
@@ -47,7 +50,12 @@ fn build_copy_args(
         "0:v:0".into(),
     ]);
     if audio_mode != "none" {
-        args.extend(["-map".into(), "0:a?".into()]);
+        match (selected_audio, audio_stream_count) {
+            (Some(idx), Some(total)) if total > 0 => {
+                args.extend(ordered_audio_map_args(idx, total).into_iter().map(Into::into));
+            }
+            _ => args.extend(["-map".into(), "0:a?".into()]),
+        }
     }
 
     args.extend(["-c:v".into(), "copy".into()]);
@@ -140,6 +148,7 @@ async fn run_one_job(
     done_before: u64,
     grand_total: Option<u64>,
     emit_per_clip_progress: bool,
+    audio_stream_count: Option<u32>,
 ) -> Result<(usize, String, u64), String> {
     let msg = format!("Exporting clip {}/{}", job.index + 1, job.total);
     let input_base = file_name_only(&job.input);
@@ -155,6 +164,7 @@ async fn run_one_job(
                 runtime.export_options.as_ref(),
                 job.input_seek_ms,
                 copy_bsf_for_job(runtime, &job.output),
+                audio_stream_count,
             ),
         )
     } else {
@@ -166,6 +176,7 @@ async fn run_one_job(
                 runtime.export_options.as_ref(),
                 job.input_seek_ms,
                 gpu_encoder,
+                audio_stream_count,
             ),
         )
     };
@@ -235,6 +246,7 @@ async fn run_one_job(
                 runtime.export_options.as_ref(),
                 job.input_seek_ms,
                 gpu_encoder,
+                audio_stream_count,
             );
             let start_time = runtime.export_start_time;
             let abort_requested_for_run = runtime.abort_requested.clone();
@@ -284,6 +296,7 @@ async fn run_one_job(
                         cpu_options.as_ref(),
                         job.input_seek_ms,
                         None,
+                        audio_stream_count,
                     );
                     let start_time = runtime.export_start_time;
                     let abort_requested_for_run = runtime.abort_requested.clone();
@@ -347,6 +360,7 @@ async fn run_one_job(
                     cpu_options.as_ref(),
                     job.input_seek_ms,
                     None,
+                    audio_stream_count,
                 );
                 let start_time = runtime.export_start_time;
                 let abort_requested_for_run = runtime.abort_requested.clone();
@@ -557,6 +571,21 @@ pub(super) async fn run_multi_export(
         per_input_seek_ms.push(input_seek_ms);
     }
 
+    let audio_stream_count: Option<u32> = if runtime
+        .export_options
+        .as_ref()
+        .and_then(|o| o.audio_stream_index)
+        .is_some()
+    {
+        if let Some(first_clip) = clips.first() {
+            Some(ffprobe_audio_stream_count(runtime.ffprobe.clone(), first_clip.clone()).await)
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
     let jobs = build_clip_jobs(
         clips,
         destination_dir,
@@ -598,7 +627,7 @@ pub(super) async fn run_multi_export(
                 runtime.export_start_time,
             );
 
-            match run_one_job(runtime, job, done_ms, total_ms, true).await {
+            match run_one_job(runtime, job, done_ms, total_ms, true, audio_stream_count).await {
                 Ok((_index, output, clip_ms)) => {
                     done_ms = done_ms.saturating_add(clip_ms);
                     exported_files.push(output);
@@ -666,6 +695,7 @@ pub(super) async fn run_multi_export(
                     let gpu_encoder_for_run = selected_gpu_encoder_name.clone();
                     let start_time = runtime.export_start_time;
                     let copy_bsf_name = copy_bsf_for_job(runtime, &job.output).map(str::to_string);
+                    let audio_stream_count_for_run = audio_stream_count;
 
                     let handle = tokio::task::spawn_blocking(move || {
                         if abort_requested_for_run.load(Ordering::SeqCst) {
@@ -685,6 +715,7 @@ pub(super) async fn run_multi_export(
                                     export_options_for_run.as_ref(),
                                     job.input_seek_ms,
                                     copy_bsf_name.as_deref(),
+                                    audio_stream_count_for_run,
                                 ),
                             )
                         } else {
@@ -696,6 +727,7 @@ pub(super) async fn run_multi_export(
                                     export_options_for_run.as_ref(),
                                     job.input_seek_ms,
                                     gpu_encoder_for_run.as_deref(),
+                                    audio_stream_count_for_run,
                                 ),
                             )
                         };
@@ -745,6 +777,7 @@ pub(super) async fn run_multi_export(
                                     export_options_for_run.as_ref(),
                                     job.input_seek_ms,
                                     gpu_encoder_for_run.as_deref(),
+                                    audio_stream_count_for_run,
                                 );
 
                                 let retry_result = run_ffmpeg_with_progress(
@@ -791,6 +824,7 @@ pub(super) async fn run_multi_export(
                                             cpu_options.as_ref(),
                                             job.input_seek_ms,
                                             None,
+                                            audio_stream_count_for_run,
                                         );
 
                                         let cpu_retry_result = run_ffmpeg_with_progress(
@@ -847,6 +881,7 @@ pub(super) async fn run_multi_export(
                                     cpu_options.as_ref(),
                                     job.input_seek_ms,
                                     None,
+                                    audio_stream_count_for_run,
                                 );
 
                                 let cpu_retry_result = run_ffmpeg_with_progress(

@@ -1,0 +1,12 @@
+{
+  "bundle": {
+    "targets": ["appimage"],
+    "createUpdaterArtifacts": false,
+    "resources": [
+      "bin/backend_script-x86_64-unknown-linux-gnu/backend_script",
+      "bin/backend_script-x86_64-unknown-linux-gnu/_internal/**/*",
+      "bin/backend_script-x86_64-unknown-linux-gnu/_internal/ffmpeg",
+      "bin/backend_script-x86_64-unknown-linux-gnu/_internal/ffprobe"
+    ]
+  }
+}

@@ -15,6 +15,7 @@ pub struct ExportOptionsPayload {
     pub(super) audio_mode: String,
     pub(super) hardware_mode: String,
     pub(super) parallel_exports: u8,
+    pub(super) audio_stream_index: Option<u32>,
 }
 
 impl ExportOptionsPayload {

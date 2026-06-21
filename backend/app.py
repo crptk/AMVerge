@@ -399,7 +399,10 @@ def trim_scenes_at_keyframes(video_path: str, output_dir: str) -> list[dict[str,
     # Guard against pathological keyframe lists creating tiny/1-frame segments.
     cut_points = merge_short_scenes([0.0] + cut_points, min_duration=0.25)[1:]
 
-    output_pattern = os.path.join(output_dir, f"{file_name}_%04d.mp4")
+    # ffmpeg's segment muxer treats '%' as a formatter token, so literal '%' in
+    # source filenames must be escaped to '%%' in the output template.
+    segment_file_name = file_name.replace("%", "%%")
+    output_pattern = os.path.join(output_dir, f"{segment_file_name}_%04d.mp4")
 
     run_stage(
         50,

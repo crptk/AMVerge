@@ -173,6 +173,23 @@ npm run tauri dev
 npm run tauri build
 ```
 
+### Linux Community Build (AppImage)
+
+Linux is currently community-supported and not part of the official signed release pipeline.
+
+Use this build path for local/manual Linux AppImage builds:
+
+```bash
+cd frontend
+npm run build:linux
+```
+
+Notes:
+
+* This Linux path disables updater artifact signing for the build.
+* Startup updater checks are skipped on Linux community builds.
+* Official signed updater flow remains for Windows/macOS releases.
+
 ---
 
 ## Build Python Sidecar Manually (Optional)

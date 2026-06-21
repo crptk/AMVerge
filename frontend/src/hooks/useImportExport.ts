@@ -25,6 +25,7 @@ type ExportOptionsPayload = {
   audioMode: string;
   hardwareMode: string;
   parallelExports: number;
+  audioStreamIndex?: number | null;
 };
 
 export default function useImportExport(props?: ImportExportProps) {
@@ -81,8 +82,9 @@ export default function useImportExport(props?: ImportExportProps) {
       audioMode,
       hardwareMode: profile.hardwareMode,
       parallelExports: profile.parallelExports,
+      audioStreamIndex: generalSettings.previewAudioStreamIndex,
     };
-  }, [generalSettings.exportProfiles]);
+  }, [generalSettings.exportProfiles, generalSettings.previewAudioStreamIndex]);
 
   function parseInitialClips(clipsJson: string): ClipItem[] {
     const scenes: any[] = JSON.parse(clipsJson);

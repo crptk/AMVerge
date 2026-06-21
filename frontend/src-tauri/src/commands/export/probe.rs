@@ -3,6 +3,53 @@ use std::process::Command;
 
 use crate::utils::process::apply_no_window;
 
+/// Build `-map` args that place `selected` first, then all other audio streams
+/// in their original order. This makes `selected` output audio stream 0
+/// (the default) without re-encoding. No-ops if `total` is 0.
+pub(super) fn ordered_audio_map_args(selected: u32, total: u32) -> Vec<String> {
+    let mut args = Vec::new();
+    if total == 0 {
+        return args;
+    }
+    args.extend(["-map".to_string(), format!("0:a:{selected}")]);
+    for i in 0..total {
+        if i != selected {
+            args.extend(["-map".to_string(), format!("0:a:{i}")]);
+        }
+    }
+    args
+}
+
+/// Count audio streams in `path` using ffprobe. Returns 0 on failure.
+pub(super) async fn ffprobe_audio_stream_count(ffprobe: PathBuf, path: String) -> u32 {
+    tokio::task::spawn_blocking(move || {
+        let mut cmd = Command::new(&ffprobe);
+        apply_no_window(&mut cmd);
+        let out = match cmd
+            .args([
+                "-v", "error",
+                "-select_streams", "a",
+                "-show_entries", "stream=index",
+                "-of", "csv=p=0",
+                &path,
+            ])
+            .output()
+        {
+            Ok(o) => o,
+            Err(_) => return 0,
+        };
+        if !out.status.success() {
+            return 0;
+        }
+        String::from_utf8_lossy(&out.stdout)
+            .lines()
+            .filter(|l| !l.trim().is_empty())
+            .count() as u32
+    })
+    .await
+    .unwrap_or(0)
+}
+
 fn parse_seconds_to_ms(raw: &str) -> Option<u64> {
     let trimmed = raw.trim();
     if trimmed.is_empty() {
