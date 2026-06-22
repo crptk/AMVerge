@@ -91,7 +91,11 @@ export default function PreviewContainer(props: PreviewContainerProps) {
 
   const hasSelectedClips = selectedClips.size > 0;
 
-  const animatedByClipId = useScenePreviewStore(s => s.animatedByClipId);
+  // Subscribe to only the focused clip's preview so unrelated WebP results
+  // streaming in from the grid queue don't re-render the preview panel.
+  const previewImageSrc = useScenePreviewStore(s =>
+    focusedClipId ? (s.animatedByClipId[focusedClipId] ?? null) : null
+  );
 
   const sourceClipObj = React.useMemo(
     () => (focusedClipId ? clips.find(c => c.id === focusedClipId) ?? null : null),
@@ -125,8 +129,6 @@ export default function PreviewContainer(props: PreviewContainerProps) {
   }, [previewVideoSrc, selectedMappedAudioStreamIndex, webpPreviewMode]);
 
   const playableVideoSrc = languageProxySrc ?? previewVideoSrc;
-
-  const previewImageSrc = focusedClipId ? (animatedByClipId[focusedClipId] ?? null) : null;
 
   // Source-anchored time window for the focused scene (mirrors the grid's WebP window).
   const sourcePath = sourceClipObj ? (sourceClipObj.originalPath || sourceClipObj.src) : null;

@@ -337,7 +337,20 @@ export default function useImportExport(props?: ImportExportProps) {
 
       // Process ended before any phase-1 signal.
       if (invokeError) throw invokeError;
-      // Defensive fallback (no scenes / no phase-1 emitted): hydrate from manifest.
+      // Defensive fallback (no scenes / no phase-1 emitted): detect_scenes already
+      // ran above, so skip straight to manifest hydration below.
+    } else {
+      // Non-streaming path (webp_files, and any non-streaming import): no streaming
+      // listeners are wired, so run detection to completion here. This writes the
+      // manifest the hydration step below reads. (Without this, brand-new episodes
+      // have no manifest on disk and loadEpisodeManifest fails with os error 3.)
+      await invoke("detect_scenes", {
+        videoPath: file,
+        episodeCacheId: episodeId,
+        customPath: generalSettings.episodesPath,
+        sceneDetectionMethod: generalSettings.sceneDetectionMethod,
+        importMethod: generalSettings.importMethod,
+      });
     }
 
     const manifest = await loadEpisodeManifest(episodeId, generalSettings.episodesPath);

@@ -41,8 +41,10 @@ function sleep(ms: number): Promise<void> {
 }
 
 export default function useViewportAwareWebpQueue(context: WebpQueueContext = {}) {
-  const animatedByClipId = useScenePreviewStore((s) => s.animatedByClipId);
-
+  // NOTE: intentionally does NOT subscribe to `animatedByClipId`. Each tile reads
+  // its own slice (`animatedByClipId[clip.id]`) directly from the store, so a new
+  // WebP result re-renders only that tile instead of re-rendering ClipsContainer
+  // and reconciling the entire grid on every result (which thrashed scrolling).
   const cacheRef = useRef<Map<string, string>>(new Map());
   const demandRef = useRef<Map<string, QueueDemand>>(new Map());
   const inFlightRef = useRef<Set<string>>(new Set());
@@ -265,7 +267,6 @@ export default function useViewportAwareWebpQueue(context: WebpQueueContext = {}
   }, []);
 
   return {
-    animatedByClipId,
     reportWebpDemand,
     primeFromDiskCache,
     resetWebpQueue,

@@ -13,6 +13,7 @@ import { FaCheck, FaPlus } from "react-icons/fa";
 import { useAppStateStore } from "../../stores/appStore.ts";
 import { useUIStateStore } from "../../stores/UIStore.ts";
 import { useGeneralSettingsStore, useThemeSettingsStore } from "../../stores/settingsStore.ts";
+import { useScenePreviewStore } from "../../stores/scenePreviewStore.ts";
 
 const DOWNLOAD_TONE_SAMPLE_SIZE = 24;
 const DOWNLOAD_TONE_SOURCE_SIZE = 34;
@@ -34,7 +35,6 @@ export const LazyClip = memo(function LazyClip({
   clip,
   index,
   videoPreviewMode,
-  previewWebpPath,
   requestProxySequential,
   reportProxyDemand,
   reportWebpDemand,
@@ -45,6 +45,11 @@ export const LazyClip = memo(function LazyClip({
   onDownloadClip,
 }: LazyClipProps) {
   const importToken = useAppStateStore(s => s.importToken);
+
+  // Each tile reads only its own animated-WebP path. Subscribing per-tile (rather
+  // than threading it down from ClipsContainer) means a new WebP result re-renders
+  // just this tile, not the whole grid — critical for smooth scrolling.
+  const previewWebpPath = useScenePreviewStore(s => s.animatedByClipId[clip.id]);
 
   const isSelected = useAppStateStore(s => s.selectedClips.has(clip.id));
   const isFocused = useAppStateStore(s => s.focusedClipId === clip.id);

@@ -26,7 +26,9 @@ export default function ClipsContainer({ cols }: { cols?: number }) {
   const setLoading = useAppStateStore((state) => state.setLoading);
 
   const defaultCols = useUIStateStore((state) => state.cols);
-  const generalSettings = useGeneralSettingsStore();
+  // Subscribe only to the settings field used during render. Reading the whole
+  // settings store here re-rendered the entire grid on any settings change.
+  const episodesPath = useGeneralSettingsStore((state) => state.episodesPath);
   const openedEpisodeId = useEpisodePanelRuntimeStore((state) => state.openedEpisodeId);
   const episodes = useEpisodePanelRuntimeStore((state) => state.episodes);
 
@@ -43,9 +45,9 @@ export default function ClipsContainer({ cols }: { cols?: number }) {
   // Proxy queue: manages HEVC/H.264 proxy generation and prioritization
   const { requestProxySequential, reportProxyDemand } = useViewportAwareProxyQueue();
   // WebP queue: generates scene previews using viewport/hover priority
-  const { animatedByClipId, reportWebpDemand, primeFromDiskCache, resetWebpQueue } = useViewportAwareWebpQueue({
+  const { reportWebpDemand, primeFromDiskCache, resetWebpQueue } = useViewportAwareWebpQueue({
     episodeCacheId: openedEpisodeId,
-    customPath: generalSettings.episodesPath,
+    customPath: episodesPath,
   });
   // Staggered mount queue: mounts videos one at a time in grid preview
   const { reportStaggerDemand } = useStaggeredMountQueue();
@@ -63,10 +65,14 @@ export default function ClipsContainer({ cols }: { cols?: number }) {
 
   const handleDownloadSingleClip = useCallback(async (clip: (typeof clips)[number]) => {
     try {
-      const activeProfile = generalSettings.exportProfiles.find(
-        (candidate) => candidate.id === generalSettings.activeExportProfileId
-      ) ?? generalSettings.exportProfiles[0];
-      const format = activeProfile?.container || generalSettings.exportFormat || "mp4";
+      // Read settings at call time so this callback stays referentially stable —
+      // it's passed to every tile, so depending on the settings object would
+      // re-render the whole grid whenever any setting changed.
+      const settings = useGeneralSettingsStore.getState();
+      const activeProfile = settings.exportProfiles.find(
+        (candidate) => candidate.id === settings.activeExportProfileId
+      ) ?? settings.exportProfiles[0];
+      const format = activeProfile?.container || settings.exportFormat || "mp4";
       const fileName = clip.originalName || clip.src.split(/[\\/]/).pop() || "clip";
       const defaultPath = `${fileName}.${format}`;
 
@@ -102,7 +108,7 @@ export default function ClipsContainer({ cols }: { cols?: number }) {
         exportOptions,
       });
 
-      if (generalSettings.openFileLocationAfterExport && exportedFiles.length > 0) {
+      if (settings.openFileLocationAfterExport && exportedFiles.length > 0) {
         await invoke("reveal_in_file_manager", { filePath: exportedFiles[0] });
       }
     } catch (err) {
@@ -110,7 +116,7 @@ export default function ClipsContainer({ cols }: { cols?: number }) {
     } finally {
       setLoading(false);
     }
-  }, [generalSettings, setLoading]);
+  }, [setLoading]);
 
   const handleClipClick = useCallback(
     (clipId: string, clipSrc: string, index: number, e: React.MouseEvent<HTMLDivElement>) => {
@@ -118,15 +124,19 @@ export default function ClipsContainer({ cols }: { cols?: number }) {
       const isShift = e.shiftKey;
 
       const state = useAppStateStore.getState();
+      // Read clips from the store at click time rather than closing over them, so
+      // this callback stays stable across clip patches (streaming import) and
+      // doesn't re-render every memoized tile each time a clip updates.
+      const currentClips = state.clips;
 
       // Shift-click: select a range of clips
       if (isShift) {
         const anchorIndex = state.focusedClipId
-          ? clips.findIndex((c) => c.id === state.focusedClipId)
+          ? currentClips.findIndex((c) => c.id === state.focusedClipId)
           : -1;
         const startIndex = anchorIndex !== -1 ? anchorIndex : index;
         const [start, end] = [startIndex, index].sort((a, b) => a - b);
-        const rangeIds = clips.slice(start, end + 1).map((c) => c.id);
+        const rangeIds = currentClips.slice(start, end + 1).map((c) => c.id);
 
         startTransition(() => {
           setSelectedClips(new Set(rangeIds));
@@ -150,7 +160,7 @@ export default function ClipsContainer({ cols }: { cols?: number }) {
       setFocusedClip(clipSrc);
       setFocusedClipId(clipId);
     },
-    [clips, setFocusedClip, setFocusedClipId, setSelectedClips]
+    [setFocusedClip, setFocusedClipId, setSelectedClips]
   );
 
   const handleToggleSelection = useCallback(
@@ -302,7 +312,6 @@ export default function ClipsContainer({ cols }: { cols?: number }) {
                   clip={clip}
                   index={index}
                   videoPreviewMode={episodeVideoPreview}
-                  previewWebpPath={animatedByClipId[clip.id]}
                   requestProxySequential={requestProxySequential}
                   reportProxyDemand={reportProxyDemand}
                   reportWebpDemand={reportWebpDemand}
