@@ -10,6 +10,7 @@ import { useCallback, useEffect, useState } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { ClipItem } from "../../types/domain";
 import { SceneWebpJob } from "./types";
+import { cancelIdle, scheduleIdle, type IdleHandle } from "../../utils/idle";
 
 const WEBP_THUMBNAIL_CACHE = new Map<string, string>();
 
@@ -25,26 +26,37 @@ function useWebpThumbnail(webpSrc: string | undefined): string | null {
     if (cached) { setThumbnail(cached); return; }
 
     let cancelled = false;
+    let idleHandle: IdleHandle | null = null;
     const img = new Image();
     img.crossOrigin = "anonymous";
     img.onload = () => {
       if (cancelled) return;
-      try {
-        const canvas = document.createElement("canvas");
-        canvas.width = img.naturalWidth;
-        canvas.height = img.naturalHeight;
-        const ctx = canvas.getContext("2d");
-        if (!ctx) return;
-        ctx.drawImage(img, 0, 0);
-        const dataUrl = canvas.toDataURL("image/jpeg", 0.75);
-        WEBP_THUMBNAIL_CACHE.set(webpSrc, dataUrl);
-        setThumbnail(dataUrl);
-      } catch {
-        // Canvas tainted or decode failed — no thumbnail extracted
-      }
+      // Defer the synchronous decode + JPEG encode out of the current frame: a
+      // batch of WebPs can resolve near-simultaneously mid-scroll, and running
+      // toDataURL inline for each would stall input handling.
+      idleHandle = scheduleIdle(() => {
+        if (cancelled) return;
+        try {
+          const canvas = document.createElement("canvas");
+          canvas.width = img.naturalWidth;
+          canvas.height = img.naturalHeight;
+          const ctx = canvas.getContext("2d");
+          if (!ctx) return;
+          ctx.drawImage(img, 0, 0);
+          const dataUrl = canvas.toDataURL("image/jpeg", 0.75);
+          WEBP_THUMBNAIL_CACHE.set(webpSrc, dataUrl);
+          setThumbnail(dataUrl);
+        } catch {
+          // Canvas tainted or decode failed — no thumbnail extracted
+        }
+      });
     };
     img.src = webpSrc;
-    return () => { cancelled = true; img.onload = null; };
+    return () => {
+      cancelled = true;
+      img.onload = null;
+      if (idleHandle !== null) cancelIdle(idleHandle);
+    };
   }, [webpSrc]);
 
   return thumbnail;

@@ -642,11 +642,22 @@ pub async fn lookup_scene_webp_cache_batch(
         .and_then(|job| job.episode_cache_id.clone())
         .unwrap_or_else(|| "none".to_string());
 
-    let mut fingerprint_cache: HashMap<String, String> = HashMap::new();
-    let items: Vec<SceneWebpBatchItem> = jobs
-        .into_iter()
-        .map(|job| lookup_scene_webp_cache_item(&app, &mut fingerprint_cache, job))
-        .collect();
+    // Fingerprinting reads several MB off disk and SHA-256s it per unique source.
+    // Run the whole lookup loop on a blocking thread so it never ties up an async
+    // runtime worker — the frontend primes this for a full episode at a time.
+    let app_for_lookup = app.clone();
+    let (items, unique_sources): (Vec<SceneWebpBatchItem>, usize) =
+        tokio::task::spawn_blocking(move || {
+            let mut fingerprint_cache: HashMap<String, String> = HashMap::new();
+            let items: Vec<SceneWebpBatchItem> = jobs
+                .into_iter()
+                .map(|job| lookup_scene_webp_cache_item(&app_for_lookup, &mut fingerprint_cache, job))
+                .collect();
+            let unique = fingerprint_cache.len();
+            (items, unique)
+        })
+        .await
+        .map_err(|e| format!("cache lookup task panicked: {e}"))?;
 
     let hits = items.iter().filter(|item| item.path.is_some()).count();
     let misses = requested.saturating_sub(hits);
@@ -668,7 +679,7 @@ pub async fn lookup_scene_webp_cache_batch(
             requested,
             hits,
             misses,
-            fingerprint_cache.len(),
+            unique_sources,
             started.elapsed().as_millis(),
             sample_hit,
             sample_error,

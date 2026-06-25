@@ -4,10 +4,11 @@
  * Main grid container for displaying video clips. Handles layout, selection logic, and passes props to each tile (LazyClip).
  * Optimized for performance with lazy loading, proxying, and staggered mounting.
  */
-import { startTransition, useCallback, useEffect, useRef } from "react";
+import { startTransition, useCallback, useEffect, useMemo, useRef } from "react";
 import { save } from "@tauri-apps/plugin-dialog";
 import { invoke } from "@tauri-apps/api/core";
 import { LazyClip } from "./LazyClip.tsx"
+import { useGridVirtualizer } from "./useGridVirtualizer.ts";
 import { useStaggeredMountQueue } from "./staggeredMountQueue.ts";
 import useViewportAwareProxyQueue from "./proxyQueue.ts";
 import useViewportAwareWebpQueue from "./webpQueue.ts";
@@ -36,11 +37,15 @@ export default function ClipsContainer({ cols }: { cols?: number }) {
 
   // Preview mode is a per-episode property fixed at import time — NOT the global
   // import-method setting. Legacy episodes without a stored method are inferred
-  // from whether their clips have cut video paths.
-  const openedEpisode = episodes.find((e) => e.id === openedEpisodeId);
-  const episodeVideoPreview =
-    openedEpisode?.importMethod === "video_files" ||
-    (openedEpisode?.importMethod === undefined && clips.some((c) => Boolean(c.clipPath)));
+  // from whether their clips have cut video paths. Memoized so the O(n) clip scan
+  // doesn't run on every scroll-driven re-render.
+  const episodeVideoPreview = useMemo(() => {
+    const openedEpisode = episodes.find((e) => e.id === openedEpisodeId);
+    return (
+      openedEpisode?.importMethod === "video_files" ||
+      (openedEpisode?.importMethod === undefined && clips.some((c) => Boolean(c.clipPath)))
+    );
+  }, [episodes, openedEpisodeId, clips]);
 
   // Proxy queue: manages HEVC/H.264 proxy generation and prioritization
   const { requestProxySequential, reportProxyDemand } = useViewportAwareProxyQueue();
@@ -195,6 +200,15 @@ export default function ClipsContainer({ cols }: { cols?: number }) {
   // Ref for the main container (for scroll-to-top on import)
   const containerRef = useRef<HTMLElement>(null);
 
+  // Windowing: render only the rows near the viewport. Disabled while the loading
+  // skeleton is up (a fixed 12 tiles — nothing to virtualize).
+  const { startIndex, endIndex, offsetY, totalHeight } = useGridVirtualizer({
+    containerRef,
+    columns: gridColumns,
+    itemCount: clips.length,
+    enabled: !loading,
+  });
+
   // Preserve scroll position across loading-state toggles that don't come from
   // an import (e.g. exporting). When importToken changes we still want the
   // scroll-to-top behaviour below.
@@ -294,7 +308,7 @@ export default function ClipsContainer({ cols }: { cols?: number }) {
         <div className="empty-grid-wrapper">
           <p id="empty-grid">No video loaded.<br/>If no clips are displaying, try changing the episode storage path in general settings.</p>
         </div>
-      ) : (
+      ) : loading ? (
         <div
           className="clips-grid"
           style={{
@@ -302,11 +316,32 @@ export default function ClipsContainer({ cols }: { cols?: number }) {
             ["--clip-max-width" as any]: clipMaxWidth,
           }}
         >
-          {loading
-            ? Array.from({ length: 12 }).map((_, i) => (
-                <div key={i} className="clip-skeleton" />
-              ))
-            : clips.map((clip, index) => (
+          {Array.from({ length: 12 }).map((_, i) => (
+            <div key={i} className="clip-skeleton" />
+          ))}
+        </div>
+      ) : (
+        // Virtualized: a full-height spacer drives the scrollbar; only the rows
+        // near the viewport are rendered, offset into place with translateY.
+        <div className="clips-virtual-spacer" style={{ position: "relative", height: totalHeight }}>
+          <div
+            className="clips-grid"
+            style={{
+              gridTemplateColumns: `repeat(${gridColumns}, minmax(0, 1fr))`,
+              ["--clip-max-width" as any]: clipMaxWidth,
+              position: "absolute",
+              top: 0,
+              left: 0,
+              right: 0,
+              transform: `translateY(${offsetY}px)`,
+              // Vertical insets are handled by the spacer/offset; keep only the
+              // original horizontal padding here.
+              padding: "0 15px",
+            }}
+          >
+            {clips.slice(startIndex, endIndex).map((clip, i) => {
+              const index = startIndex + i;
+              return (
                 <LazyClip
                   key={clip.id}
                   clip={clip}
@@ -321,7 +356,9 @@ export default function ClipsContainer({ cols }: { cols?: number }) {
                   onToggleSelection={handleToggleSelection}
                   onDownloadClip={handleDownloadSingleClip}
                 />
-              ))}
+              );
+            })}
+          </div>
         </div>
       )}
     </main>

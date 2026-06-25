@@ -50,6 +50,13 @@ export default function useViewportAwareWebpQueue(context: WebpQueueContext = {}
   const inFlightRef = useRef<Set<string>>(new Set());
   const seqRef = useRef(0);
   const processingRef = useRef(false);
+  // Hold the latest context in a ref so the returned callbacks can stay
+  // referentially stable. The caller passes a fresh `context` object literal on
+  // every render; depending on it directly made `primeFromDiskCache` change
+  // identity each render, which re-fired the full-episode disk-cache prime on
+  // every scroll frame and froze scrolling.
+  const contextRef = useRef(context);
+  contextRef.current = context;
 
   const publishResult = useCallback((demandKey: string, path: string) => {
     const { clipId } = parseDemandKey(demandKey);
@@ -195,15 +202,16 @@ export default function useViewportAwareWebpQueue(context: WebpQueueContext = {}
         priority: demand.priority,
         seq,
         // sceneId carries the demand key so the Rust result can be routed back to kind.
-        job: buildDemandJob(demandKey, demand.job, kind, context),
+        job: buildDemandJob(demandKey, demand.job, kind, contextRef.current),
       });
 
       void processQueue();
     },
-    [context.customPath, context.episodeCacheId, processQueue, publishResult]
+    [processQueue, publishResult]
   );
 
   const primeFromDiskCache = useCallback(async (jobs: WebpPrimeJob[]) => {
+    const context = contextRef.current;
     if (!context.episodeCacheId) {
       webpLog("prime cache skipped", { reason: "missing episodeCacheId" });
       return;
@@ -213,13 +221,32 @@ export default function useViewportAwareWebpQueue(context: WebpQueueContext = {}
       return;
     }
 
+    // Skip clips already resolved this session; republish their cached path so a
+    // freshly mounted tile still picks it up without another disk round-trip.
+    // This keeps re-primes during streaming import (clips array grows) cheap —
+    // only genuinely new clips hit the backend.
+    const pending: WebpPrimeJob[] = [];
+    for (const job of jobs) {
+      const cachedPath = cacheRef.current.get(makeDemandKey(job.clipId, "animated"));
+      if (cachedPath) {
+        publishResult(makeDemandKey(job.clipId, "animated"), cachedPath);
+        continue;
+      }
+      pending.push(job);
+    }
+
+    if (pending.length === 0) {
+      webpLog("prime cache skipped", { reason: "all cached" });
+      return;
+    }
+
     webpLog("prime cache start", {
       episodeCacheId: context.episodeCacheId,
-      jobs: jobs.length,
+      jobs: pending.length,
       customPath: context.customPath ?? null,
     });
 
-    const lookupJobs = jobs.map((job) => {
+    const lookupJobs = pending.map((job) => {
       const demandKey = makeDemandKey(job.clipId, "animated");
       return buildDemandJob(
         demandKey,
@@ -249,7 +276,7 @@ export default function useViewportAwareWebpQueue(context: WebpQueueContext = {}
 
       webpLog("prime cache complete", {
         episodeCacheId: context.episodeCacheId,
-        requested: jobs.length,
+        requested: pending.length,
         hits: (result.items ?? []).filter((item) => Boolean(item.path)).length,
       });
     } catch (error) {
@@ -257,7 +284,7 @@ export default function useViewportAwareWebpQueue(context: WebpQueueContext = {}
         error: error instanceof Error ? error.message : String(error),
       });
     }
-  }, [context, publishResult]);
+  }, [publishResult]);
 
   const resetWebpQueue = useCallback(() => {
     cacheRef.current.clear();

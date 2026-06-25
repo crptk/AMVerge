@@ -14,6 +14,7 @@ import { useAppStateStore } from "../../stores/appStore.ts";
 import { useUIStateStore } from "../../stores/UIStore.ts";
 import { useGeneralSettingsStore, useThemeSettingsStore } from "../../stores/settingsStore.ts";
 import { useScenePreviewStore } from "../../stores/scenePreviewStore.ts";
+import { cancelIdle, scheduleIdle } from "../../utils/idle.ts";
 
 const DOWNLOAD_TONE_SAMPLE_SIZE = 24;
 const DOWNLOAD_TONE_SOURCE_SIZE = 34;
@@ -73,6 +74,8 @@ export const LazyClip = memo(function LazyClip({
   const wrapperRef = useRef<HTMLDivElement>(null);
   const thumbnailRef = useRef<HTMLImageElement | null>(null);
   const [downloadTone, setDownloadTone] = useState<"light" | "dark">("light");
+  // Tracks a pending idle-scheduled tone sample so we can coalesce/cancel it.
+  const downloadToneIdleRef = useRef<number | null>(null);
 
   const originalPath = clip.src;
   // Video-file import mode: clip has a pre-cut video file on disk.
@@ -555,54 +558,71 @@ export const LazyClip = memo(function LazyClip({
   const updateDownloadToneFromThumbnail = useCallback((img: HTMLImageElement | null) => {
     if (!img || img.naturalWidth === 0 || img.naturalHeight === 0) return;
 
-    try {
-      const canvas = document.createElement("canvas");
-      const ctx = canvas.getContext("2d", { willReadFrequently: true });
-      if (!ctx) return;
-
-      // Sample the icon zone (top-right) to choose dark/light icon color.
-      const targetSize = DOWNLOAD_TONE_SAMPLE_SIZE;
-      const sourceW = Math.min(DOWNLOAD_TONE_SOURCE_SIZE, img.naturalWidth);
-      const sourceH = Math.min(DOWNLOAD_TONE_SOURCE_SIZE, img.naturalHeight);
-      const margin = DOWNLOAD_TONE_SAMPLE_MARGIN;
-
-      const sx = Math.max(0, img.naturalWidth - sourceW - margin);
-      const sy = Math.max(0, margin);
-
-      canvas.width = targetSize;
-      canvas.height = targetSize;
-
-      ctx.drawImage(
-        img,
-        sx,
-        sy,
-        sourceW,
-        sourceH,
-        0,
-        0,
-        targetSize,
-        targetSize
-      );
-
-      const data = ctx.getImageData(0, 0, targetSize, targetSize).data;
-      let luminanceSum = 0;
-      let alphaSum = 0;
-
-      for (let i = 0; i < data.length; i += 4) {
-        const r = data[i];
-        const g = data[i + 1];
-        const b = data[i + 2];
-        const a = data[i + 3] / 255;
-        const luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
-        luminanceSum += luminance * a;
-        alphaSum += a;
-      }
-
-      const avgLuminance = alphaSum > 0 ? luminanceSum / alphaSum : 128;
-      setDownloadTone(avgLuminance >= DOWNLOAD_TONE_THRESHOLD ? "dark" : "light");
-    } catch {
-      // Keep previous tone if sampling fails.
+    // getImageData forces a synchronous decode + pixel readback; defer it to idle
+    // time (coalescing any prior pending sample) so it never lands on a scroll
+    // frame. Re-check the image inside the callback in case the tile changed.
+    if (downloadToneIdleRef.current !== null) {
+      cancelIdle(downloadToneIdleRef.current);
     }
+    downloadToneIdleRef.current = scheduleIdle(() => {
+      downloadToneIdleRef.current = null;
+      if (!img || img.naturalWidth === 0 || img.naturalHeight === 0) return;
+      try {
+        const canvas = document.createElement("canvas");
+        const ctx = canvas.getContext("2d", { willReadFrequently: true });
+        if (!ctx) return;
+
+        // Sample the icon zone (top-right) to choose dark/light icon color.
+        const targetSize = DOWNLOAD_TONE_SAMPLE_SIZE;
+        const sourceW = Math.min(DOWNLOAD_TONE_SOURCE_SIZE, img.naturalWidth);
+        const sourceH = Math.min(DOWNLOAD_TONE_SOURCE_SIZE, img.naturalHeight);
+        const margin = DOWNLOAD_TONE_SAMPLE_MARGIN;
+
+        const sx = Math.max(0, img.naturalWidth - sourceW - margin);
+        const sy = Math.max(0, margin);
+
+        canvas.width = targetSize;
+        canvas.height = targetSize;
+
+        ctx.drawImage(
+          img,
+          sx,
+          sy,
+          sourceW,
+          sourceH,
+          0,
+          0,
+          targetSize,
+          targetSize
+        );
+
+        const data = ctx.getImageData(0, 0, targetSize, targetSize).data;
+        let luminanceSum = 0;
+        let alphaSum = 0;
+
+        for (let i = 0; i < data.length; i += 4) {
+          const r = data[i];
+          const g = data[i + 1];
+          const b = data[i + 2];
+          const a = data[i + 3] / 255;
+          const luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+          luminanceSum += luminance * a;
+          alphaSum += a;
+        }
+
+        const avgLuminance = alphaSum > 0 ? luminanceSum / alphaSum : 128;
+        setDownloadTone(avgLuminance >= DOWNLOAD_TONE_THRESHOLD ? "dark" : "light");
+      } catch {
+        // Keep previous tone if sampling fails.
+      }
+    });
+  }, []);
+
+  // Cancel any pending tone sample when the tile unmounts.
+  useEffect(() => {
+    return () => {
+      if (downloadToneIdleRef.current !== null) cancelIdle(downloadToneIdleRef.current);
+    };
   }, []);
 
   useEffect(() => {
