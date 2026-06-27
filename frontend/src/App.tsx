@@ -20,6 +20,7 @@ import useStartupUpdateNotification from "./hooks/useStartupUpdateNotification";
 import { remapPathRoot } from "./utils/episodeUtils";
 
 import { useAppStateStore } from "./stores/appStore";
+import { useWebpLoadingStore } from "./stores/webpLoadingStore";
 import { useUIStateStore } from "./stores/UIStore";
 import { applyThemeSettings, useGeneralSettingsStore, useThemeSettingsStore } from "./stores/settingsStore";
 import { useEpisodePanelRuntimeStore } from "./stores/episodeStore";
@@ -35,7 +36,12 @@ function App() {
   const bgProgress = useAppStateStore((s) => s.bgProgress);
   const bgImportProgress = useAppStateStore((s) => s.bgImportProgress);
   const reencodeProgress = useAppStateStore((s) => s.reencodeProgress);
-  const clearBgProgress = () => useAppStateStore.setState((s) => ({ ...s, bgProgress: null, bgImportProgress: null, reencodeProgress: null }));
+  const webpLoadDone = useWebpLoadingStore((s) => s.done);
+  const webpLoadTotal = useWebpLoadingStore((s) => s.total);
+  const clearBgProgress = () => {
+    useAppStateStore.setState((s) => ({ ...s, bgProgress: null, bgImportProgress: null, reencodeProgress: null }));
+    useWebpLoadingStore.getState().reset();
+  };
   const setProgress = useAppStateStore((s) => s.setProgress);
   const setProgressMsg = useAppStateStore((s) => s.setProgressMsg);
   const setVideoIsHEVC = useAppStateStore((s) => s.setVideoIsHEVC);
@@ -186,7 +192,14 @@ function App() {
   }
 
   async function handleAbortAndCloseBgProgress() {
-    await handleAbort();
+    // When only the WebP "Loading previews" indicator is up there's no backend
+    // task to abort — just hide it. Firing the abort invokes would needlessly
+    // flag abortedRef and interfere with a later import.
+    const { bgProgress: bg, bgImportProgress: bgImport, reencodeProgress: reenc } =
+      useAppStateStore.getState();
+    if (bg || bgImport || reenc) {
+      await handleAbort();
+    }
     clearBgProgress();
   }
 
@@ -325,13 +338,15 @@ function App() {
             batchCurrentFile={batchCurrentFile || ""}
             onAbort={handleAbort}
           />
-        ) : (bgProgress || bgImportProgress || reencodeProgress) ? (
+        ) : (bgProgress || bgImportProgress || reencodeProgress || webpLoadTotal > 0) ? (
           <BgProgressBar
             clipDone={(reencodeProgress ?? bgProgress)?.done ?? 0}
             clipTotal={(reencodeProgress ?? bgProgress)?.total ?? 0}
             clipLabel={reencodeProgress ? "Reencoding" : "Processing clips"}
             importDone={bgImportProgress?.done ?? 0}
             importTotal={bgImportProgress?.total ?? 0}
+            webpDone={webpLoadDone}
+            webpTotal={webpLoadTotal}
             onClose={handleAbortAndCloseBgProgress}
           />
         ) : null

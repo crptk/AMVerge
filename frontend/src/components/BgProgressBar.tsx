@@ -6,6 +6,9 @@ type BgProgress = {
   clipLabel?: string;
   importDone?: number;
   importTotal?: number;
+  webpDone?: number;
+  webpTotal?: number;
+  webpLabel?: string;
   onClose: () => void;
 };
 
@@ -15,6 +18,9 @@ export default function BgProgressBar({
   clipLabel = "Processing clips",
   importDone = 0,
   importTotal = 0,
+  webpDone = 0,
+  webpTotal = 0,
+  webpLabel = "Loading previews",
   onClose,
 }: BgProgress) {
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -24,8 +30,10 @@ export default function BgProgressBar({
 
   const clipPercent = clipTotal > 0 ? Math.round((clipDone / clipTotal) * 100) : 0;
   const importPercent = importTotal > 0 ? Math.round((importDone / importTotal) * 100) : 0;
+  const webpPercent = webpTotal > 0 ? Math.round((webpDone / webpTotal) * 100) : 0;
   const showClipProgress = clipTotal > 0;
   const showImportProgress = importTotal > 0;
+  const showWebpProgress = webpTotal > 0;
 
   const clampPosition = (x: number, y: number) => {
     const element = containerRef.current;
@@ -129,6 +137,15 @@ export default function BgProgressBar({
             <div className="progress-fill" style={{ width: `${importPercent}%` }} />
           </div>
           <span className="bg-progress-label">Importing {importDone}/{importTotal} videos</span>
+        </>
+      ) : null}
+
+      {showWebpProgress ? (
+        <>
+          <p className="bg-progress-label">{webpLabel} {webpDone}/{webpTotal}</p>
+          <div className="progress-bar" style={{ width: "100%", marginTop: 4, marginLeft: 0, marginRight: 0 }}>
+            <div className="progress-fill" style={{ width: `${webpPercent}%` }} />
+          </div>
         </>
       ) : null}
     </div>

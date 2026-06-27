@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { buildDemandJob, makeDemandKey, normalizeWebpKind, parseDemandKey } from "./webpQueueUtils";
 import { useScenePreviewStore } from "../../stores/scenePreviewStore";
+import { useWebpLoadingStore } from "../../stores/webpLoadingStore";
 import {
   QueueDemand,
   SceneWebpBatchItem,
@@ -81,6 +82,52 @@ export default function useViewportAwareWebpQueue(context: WebpQueueContext = {}
   // every scroll frame and froze scrolling.
   const contextRef = useRef(context);
   contextRef.current = context;
+
+  // Progress tracking for the background "Loading previews" bar. `pendingLoadRef`
+  // holds the demand keys that need backend work and haven't resolved yet;
+  // `loadTotalRef`/`loadDoneRef` are the cumulative counters for the current
+  // burst. Disk-cache prime hits are intentionally NOT counted — they republish
+  // instantly, so counting them would flash the bar 0→N→0 on every re-open.
+  const pendingLoadRef = useRef<Set<string>>(new Set());
+  const loadTotalRef = useRef(0);
+  const loadDoneRef = useRef(0);
+
+  const publishLoadProgress = useCallback(() => {
+    useWebpLoadingStore.getState().setProgress(loadTotalRef.current, loadDoneRef.current);
+  }, []);
+
+  const markLoading = useCallback((demandKey: string) => {
+    if (pendingLoadRef.current.has(demandKey)) return;
+    pendingLoadRef.current.add(demandKey);
+    loadTotalRef.current += 1;
+    publishLoadProgress();
+  }, [publishLoadProgress]);
+
+  // `resolved` distinguishes a finished encode (counts toward `done`) from a
+  // cancelled demand — e.g. tile scrolled off, or the encode errored — which is
+  // just dropped from the total. Once nothing is pending, reset to 0/0 so the
+  // bar hides and the next burst starts clean.
+  const finishLoading = useCallback((demandKey: string, resolved: boolean) => {
+    if (!pendingLoadRef.current.has(demandKey)) return;
+    pendingLoadRef.current.delete(demandKey);
+    if (resolved) {
+      loadDoneRef.current += 1;
+    } else {
+      loadTotalRef.current = Math.max(loadDoneRef.current, loadTotalRef.current - 1);
+    }
+    if (pendingLoadRef.current.size === 0) {
+      loadTotalRef.current = 0;
+      loadDoneRef.current = 0;
+    }
+    publishLoadProgress();
+  }, [publishLoadProgress]);
+
+  const resetLoadProgress = useCallback(() => {
+    pendingLoadRef.current.clear();
+    loadTotalRef.current = 0;
+    loadDoneRef.current = 0;
+    useWebpLoadingStore.getState().reset();
+  }, []);
 
   const publishResult = useCallback((demandKey: string, path: string) => {
     const { clipId } = parseDemandKey(demandKey);
@@ -170,10 +217,12 @@ export default function useViewportAwareWebpQueue(context: WebpQueueContext = {}
             // item.sceneId echoes back the demand key we sent.
             if (item.path) {
               cacheRef.current.set(item.sceneId, item.path);
+              finishLoading(item.sceneId, true);
               if (fresh) publishResult(item.sceneId, item.path);
             }
-            if (item.error && fresh) {
-              demandRef.current.delete(item.sceneId);
+            if (item.error) {
+              finishLoading(item.sceneId, false);
+              if (fresh) demandRef.current.delete(item.sceneId);
             }
           }
         } catch {
@@ -181,6 +230,9 @@ export default function useViewportAwareWebpQueue(context: WebpQueueContext = {}
             for (const demand of batch) {
               demandRef.current.delete(demand.demandKey);
             }
+          }
+          for (const demand of batch) {
+            finishLoading(demand.demandKey, false);
           }
         } finally {
           for (const demand of batch) {
@@ -197,13 +249,19 @@ export default function useViewportAwareWebpQueue(context: WebpQueueContext = {}
     } finally {
       processingRef.current = false;
     }
-  }, [hasVisiblePending, pickNextBatch, publishResult]);
+  }, [finishLoading, hasVisiblePending, pickNextBatch, publishResult]);
 
   const reportWebpDemand = useCallback(
     (clipId: string, demand: WebpDemandInput | null) => {
       if (!demand) {
         // Clearing demand for a clip removes both kinds (tile left viewport).
-        demandRef.current.delete(makeDemandKey(clipId, "animated"));
+        const animatedKey = makeDemandKey(clipId, "animated");
+        demandRef.current.delete(animatedKey);
+        // Drop it from the loading count unless it's still in flight — an
+        // in-flight encode will resolve on its own and shouldn't be cancelled.
+        if (!inFlightRef.current.has(animatedKey)) {
+          finishLoading(animatedKey, false);
+        }
         return;
       }
 
@@ -215,6 +273,9 @@ export default function useViewportAwareWebpQueue(context: WebpQueueContext = {}
         if (cachedPath) publishResult(demandKey, cachedPath);
         return;
       }
+
+      // Genuinely needs backend work — count it toward the loading bar.
+      markLoading(demandKey);
 
       const seq = ++seqRef.current;
       webpLog("enqueue", {
@@ -238,7 +299,7 @@ export default function useViewportAwareWebpQueue(context: WebpQueueContext = {}
 
       void processQueue();
     },
-    [processQueue, publishResult]
+    [finishLoading, markLoading, processQueue, publishResult]
   );
 
   const primeFromDiskCache = useCallback(async (jobs: WebpPrimeJob[]) => {
@@ -349,8 +410,9 @@ export default function useViewportAwareWebpQueue(context: WebpQueueContext = {}
     epochRef.current += 1;
     demandRef.current.clear();
     inFlightRef.current.clear();
+    resetLoadProgress();
     useScenePreviewStore.getState().reset();
-  }, []);
+  }, [resetLoadProgress]);
 
   // Paint each scene the instant its encode finishes, rather than waiting for the
   // whole backend batch (which only returns once its slowest encode completes).
@@ -365,6 +427,7 @@ export default function useViewportAwareWebpQueue(context: WebpQueueContext = {}
       if (!sceneId || !path) return;
       if (!inFlightRef.current.has(sceneId)) return;
       cacheRef.current.set(sceneId, path);
+      finishLoading(sceneId, true);
       publishResult(sceneId, path);
     }).then((fn) => {
       if (cancelled) fn();
@@ -374,7 +437,7 @@ export default function useViewportAwareWebpQueue(context: WebpQueueContext = {}
       cancelled = true;
       if (unlisten) unlisten();
     };
-  }, [publishResult]);
+  }, [finishLoading, publishResult]);
 
   return {
     reportWebpDemand,
