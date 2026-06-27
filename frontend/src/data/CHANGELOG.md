@@ -1,4 +1,4 @@
-## v1.2.5
+## v1.2.6 
 - Fixed AMVerge updater failing
 
 ## v1.2.5
