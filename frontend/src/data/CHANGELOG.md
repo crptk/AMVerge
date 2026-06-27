@@ -1,4 +1,7 @@
 ## v1.2.5
+- Fixed AMVerge updater failing
+
+## v1.2.5
 - Fixed videos not playing in windows media player
 
 ## v1.2.4

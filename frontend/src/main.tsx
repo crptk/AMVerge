@@ -12,13 +12,13 @@ async function maybeCheckForUpdatesOnStartup() {
   }
 
   const platformInfo = `${navigator.platform} ${navigator.userAgent}`;
-  if (/linux/i.test(platformInfo)) {
-    console.info("[updater] skipping startup update check on Linux community build");
+  if (!/win/i.test(platformInfo)) {
+    console.info("[updater] skipping startup update check on non-Windows build");
     return;
   }
 
   try {
-    const [{ check }, { confirm, message }] = await Promise.all([
+    const [{ check }, { confirm }] = await Promise.all([
       import("@tauri-apps/plugin-updater"),
       import("@tauri-apps/plugin-dialog"),
     ]);
