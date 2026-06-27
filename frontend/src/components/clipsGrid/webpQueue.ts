@@ -1,5 +1,6 @@
-import { useCallback, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { buildDemandJob, makeDemandKey, normalizeWebpKind, parseDemandKey } from "./webpQueueUtils";
 import { useScenePreviewStore } from "../../stores/scenePreviewStore";
 import {
@@ -14,9 +15,11 @@ import {
 // Two-lane scheduler:
 // - visible tiles: quick batches
 // - offscreen tiles: slow background trickle
-// Sized to keep the backend's concurrent WebP encode pool (capped at 4) fed
-// across a request, amortizing IPC roundtrips.
-const VISIBLE_BATCH_SIZE = 8;
+// Kept at ~2x the backend's max encode concurrency (8) so the encoder pool stays
+// continuously fed across the IPC roundtrip between batches instead of draining
+// to idle. Per-scene results stream back individually, so a larger batch doesn't
+// delay first paint.
+const VISIBLE_BATCH_SIZE = 16;
 const OFFSCREEN_BATCH_SIZE = 1;
 const OFFSCREEN_BATCH_DELAY_MS = 250;
 
@@ -348,6 +351,30 @@ export default function useViewportAwareWebpQueue(context: WebpQueueContext = {}
     inFlightRef.current.clear();
     useScenePreviewStore.getState().reset();
   }, []);
+
+  // Paint each scene the instant its encode finishes, rather than waiting for the
+  // whole backend batch (which only returns once its slowest encode completes).
+  // The batch result still publishes as the source of truth; this just lets the
+  // grid fill in progressively. Only results for in-flight work are accepted, so
+  // an episode switch (which clears inFlightRef) drops stale previous-episode events.
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    let cancelled = false;
+    void listen<{ sceneId: string; path: string }>("scene_webp_ready", (event) => {
+      const { sceneId, path } = event.payload;
+      if (!sceneId || !path) return;
+      if (!inFlightRef.current.has(sceneId)) return;
+      cacheRef.current.set(sceneId, path);
+      publishResult(sceneId, path);
+    }).then((fn) => {
+      if (cancelled) fn();
+      else unlisten = fn;
+    });
+    return () => {
+      cancelled = true;
+      if (unlisten) unlisten();
+    };
+  }, [publishResult]);
 
   return {
     reportWebpDemand,

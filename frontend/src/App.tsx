@@ -350,19 +350,25 @@ function App() {
       }}
     >
       <div className="main-content">
-        {activePage === "home" ? (
+        {/* HomePage stays mounted across navigation (hidden, not unmounted) so
+            returning to an opened episode doesn't tear down and regenerate the
+            whole grid — WebP queue, per-tile proxies, scroll position and all.
+            `display: contents` keeps its children laid out exactly as before when
+            active; `display: none` hides the subtree when another page is open. */}
+        <div style={{ display: activePage === "home" ? "contents" : "none" }}>
           <HomePage
             mainLayoutWrapperRef={mainLayoutWrapperRef}
           />
-        ) : activePage === "menu" ? (
+        </div>
+        {activePage === "menu" ? (
           <Menu />
-        ) : (
+        ) : activePage !== "home" ? (
           <Settings
             onGeneralSettingsReset={handleResetGeneralSettings}
             onEpisodesPathChanged={remapEpisodePaths}
             onThemeReset={handleResetTheme}
           />
-        )}
+        ) : null}
       </div>
       {showStartupNotification && startupNotification ? (
         <StartupNotificationModal

@@ -11,7 +11,7 @@ use tokio::task::JoinSet;
 #[cfg(not(windows))]
 use std::os::unix::process::CommandExt;
 
-use tauri::{AppHandle, Manager, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
@@ -65,6 +65,16 @@ pub struct SceneWebpBatchItem {
 #[serde(rename_all = "camelCase")]
 pub struct SceneWebpBatchResult {
     pub items: Vec<SceneWebpBatchItem>,
+}
+
+/// Emitted as each scene in a batch finishes so the grid can paint that tile
+/// immediately instead of waiting for the whole batch (which is gated by its
+/// slowest encode) to return.
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SceneWebpReadyPayload {
+    scene_id: String,
+    path: String,
 }
 
 fn sanitize_scene_time_window(start: f64, end: f64) -> (f64, f64, f64) {
@@ -130,10 +140,12 @@ fn content_fingerprint(path: &Path) -> Result<String, String> {
 /// from the same episode fingerprints the source once instead of per-scene.
 type FingerprintCache = Arc<Mutex<HashMap<String, String>>>;
 
-/// Upper bound on concurrent WebP encodes. `-hwaccel auto` decode shares the
-/// GPU, so going much wider risks contention / hwaccel fallback; 4 is a safe
-/// ceiling that still keeps several ffmpeg processes busy.
-const SCENE_WEBP_MAX_CONCURRENCY: usize = 4;
+/// Upper bound on concurrent WebP encodes. Now that decode is software (no GPU
+/// contention), the limiter is CPU: `available_parallelism()/2` encodes each
+/// running with `-threads 2` keeps total ffmpeg threads ~= logical cores. The
+/// old ceiling of 4 left high-core machines idle while the grid waited; 8 lets
+/// them fan out, while low-core machines stay bounded by the `/2` heuristic.
+const SCENE_WEBP_MAX_CONCURRENCY: usize = 8;
 
 fn scene_webp_concurrency() -> usize {
     std::thread::available_parallelism()
@@ -275,20 +287,27 @@ async fn generate_scene_webp_inner(
     let output = webp_tmp_path.clone();
     let pids = ffmpeg_pids.clone();
 
+    let encode_started = Instant::now();
     let ffmpeg_output = tokio::task::spawn_blocking(move || {
         let mut cmd = Command::new(&ffmpeg_clone);
         apply_no_window(&mut cmd);
         #[cfg(not(windows))]
         cmd.process_group(0);
-        // Two-stage seek: fast pre-seek to within 2s of target, then
-        // accurate post-input seek for the remainder. This gives frame
-        // accuracy without decoding from the file start every time.
-        const PRE_SEEK_OFFSET: f64 = 2.0;
+        // Two-stage seek: a fast keyframe pre-seek to just before the target,
+        // then a frame-accurate post-input seek for the remainder. The output
+        // `-ss` is always exact, so the pre-seek offset only controls how much
+        // pre-roll we decode — keep it small (0.5s) so we don't needlessly decode
+        // a couple of extra seconds of source per scene, which dominated the
+        // initial encode time. Accuracy is unchanged.
+        const PRE_SEEK_OFFSET: f64 = 0.5;
         let pre_seek = (safe_start - PRE_SEEK_OFFSET).max(0.0);
         let post_seek = safe_start - pre_seek;
 
         cmd.args(["-y"]);
-        cmd.args(["-hwaccel", "auto"]);
+        // No `-hwaccel`: these are short clips decoded straight into a CPU
+        // (libwebp) encoder, so GPU decode would only add per-process device
+        // init plus a frame-by-frame GPU->CPU readback — net slower here. The
+        // preview proxy path decodes the same sources in software without issue.
         if pre_seek > 0.0 {
             cmd.args(["-ss", &format!("{pre_seek:.3}")]);
         }
@@ -382,8 +401,9 @@ async fn generate_scene_webp_inner(
     console_log(
         "WEBP|ready",
         &format!(
-            "scene={} path={}",
+            "scene={} encode_ms={} path={}",
             scene_id,
+            encode_started.elapsed().as_millis(),
             file_name_only(&webp_path.to_string_lossy())
         ),
     );
@@ -651,7 +671,21 @@ pub async fn generate_scene_webp_batch(
 
     while let Some(joined) = set.join_next().await {
         match joined {
-            Ok((scene_id, result)) => items.push(batch_item_from_result(scene_id, result)),
+            Ok((scene_id, result)) => {
+                // Stream this scene to the grid the moment it lands, so tiles
+                // pop in progressively rather than in batch-gated chunks. The
+                // batched return value below remains the source of truth.
+                if let Ok(ok) = &result {
+                    let _ = app.emit(
+                        "scene_webp_ready",
+                        SceneWebpReadyPayload {
+                            scene_id: ok.scene_id.clone(),
+                            path: ok.path.clone(),
+                        },
+                    );
+                }
+                items.push(batch_item_from_result(scene_id, result));
+            }
             Err(e) => console_log("ERROR|webp_batch", &format!("encode task failed: {e}")),
         }
         spawn_next!();

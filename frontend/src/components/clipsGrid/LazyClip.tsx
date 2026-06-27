@@ -427,7 +427,14 @@ export const LazyClip = memo(function LazyClip({
     if (!el) return;
     const root = el.closest(".clips-container") as HTMLElement | null;
     const observer = new IntersectionObserver(
-      ([entry]) => setIsVisible(entry.isIntersecting),
+      ([entry]) => {
+        const rect = entry.boundingClientRect;
+        // A 0x0 rect means an ancestor went display:none (e.g. the user switched
+        // to Settings), not a real scroll-off. Ignore it so we don't tear down
+        // this tile's visibility/playback — returning to the page stays instant.
+        if (rect.width === 0 && rect.height === 0) return;
+        setIsVisible(entry.isIntersecting);
+      },
       { root, rootMargin: "200px", threshold: 0 }
     );
     observer.observe(el);

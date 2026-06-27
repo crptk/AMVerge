@@ -4,7 +4,7 @@
  * Main grid container for displaying video clips. Handles layout, selection logic, and passes props to each tile (LazyClip).
  * Optimized for performance with lazy loading, proxying, and staggered mounting.
  */
-import { startTransition, useCallback, useEffect, useMemo, useRef } from "react";
+import { startTransition, useCallback, useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import { save } from "@tauri-apps/plugin-dialog";
 import { invoke } from "@tauri-apps/api/core";
 import { LazyClip } from "./LazyClip.tsx"
@@ -27,6 +27,7 @@ export default function ClipsContainer({ cols }: { cols?: number }) {
   const setLoading = useAppStateStore((state) => state.setLoading);
 
   const defaultCols = useUIStateStore((state) => state.cols);
+  const activePage = useUIStateStore((state) => state.activePage);
   // Subscribe only to the settings field used during render. Reading the whole
   // settings store here re-rendered the entire grid on any settings change.
   const episodesPath = useGeneralSettingsStore((state) => state.episodesPath);
@@ -199,6 +200,28 @@ export default function ClipsContainer({ cols }: { cols?: number }) {
 
   // Ref for the main container (for scroll-to-top on import)
   const containerRef = useRef<HTMLElement>(null);
+
+  // The grid stays mounted while another page is open (so nothing regenerates on
+  // return), but the browser can drop a scroll container's offset while it's
+  // display:none. Track the live scroll position and restore it when the home
+  // page becomes visible again so you keep your place.
+  const lastScrollTopRef = useRef(0);
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const onScroll = () => { lastScrollTopRef.current = el.scrollTop; };
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => el.removeEventListener("scroll", onScroll);
+  }, []);
+  useLayoutEffect(() => {
+    if (activePage !== "home") return;
+    const el = containerRef.current;
+    if (!el) return;
+    const target = lastScrollTopRef.current;
+    if (target > 0 && Math.abs(el.scrollTop - target) > 1) {
+      el.scrollTop = target;
+    }
+  }, [activePage]);
 
   // Windowing: render only the rows near the viewport. Disabled while the loading
   // skeleton is up (a fixed 12 tiles — nothing to virtualize).

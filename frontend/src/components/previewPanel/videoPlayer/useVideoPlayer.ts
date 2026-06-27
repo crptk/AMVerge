@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, useCallback } from "react";
 
 import { invoke } from "@tauri-apps/api/core";
 import { useGeneralSettingsStore } from "../../../stores/settingsStore";
+import { useUIStateStore } from "../../../stores/UIStore";
 
 type UseVideoPlayerArgs = {
     selectedClip: string;
@@ -56,6 +57,18 @@ export function useVideoPlayer({
     const selectedClipAudioKey = `${selectedClip}::audio:${previewAudioStreamIndex ?? "default"}`;
 
     const hasHevcSupport = userHasHEVC === true;
+    const activePage = useUIStateStore((s) => s.activePage);
+
+    // The preview panel stays mounted when navigating to another page (so it
+    // doesn't reload on return), but a playing video would otherwise keep going —
+    // audio and all — behind that page. Pause it on leave; the user resumes on
+    // return. State is kept consistent so the play/pause button matches.
+    useEffect(() => {
+        if (activePage === "home") return;
+        const video = videoRef.current;
+        if (video && !video.paused) video.pause();
+        setIsPlaying(false);
+    }, [activePage]);
 
     const buildEnsurePreviewProxyArgs = useCallback(
         (clipPath: string, transcodeVideo: boolean) =>
@@ -455,6 +468,10 @@ export function useVideoPlayer({
     // Keyboard shortcuts — use stable callbacks
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
+            // The preview stays mounted on other pages, but its shortcuts should
+            // only drive playback while the home page is actually showing.
+            if (useUIStateStore.getState().activePage !== "home") return;
+
             if (
                 e.target instanceof HTMLInputElement ||
                 e.target instanceof HTMLTextAreaElement ||
