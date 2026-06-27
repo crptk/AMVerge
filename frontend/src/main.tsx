@@ -33,19 +33,9 @@ async function maybeCheckForUpdatesOnStartup() {
 
     if (!ok) return;
 
-    console.log(`[updater] starting install for v${update.version}`);
-    await message(
-      `Starting update to v${update.version}. Download/install may take a bit on macOS.\n\nPlease keep AMVerge open until it completes.`,
-      { title: "AMVerge Update" },
-    );
-
     await update.downloadAndInstall();
     console.log(`[updater] install finished for v${update.version}`);
 
-    await message(
-      `Update v${update.version} was installed.\n\nIf the app does not restart automatically on macOS, please close and reopen AMVerge once.`,
-      { title: "AMVerge Update Installed" },
-    );
   } catch (error) {
     // Show a visible error instead of silently dismissing the update flow.
     const [{ message }] = await Promise.all([
