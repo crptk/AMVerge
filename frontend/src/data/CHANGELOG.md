@@ -1,3 +1,9 @@
+## v1.2.6 - v1.2.8
+- Fixed update(s) not applying correctly (bumping version)
+
+## v1.2.5
+- Fixed issues with windows media player compatibility on exported videos
+
 ## v1.2.4
 - Fixed issues with certain files not importing (files that had a '%' sign or certain special characters in the name weren't filtered properly)
 - Made it so if you export clips, it'll export with the selected audio stream as the default audio. This should help for editors like After Effects that only using one track, it'll use the one the user exported as (note that it still exports all tracks in the episode, just reordering so the selected track is the default one)
