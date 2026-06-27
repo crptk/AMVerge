@@ -30,10 +30,6 @@ fn is_uuid_cache_dir_name(name: &str) -> bool {
     true
 }
 
-fn is_probably_root_path(path: &Path) -> bool {
-    path.parent().is_none() || path.components().count() <= 2
-}
-
 #[tauri::command]
 pub fn get_default_episodes_dir(app: AppHandle) -> Result<String, String> {
     let path = app

@@ -47,14 +47,30 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Cache Rust build artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "frontend/src-tauri -> target"
+
       - name: Install frontend dependencies
         working-directory: frontend
         run: npm ci
 
+      - name: Install cargo-binstall
+        uses: cargo-bins/cargo-binstall@main
+
       - name: Install Tauri CLI (Rust)
-        run: cargo install tauri-cli --version '^2.0'
+        run: cargo binstall tauri-cli --version '^2.0' --no-confirm
+
+      - name: Cache Python venv
+        id: cache-venv-windows
+        uses: actions/cache@v4
+        with:
+          path: backend/venv
+          key: ${{ runner.os }}-venv-${{ hashFiles('backend/requirements.txt') }}
 
       - name: Create backend venv and install dependencies
+        if: steps.cache-venv-windows.outputs.cache-hit != 'true'
         shell: pwsh
         run: |
           python -m venv backend/venv
@@ -62,7 +78,15 @@ jobs:
           backend/venv/Scripts/pip install -r backend/requirements.txt
           backend/venv/Scripts/pip install pyinstaller
 
+      - name: Cache FFmpeg binaries
+        id: cache-ffmpeg-windows
+        uses: actions/cache@v4
+        with:
+          path: backend/bin
+          key: ffmpeg-windows-x64-v1
+
       - name: Install FFmpeg binaries
+        if: steps.cache-ffmpeg-windows.outputs.cache-hit != 'true'
         shell: pwsh
         run: |
           choco install ffmpeg -y
@@ -197,6 +221,12 @@ jobs:
       - name: Add Rust target
         run: rustup target add ${{ matrix.rust_target }}
 
+      - name: Cache Rust build artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "frontend/src-tauri -> target"
+          key: ${{ matrix.rust_target }}
+
       - name: Install frontend dependencies
         working-directory: frontend
         run: npm ci --include=optional
@@ -213,14 +243,25 @@ jobs:
           fi
           npm i --no-save "${ROLLUP_PKG}@${ROLLUP_VERSION}"
 
+      - name: Install cargo-binstall
+        uses: cargo-bins/cargo-binstall@main
+
       - name: Install Tauri CLI (Rust)
-        run: cargo install tauri-cli --version '^2.0'
+        run: cargo binstall tauri-cli --version '^2.0' --no-confirm
 
       - name: Install Rosetta 2 (Intel Mac emulation)
         if: matrix.rust_target == 'x86_64-apple-darwin'
         run: sudo softwareupdate --install-rosetta --agree-to-license
 
+      - name: Cache Python venv
+        id: cache-venv-macos
+        uses: actions/cache@v4
+        with:
+          path: backend/venv
+          key: ${{ runner.os }}-${{ matrix.rust_target }}-venv-${{ hashFiles('backend/requirements.txt') }}
+
       - name: Create backend venv and install dependencies
+        if: steps.cache-venv-macos.outputs.cache-hit != 'true'
         run: |
           if [ "${{ matrix.rust_target }}" = "x86_64-apple-darwin" ]; then
             arch -x86_64 python -m venv backend/venv
@@ -234,7 +275,15 @@ jobs:
             backend/venv/bin/pip install pyinstaller
           fi
 
+      - name: Cache FFmpeg binaries
+        id: cache-ffmpeg-macos
+        uses: actions/cache@v4
+        with:
+          path: backend/bin
+          key: ffmpeg-${{ matrix.rust_target }}-v1
+
       - name: Install FFmpeg binaries
+        if: steps.cache-ffmpeg-macos.outputs.cache-hit != 'true'
         run: |
           mkdir -p backend/bin
 
