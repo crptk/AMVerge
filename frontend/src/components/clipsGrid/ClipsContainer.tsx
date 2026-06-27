@@ -250,6 +250,12 @@ export default function ClipsContainer({ cols }: { cols?: number }) {
 
     if (!openedEpisodeId || clips.length === 0) return;
 
+    // On an episode switch, `openedEpisodeId` updates one render before the
+    // transition-deferred `clips` do. Clip ids are `${episodeId}_${sceneIndex}`,
+    // so a leading-id mismatch means these clips still belong to the previous
+    // episode — skip the throwaway cache lookup until `clips` catches up.
+    if (!clips[0].id.startsWith(openedEpisodeId)) return;
+
     const jobs = clips
       .map((clip) => {
         if (clip.clipPath) return null; // video-mode clips don't use WebP queue

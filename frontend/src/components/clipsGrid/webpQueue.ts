@@ -20,6 +20,23 @@ const VISIBLE_BATCH_SIZE = 8;
 const OFFSCREEN_BATCH_SIZE = 1;
 const OFFSCREEN_BATCH_DELAY_MS = 250;
 
+// When an episode opens, the disk-cache prime can resolve a few hundred WebPs at
+// once. Publishing them all in one commit makes every mounted tile mount its WebP
+// <img> in the same frame — a synchronous decode storm that freezes the grid for
+// a beat. Publishing in index-ordered chunks across animation frames spreads that
+// work out (top rows fill in first) so the grid streams in smoothly instead.
+const PRIME_PUBLISH_CHUNK = 24;
+
+function nextFrame(): Promise<void> {
+  return new Promise((resolve) => {
+    if (typeof requestAnimationFrame === "function") {
+      requestAnimationFrame(() => resolve());
+    } else {
+      setTimeout(resolve, 16);
+    }
+  });
+}
+
 const WEBP_DEBUG = false;
 
 function webpLog(message: string, payload?: Record<string, unknown>): void {
@@ -50,6 +67,10 @@ export default function useViewportAwareWebpQueue(context: WebpQueueContext = {}
   const inFlightRef = useRef<Set<string>>(new Set());
   const seqRef = useRef(0);
   const processingRef = useRef(false);
+  // Bumped on every reset (episode switch). A batch dispatched before the bump is
+  // recognised as belonging to the previous episode and its results are kept out
+  // of the now-reset store, so switching episodes never paints stale previews.
+  const epochRef = useRef(0);
   // Hold the latest context in a ref so the returned callbacks can stay
   // referentially stable. The caller passes a fresh `context` object literal on
   // every render; depending on it directly made `primeFromDiskCache` change
@@ -128,6 +149,7 @@ export default function useViewportAwareWebpQueue(context: WebpQueueContext = {}
           demandKeys: batch.map((demand) => demand.demandKey),
         });
 
+        const epoch = epochRef.current;
         for (const demand of batch) {
           inFlightRef.current.add(demand.demandKey);
         }
@@ -137,19 +159,25 @@ export default function useViewportAwareWebpQueue(context: WebpQueueContext = {}
             jobs: batch.map((demand) => demand.job),
           });
 
+          // If the episode changed while this batch was encoding, the results are
+          // for the previous episode: still cache them (keys are per-clip and
+          // unique, so a switch-back is instant) but don't publish into the store.
+          const fresh = epoch === epochRef.current;
           for (const item of result.items ?? []) {
             // item.sceneId echoes back the demand key we sent.
             if (item.path) {
               cacheRef.current.set(item.sceneId, item.path);
-              publishResult(item.sceneId, item.path);
+              if (fresh) publishResult(item.sceneId, item.path);
             }
-            if (item.error) {
+            if (item.error && fresh) {
               demandRef.current.delete(item.sceneId);
             }
           }
         } catch {
-          for (const demand of batch) {
-            demandRef.current.delete(demand.demandKey);
+          if (epoch === epochRef.current) {
+            for (const demand of batch) {
+              demandRef.current.delete(demand.demandKey);
+            }
           }
         } finally {
           for (const demand of batch) {
@@ -226,13 +254,20 @@ export default function useViewportAwareWebpQueue(context: WebpQueueContext = {}
     // This keeps re-primes during streaming import (clips array grows) cheap —
     // only genuinely new clips hit the backend.
     const pending: WebpPrimeJob[] = [];
+    const alreadyCached: Array<[string, string]> = [];
     for (const job of jobs) {
       const cachedPath = cacheRef.current.get(makeDemandKey(job.clipId, "animated"));
       if (cachedPath) {
-        publishResult(makeDemandKey(job.clipId, "animated"), cachedPath);
+        alreadyCached.push([job.clipId, cachedPath]);
         continue;
       }
       pending.push(job);
+    }
+    // Republish session-cached results in one commit. On a switch back to a
+    // recently viewed episode this is the whole grid, so a single batched update
+    // avoids the O(n) per-call store copies that made re-opening feel sluggish.
+    if (alreadyCached.length > 0) {
+      useScenePreviewStore.getState().setAnimatedMany(alreadyCached);
     }
 
     if (pending.length === 0) {
@@ -262,22 +297,38 @@ export default function useViewportAwareWebpQueue(context: WebpQueueContext = {}
       );
     });
 
+    const episodeAtStart = context.episodeCacheId;
     try {
       const result = await invoke<SceneWebpBatchResult>("lookup_scene_webp_cache_batch", {
         jobs: lookupJobs,
       });
 
+      // Collect hits in request order (which mirrors clip/grid order) so the
+      // progressive publish below fills the grid top-first.
+      const hits: Array<[string, string]> = [];
       for (const item of result.items ?? []) {
         const typed = item as SceneWebpBatchItem;
         if (!typed.path) continue;
         cacheRef.current.set(typed.sceneId, typed.path);
-        publishResult(typed.sceneId, typed.path);
+        const { clipId } = parseDemandKey(typed.sceneId);
+        hits.push([clipId, typed.path]);
+      }
+
+      const setMany = useScenePreviewStore.getState().setAnimatedMany;
+      for (let i = 0; i < hits.length; i += PRIME_PUBLISH_CHUNK) {
+        // Bail if the user switched episodes mid-publish — those tiles are gone
+        // and resetWebpQueue() has already cleared the store.
+        if (contextRef.current.episodeCacheId !== episodeAtStart) break;
+        setMany(hits.slice(i, i + PRIME_PUBLISH_CHUNK));
+        if (i + PRIME_PUBLISH_CHUNK < hits.length) {
+          await nextFrame();
+        }
       }
 
       webpLog("prime cache complete", {
         episodeCacheId: context.episodeCacheId,
         requested: pending.length,
-        hits: (result.items ?? []).filter((item) => Boolean(item.path)).length,
+        hits: hits.length,
       });
     } catch (error) {
       webpLog("prime cache failed", {
@@ -287,7 +338,12 @@ export default function useViewportAwareWebpQueue(context: WebpQueueContext = {}
   }, [publishResult]);
 
   const resetWebpQueue = useCallback(() => {
-    cacheRef.current.clear();
+    // Abandon the previous episode's pending work without touching cacheRef:
+    // resolved WebP paths are keyed by globally-unique clip ids, so keeping them
+    // lets a switch back to a recently viewed episode republish instantly with no
+    // backend round-trip. The epoch bump keeps any in-flight batch's results out
+    // of the reset store.
+    epochRef.current += 1;
     demandRef.current.clear();
     inFlightRef.current.clear();
     useScenePreviewStore.getState().reset();

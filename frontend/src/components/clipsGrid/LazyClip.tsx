@@ -417,13 +417,18 @@ export const LazyClip = memo(function LazyClip({
     setIsVideoReady(false);
   }, [effectiveSrc]);
 
-  // only mark tile as visible when it's near the viewport
+  // Refine visibility for demand-prioritization / video playback. The grid is
+  // already virtualized (only near-viewport rows are mounted), so this no longer
+  // gates whether the tile renders its thumbnail — it only distinguishes truly
+  // on-screen tiles from the overscan rows. Scoped to the scroll container (not
+  // the document viewport) so it stays accurate regardless of outer layout.
   useEffect(() => {
     const el = wrapperRef.current;
     if (!el) return;
+    const root = el.closest(".clips-container") as HTMLElement | null;
     const observer = new IntersectionObserver(
       ([entry]) => setIsVisible(entry.isIntersecting),
-      { rootMargin: "180px", threshold: 0 }
+      { root, rootMargin: "200px", threshold: 0 }
     );
     observer.observe(el);
     return () => observer.disconnect();
@@ -633,6 +638,20 @@ export const LazyClip = memo(function LazyClip({
     updateDownloadToneFromThumbnail(img);
   }, [webp.displayThumbnailPath, importToken, showDownloadButton, updateDownloadToneFromThumbnail]);
 
+  // A cached image can finish loading before React attaches its onLoad handler,
+  // so the load event never fires. This is common after scrolling the whole grid
+  // once (every WebP is now in the browser cache) and would otherwise leave the
+  // skeleton overlay stuck up forever. Detect the already-complete case the moment
+  // the <img> ref attaches and clear the loading state directly.
+  const setThumbnailEl = useCallback((el: HTMLImageElement | null) => {
+    thumbnailRef.current = el;
+    if (!el) return;
+    if (el.complete && el.naturalWidth > 0) {
+      webp.setThumbnailLoaded(true);
+      if (showDownloadButton) updateDownloadToneFromThumbnail(el);
+    }
+  }, [webp.setThumbnailLoaded, showDownloadButton, updateDownloadToneFromThumbnail]);
+
   const showTileLoadingOverlay = isVideoMode
     ? !isVideoReady
     : (clip.thumbnailReady === false || !webp.thumbnailLoaded || webp.thumbnailFailed);
@@ -665,16 +684,18 @@ export const LazyClip = memo(function LazyClip({
         {isSelected ? <FaCheck /> : <FaPlus />}
       </button>
 
-      {isVisible ? (
-        videoClipPending ? (
-          <div className="clip clip-skeleton" style={{ borderRadius: 15 }} />
-        ) : (
+      {/* Content renders for every windowed tile — the virtualizer already limits
+          mounting to near-viewport rows, so we don't gate the thumbnail behind the
+          IntersectionObserver (which could leave on-screen tiles blank until hover). */}
+      {videoClipPending ? (
+        <div className="clip clip-skeleton" style={{ borderRadius: 15 }} />
+      ) : (
         <>
           {/* ===================== WEBP layer: static thumbnail =====================
               Rendered in WebP mode only; video mode uses the <video> for the poster. */}
           {!isVideoMode && !webp.thumbnailFailed && clip.thumbnailReady !== false && (
             <img
-              ref={thumbnailRef}
+              ref={setThumbnailEl}
               className="clip"
               src={
                 webp.webpThumbnail
@@ -828,9 +849,6 @@ export const LazyClip = memo(function LazyClip({
             <DownloadButton tone={downloadTone} onClick={() => onDownloadClip(clip)} />
           )}
         </>
-        )
-      ) : (
-        <div className="clip clip-skeleton" style={{ borderRadius: 15 }} />
       )}
     </div>
   );

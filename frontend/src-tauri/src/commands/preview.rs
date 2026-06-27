@@ -420,9 +420,31 @@ async fn run_scene_webp_job(
     .await
 }
 
+/// Enumerate a cache directory once, mapping `file name -> byte length`. Reading
+/// the directory in a single pass is dramatically cheaper than stat-ing each
+/// expected file individually when the cache lives on a slow or networked drive —
+/// the prime checks hundreds of scene files from the same folder at once. On
+/// Windows the per-entry size comes free from the directory enumeration.
+fn list_dir_file_sizes(dir: &Path) -> HashMap<String, u64> {
+    let mut map = HashMap::new();
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            if let Ok(meta) = entry.metadata() {
+                if meta.is_file() {
+                    if let Some(name) = entry.file_name().to_str() {
+                        map.insert(name.to_string(), meta.len());
+                    }
+                }
+            }
+        }
+    }
+    map
+}
+
 fn lookup_scene_webp_cache_item(
     app: &AppHandle,
     fingerprint_cache: &mut HashMap<String, String>,
+    dir_cache: &mut HashMap<String, HashMap<String, u64>>,
     job: SceneWebpJob,
 ) -> SceneWebpBatchItem {
     let scene_id = job.scene_id.clone();
@@ -487,11 +509,19 @@ fn lookup_scene_webp_cache_item(
         is_poster,
     );
     let prefix = if is_poster { "poster" } else { "scene" };
-    let cache_path = base.join(format!("{prefix}_{key}.webp"));
+    let file_name = format!("{prefix}_{key}.webp");
+    let cache_path = base.join(&file_name);
 
-    let exists = std::fs::metadata(&cache_path)
-        .map(|meta| meta.is_file() && meta.len() > 1024)
-        .unwrap_or(false);
+    // Check existence against a one-shot listing of the cache directory rather
+    // than a per-file stat — same `is_file && len > 1024` semantics, far fewer
+    // syscalls across a whole-episode prime.
+    let base_key = base.to_string_lossy().to_string();
+    let dir_entries = dir_cache
+        .entry(base_key)
+        .or_insert_with(|| list_dir_file_sizes(&base));
+    let exists = dir_entries
+        .get(&file_name)
+        .map_or(false, |&len| len > 1024);
 
     SceneWebpBatchItem {
         scene_id,
@@ -649,9 +679,17 @@ pub async fn lookup_scene_webp_cache_batch(
     let (items, unique_sources): (Vec<SceneWebpBatchItem>, usize) =
         tokio::task::spawn_blocking(move || {
             let mut fingerprint_cache: HashMap<String, String> = HashMap::new();
+            let mut dir_cache: HashMap<String, HashMap<String, u64>> = HashMap::new();
             let items: Vec<SceneWebpBatchItem> = jobs
                 .into_iter()
-                .map(|job| lookup_scene_webp_cache_item(&app_for_lookup, &mut fingerprint_cache, job))
+                .map(|job| {
+                    lookup_scene_webp_cache_item(
+                        &app_for_lookup,
+                        &mut fingerprint_cache,
+                        &mut dir_cache,
+                        job,
+                    )
+                })
                 .collect();
             let unique = fingerprint_cache.len();
             (items, unique)
