@@ -253,7 +253,7 @@ export const DEFAULT_EXPORT_PROFILE: ExportProfile = {
   workflow: "video_encode",
   editorTarget: "none",
   codec: "h264_high",
-  audioMode: "pcm16",
+  audioMode: "aac",
   container: "mp4",
   mergeEnabled: true,
   hardwareMode: "auto",
