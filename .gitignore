@@ -55,6 +55,7 @@ backend/output_test/
 frontend/backend/output_test/
 backend/clips_output/
 backend/keyframe_clips/
+backend/notebooks/
 
 #############################################
 # Logs
