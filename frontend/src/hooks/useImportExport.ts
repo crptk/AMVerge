@@ -100,6 +100,7 @@ export default function useImportExport(props?: ImportExportProps) {
       id: `${episodeId}_${typeof s?.scene_index === "number" ? s.scene_index : index}`,
       src: s.path,
       thumbnail: s.thumbnail,
+      thumbnailReady: s.thumbnail_ready !== false,
       originalName: s.original_file,
       originalPath: s.original_path,
       sceneIndex: typeof s.scene_index === "number" ? s.scene_index : undefined,
@@ -154,6 +155,7 @@ export default function useImportExport(props?: ImportExportProps) {
   ): Promise<{ stop: () => void; phase1Done: Promise<void> }> => {
     let unlistenInitial: (() => void) | null = null;
     let unlistenClip: (() => void) | null = null;
+    let unlistenThumb: (() => void) | null = null;
     let unlistenPhase1: (() => void) | null = null;
     let unlistenReencode: (() => void) | null = null;
 
@@ -197,6 +199,11 @@ export default function useImportExport(props?: ImportExportProps) {
     // store maps per event), which freezes the UI during import. Instead we
     // buffer patches by clip id and flush them all in a single update per frame.
     const pendingPatches = new Map<string, Partial<ClipItem>>();
+    // Merge (not replace) so a clip_ready and a thumbnail_ready for the same clip
+    // within one frame don't clobber each other.
+    const mergePatch = (id: string, patch: Partial<ClipItem>) => {
+      pendingPatches.set(id, { ...(pendingPatches.get(id) ?? {}), ...patch });
+    };
     let flushHandle: number | null = null;
 
     const flushPatches = () => {
@@ -229,13 +236,21 @@ export default function useImportExport(props?: ImportExportProps) {
       "clip_ready",
       (event) => {
         const { scene_index, clip_path, clip_mode } = event.payload;
-        pendingPatches.set(`${episodeId}_${scene_index}`, {
+        mergePatch(`${episodeId}_${scene_index}`, {
           clipPath: clip_path ?? undefined,
           clipMode: clip_mode || undefined,
         });
         scheduleFlush();
       }
     );
+
+    // Static jpg poster finished for a scene → flip its thumbnailReady so the
+    // grid swaps the skeleton for the still image (mirrors production).
+    unlistenThumb = await listen<{ position: number }>("thumbnail_ready", (event) => {
+      const { position } = event.payload;
+      mergePatch(`${episodeId}_${position}`, { thumbnailReady: true });
+      scheduleFlush();
+    });
 
     // Phase 1 (keyframe copies) done: drop the loading screen now. Phase-2
     // re-encodes keep streaming via clip_ready and fill their tiles in the
@@ -264,6 +279,7 @@ export default function useImportExport(props?: ImportExportProps) {
       flushPatches();
       if (unlistenInitial) unlistenInitial();
       if (unlistenClip) unlistenClip();
+      if (unlistenThumb) unlistenThumb();
       if (unlistenPhase1) unlistenPhase1();
       if (unlistenReencode) unlistenReencode();
       // Clear any lingering re-encode indicator for this session.

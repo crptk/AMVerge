@@ -82,6 +82,123 @@
 }
 
 /* --------------------
+   IMPORT MINI TERMINAL
+-------------------- */
+
+.import-terminal {
+    display: flex;
+    flex-direction: column;
+    width: min(560px, 90vw);
+    height: min(48vh, 360px);
+    background: #000;
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 10px;
+    overflow: hidden;
+    font-family: "JetBrains Mono", "Fira Code", "Cascadia Code", Consolas,
+        "SF Mono", Menlo, monospace;
+    font-size: 12.5px;
+    line-height: 1.55;
+}
+
+.it-body {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    padding: 14px 16px;
+    color: #d7dae0;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.16) transparent;
+}
+
+.it-body::-webkit-scrollbar { width: 8px; }
+.it-body::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.14);
+    border-radius: 4px;
+}
+
+@keyframes it-line-in {
+    from { opacity: 0; transform: translateY(3px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+.it-line {
+    white-space: pre-wrap;
+    word-break: break-word;
+    animation: it-line-in 160ms ease-out both;
+}
+
+.it-prompt { color: var(--accent); }
+.it-line-cmd { color: #e8eaed; }
+.it-line-log { color: #c3c8d0; }
+.it-line-warn { color: #febc2e; }
+.it-line-error { color: #ff6b6b; }
+.it-line-event { color: #28c840; }
+
+/* Live progress row — seamless with the console (no panel chrome). */
+.it-live {
+    flex: 0 0 auto;
+    padding: 4px 16px 14px;
+    background: #000;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.it-status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: #e8eaed;
+}
+
+.it-spinner {
+    color: var(--accent);
+    width: 1ch;
+    display: inline-block;
+}
+
+.it-stage {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.it-progress {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    letter-spacing: -0.5px;
+}
+
+.it-bar { white-space: pre; }
+.it-bar-filled { color: var(--accent); }
+.it-bar-empty { color: #3a3f47; }
+
+.it-pct {
+    color: #e8eaed;
+    min-width: 4ch;
+    text-align: right;
+    letter-spacing: normal;
+}
+
+.it-elapsed {
+    color: #6b7280;
+    letter-spacing: normal;
+}
+
+.it-batch {
+    color: #9aa0aa;
+    font-size: 11.5px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.it-abort {
+    align-self: flex-start;
+    margin-top: 2px;
+}
+
+/* --------------------
    DRAGGING OVERLAY
 -------------------- */
 

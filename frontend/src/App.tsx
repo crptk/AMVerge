@@ -7,7 +7,7 @@ import AppLayout from "./components/AppLayout";
 import HomePage from "./pages/HomePage";
 import Menu from "./pages/Menu";
 import Settings from "./pages/Settings";
-import LoadingOverlay from "./components/LoadingOverlay";
+import ImportTerminal from "./components/ImportTerminal";
 import BgProgressBar from "./components/BgProgressBar";
 import StartupNotificationModal, { type StartupNotification } from "./components/StartupNotificationModal";
 
@@ -330,13 +330,14 @@ function App() {
       isDragging={isDragging}
       loadingOverlay={
         loading ? (
-          <LoadingOverlay
+          <ImportTerminal
             progress={progress}
             progressMsg={progressMsg}
             batchTotal={batchTotal}
             batchDone={batchDone}
             batchCurrentFile={batchCurrentFile || ""}
             onAbort={handleAbort}
+            commandLabel={batchCurrentFile || undefined}
           />
         ) : (bgProgress || bgImportProgress || reencodeProgress || webpLoadTotal > 0) ? (
           <BgProgressBar

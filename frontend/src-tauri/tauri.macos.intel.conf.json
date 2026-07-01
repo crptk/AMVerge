@@ -6,10 +6,10 @@
       "minimumSystemVersion": "10.15"
     },
     "resources": [
-      "bin/backend_script-x86_64-apple-darwin/backend_script",
-      "bin/backend_script-x86_64-apple-darwin/_internal/**/*",
-      "bin/backend_script-x86_64-apple-darwin/_internal/ffmpeg",
-      "bin/backend_script-x86_64-apple-darwin/_internal/ffprobe"
+      "bin/amverge-x86_64-apple-darwin/amverge",
+      "bin/amverge-x86_64-apple-darwin/_internal/**/*",
+      "bin/amverge-x86_64-apple-darwin/_internal/ffmpeg",
+      "bin/amverge-x86_64-apple-darwin/_internal/ffprobe"
     ]
   }
 }

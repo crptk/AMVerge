@@ -101,6 +101,9 @@ export const LazyClip = memo(function LazyClip({
   const [, setForceThumbnail] = useState(false);
   // keep thumbnail visible until video is ready to avoid black screen replacing it
   const [isVideoReady, setIsVideoReady] = useState(false);
+  // Video-mode poster failed to load (missing/corrupt jpg) → fall back to skeleton
+  // instead of a broken-image icon.
+  const [videoThumbFailed, setVideoThumbFailed] = useState(false);
   // the actual video source (original or proxy)
   const [effectiveSrc, setEffectiveSrc] = useState(clip.src);
   // video mode: cut clip remuxed to the selected audio track, used on hover so
@@ -117,8 +120,13 @@ export const LazyClip = memo(function LazyClip({
   // In video mode, clip files are pre-cut H.264 — mount video element when visible/hovered.
   // In WebP mode, video playback is disabled; hover/preview-all use animated WebP instead.
   const showVideo = isVideoMode;
-  const shouldMountVideo = isVideoMode && (isVisible || isHovered);
-  const shouldShowThumbnail = isVideoMode ? false : (!showVideo || !shouldMountVideo || !isVideoReady);
+  // Production parity: in video mode the <video> mounts ONLY on hover or preview-all
+  // (staggered) — never per-visible tile. That keeps concurrent decoders bounded
+  // and removes the scroll-reload; a static jpg poster covers the tile at rest.
+  const shouldMountVideo = isVideoMode && (isHovered || (gridPreview && staggerReady));
+  const shouldShowThumbnail = isVideoMode
+    ? (!shouldMountVideo || !isVideoReady)
+    : (!showVideo || !shouldMountVideo || !isVideoReady);
 
   // In video-preview mode, a tile whose clip hasn't been cut yet (and hasn't
   // failed) shows a skeleton until its video arrives via the clip_ready stream.
@@ -200,6 +208,7 @@ export const LazyClip = memo(function LazyClip({
     setIsVideoReady(false);
     setEffectiveSrc(clip.src);
     setVideoAudioProxySrc(null);
+    setVideoThumbFailed(false);
   }, [clip.src, importToken, previewAudioStreamIndex]);
 
   // Video mode: when a non-default Preview Language is selected and the user
@@ -435,7 +444,7 @@ export const LazyClip = memo(function LazyClip({
         if (rect.width === 0 && rect.height === 0) return;
         setIsVisible(entry.isIntersecting);
       },
-      { root, rootMargin: "200px", threshold: 0 }
+      { root, rootMargin: "300px", threshold: 0 }
     );
     observer.observe(el);
     return () => observer.disconnect();
@@ -660,7 +669,7 @@ export const LazyClip = memo(function LazyClip({
   }, [webp.setThumbnailLoaded, showDownloadButton, updateDownloadToneFromThumbnail]);
 
   const showTileLoadingOverlay = isVideoMode
-    ? !isVideoReady
+    ? (clip.thumbnailReady === false || videoThumbFailed)
     : (clip.thumbnailReady === false || !webp.thumbnailLoaded || webp.thumbnailFailed);
 
   return (
@@ -723,6 +732,20 @@ export const LazyClip = memo(function LazyClip({
                 e.preventDefault();
                 e.stopPropagation();
               }}
+            />
+          )}
+
+          {/* ===================== VIDEO layer: static jpg poster =====================
+              Video mode shows a still image at rest (production parity); the <video>
+              below mounts only on hover / preview-all. */}
+          {isVideoMode && clip.thumbnailReady !== false && !videoThumbFailed && (
+            <img
+              className="clip"
+              src={`${convertFileSrc(clip.thumbnail)}?v=${importToken}`}
+              style={{ opacity: shouldShowThumbnail ? 1 : 0 }}
+              draggable={false}
+              onError={() => setVideoThumbFailed(true)}
+              onDragStart={(e) => { e.preventDefault(); e.stopPropagation(); }}
             />
           )}
 

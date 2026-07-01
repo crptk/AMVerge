@@ -100,12 +100,25 @@ fn build_manifest_from_backend_payload(
                 .unwrap_or("")
                 .to_string();
 
+            // Static jpg poster path from the backend (video-mode). Falls back to
+            // the source video for webp/legacy payloads that don't emit one.
+            let thumbnail = scene
+                .get("thumbnail")
+                .and_then(|v| v.as_str())
+                .unwrap_or(video_path)
+                .to_string();
+            let thumbnail_ready = scene
+                .get("thumbnail_ready")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(true);
+
             json!({
                 "scene_index": scene_index,
                 "start_sec": start_sec,
                 "end_sec": end_sec,
                 "path": video_path,
-                "thumbnail": video_path,
+                "thumbnail": thumbnail,
+                "thumbnail_ready": thumbnail_ready,
                 "original_file": source_name,
                 "original_path": video_path,
                 "clip_path": clip_path,
@@ -369,19 +382,16 @@ pub async fn detect_scenes(
                 let msg = parts.next().unwrap_or("").to_string();
 
                 if let Ok(p) = p_str.parse::<u8>() {
+                    // Drive the progress bar only. The PROGRESS lines are NOT echoed
+                    // to the console stream — at ~hundreds per import they swamped the
+                    // Console tab (and log store) with no tracking value; percent is
+                    // carried by this event, not the text line.
                     let _ = app_for_stderr.emit(
                         "scene_progress",
                         ProgressPayload {
                             percent: p,
-                            message: msg.clone(),
+                            message: msg,
                         },
-                    );
-
-                    emit_console_log(
-                        &app_for_stderr,
-                        "python",
-                        "log",
-                        &format!("PROGRESS {p}% - {msg}"),
                     );
                 }
             } else if let Some(clips_json) = line.strip_prefix("INITIAL_CLIPS_READY|") {

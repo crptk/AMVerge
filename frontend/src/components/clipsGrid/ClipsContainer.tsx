@@ -8,7 +8,6 @@ import { startTransition, useCallback, useEffect, useLayoutEffect, useMemo, useR
 import { save } from "@tauri-apps/plugin-dialog";
 import { invoke } from "@tauri-apps/api/core";
 import { LazyClip } from "./LazyClip.tsx"
-import { useGridVirtualizer } from "./useGridVirtualizer.ts";
 import { useStaggeredMountQueue } from "./staggeredMountQueue.ts";
 import useViewportAwareProxyQueue from "./proxyQueue.ts";
 import useViewportAwareWebpQueue from "./webpQueue.ts";
@@ -223,15 +222,6 @@ export default function ClipsContainer({ cols }: { cols?: number }) {
     }
   }, [activePage]);
 
-  // Windowing: render only the rows near the viewport. Disabled while the loading
-  // skeleton is up (a fixed 12 tiles — nothing to virtualize).
-  const { startIndex, endIndex, offsetY, totalHeight } = useGridVirtualizer({
-    containerRef,
-    columns: gridColumns,
-    itemCount: clips.length,
-    enabled: !loading,
-  });
-
   // Preserve scroll position across loading-state toggles that don't come from
   // an import (e.g. exporting). When importToken changes we still want the
   // scroll-to-top behaviour below.
@@ -350,44 +340,33 @@ export default function ClipsContainer({ cols }: { cols?: number }) {
           ))}
         </div>
       ) : (
-        // Virtualized: a full-height spacer drives the scrollbar; only the rows
-        // near the viewport are rendered, offset into place with translateY.
-        <div className="clips-virtual-spacer" style={{ position: "relative", height: totalHeight }}>
-          <div
-            className="clips-grid"
-            style={{
-              gridTemplateColumns: `repeat(${gridColumns}, minmax(0, 1fr))`,
-              ["--clip-max-width" as any]: clipMaxWidth,
-              position: "absolute",
-              top: 0,
-              left: 0,
-              right: 0,
-              transform: `translateY(${offsetY}px)`,
-              // Vertical insets are handled by the spacer/offset; keep only the
-              // original horizontal padding here.
-              padding: "0 15px",
-            }}
-          >
-            {clips.slice(startIndex, endIndex).map((clip, i) => {
-              const index = startIndex + i;
-              return (
-                <LazyClip
-                  key={clip.id}
-                  clip={clip}
-                  index={index}
-                  videoPreviewMode={episodeVideoPreview}
-                  requestProxySequential={requestProxySequential}
-                  reportProxyDemand={reportProxyDemand}
-                  reportWebpDemand={reportWebpDemand}
-                  reportStaggerDemand={reportStaggerDemand}
-                  onClipClick={handleClipClick}
-                  onClipDoubleClick={handleClipDoubleClick}
-                  onToggleSelection={handleToggleSelection}
-                  onDownloadClip={handleDownloadSingleClip}
-                />
-              );
-            })}
-          </div>
+        // Non-virtualized: every clip tile is mounted so nothing pops in when you
+        // scroll back up. The expensive work (video playback, WebP encode) is still
+        // viewport-gated inside each tile via its IntersectionObserver, so only the
+        // DOM mount + static thumbnail become eager.
+        <div
+          className="clips-grid"
+          style={{
+            gridTemplateColumns: `repeat(${gridColumns}, minmax(0, 1fr))`,
+            ["--clip-max-width" as any]: clipMaxWidth,
+          }}
+        >
+          {clips.map((clip, index) => (
+            <LazyClip
+              key={clip.id}
+              clip={clip}
+              index={index}
+              videoPreviewMode={episodeVideoPreview}
+              requestProxySequential={requestProxySequential}
+              reportProxyDemand={reportProxyDemand}
+              reportWebpDemand={reportWebpDemand}
+              reportStaggerDemand={reportStaggerDemand}
+              onClipClick={handleClipClick}
+              onClipDoubleClick={handleClipDoubleClick}
+              onToggleSelection={handleToggleSelection}
+              onDownloadClip={handleDownloadSingleClip}
+            />
+          ))}
         </div>
       )}
     </main>
