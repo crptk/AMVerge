@@ -10,11 +10,11 @@ pub fn resolve_bundled_tool(app: &AppHandle, tool_name: &str) -> Result<PathBuf,
     };
 
     let internal_sidecar = if cfg!(windows) {
-        "bin/backend_script-x86_64-pc-windows-msvc/_internal"
+        "bin/amverge-x86_64-pc-windows-msvc/_internal"
     } else if cfg!(all(target_os = "macos", target_arch = "aarch64")) {
-        "bin/backend_script-aarch64-apple-darwin/_internal"
+        "bin/amverge-aarch64-apple-darwin/_internal"
     } else if cfg!(target_os = "macos") {
-        "bin/backend_script-x86_64-apple-darwin/_internal"
+        "bin/amverge-x86_64-apple-darwin/_internal"
     } else {
         return Err("resolve_bundled_tool: unsupported platform".to_string());
     };

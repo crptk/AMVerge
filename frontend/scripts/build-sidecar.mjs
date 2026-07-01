@@ -41,7 +41,8 @@ function getRustTargetTriple() {
     return process.arch === "arm64"
       ? "aarch64-apple-darwin"
       : "x86_64-apple-darwin";
-  
+  }
+
   throw new Error(`Unsupported platform: ${process.platform}`);
 }
 
@@ -52,40 +53,111 @@ async function main() {
   const scriptDir = path.dirname(fileURLToPath(import.meta.url));
   const frontendDir = path.resolve(scriptDir, "..");
   const repoRoot = path.resolve(frontendDir, "..");
-  const backendDir = path.join(repoRoot, "backend");
 
-  const pythonExe = isWindows
-    ? path.join(backendDir, "venv", "Scripts", "python.exe")
-    : path.join(backendDir, "venv", "bin", "python");
+  // CLI checkout: AMVERGE_CLI_DIR override, else the in-repo ./AMVerge-CLI clone.
+  const cliDir = process.env.AMVERGE_CLI_DIR || path.join(repoRoot, "AMVerge-CLI");
 
-  const distDir = path.join(backendDir, "dist", "backend_script");
+  // Production builds install the CLI into an isolated build venv (not the
+  // editable dev venv), so the bundle is a clean, reproducible pip install.
+  // AMVERGE_BUILD_VENV can point at an existing venv to reuse it.
+  const buildVenvDir =
+    process.env.AMVERGE_BUILD_VENV || path.join(cliDir, ".venv-build");
+  const venvBin = isWindows ? "Scripts" : "bin";
+  const buildPython = isWindows
+    ? path.join(buildVenvDir, venvBin, "python.exe")
+    : path.join(buildVenvDir, venvBin, "python");
+
+  // PyInstaller entry: a tiny launcher kept in the app repo so the CLI repo is
+  // never modified just to be packaged. It imports amverge from the CLI venv.
+  const entryScript = path.join(scriptDir, "amverge_entry.py");
+
+  // ffmpeg/ffprobe still ship inside the sidecar _internal (both the CLI and Rust
+  // resolve them there). FFMPEG_BIN_DIR overrides; default is the legacy
+  // backend/bin — relocate these out of backend/ before deleting that folder.
+  const ffmpegBinDir = process.env.FFMPEG_BIN_DIR || path.join(repoRoot, "backend", "bin");
+
+  const distDir = path.join(cliDir, "dist", "amverge");
 
   const tauriSidecarDir = path.join(
     frontendDir,
     "src-tauri",
     "bin",
-    `backend_script-${triple}`
+    `amverge-${triple}`
   );
 
   const sep = isWindows ? ";" : ":";
-  const ffmpegBin = isWindows ? "bin/ffmpeg.exe" : "bin/ffmpeg";
-  const ffprobeBin = isWindows ? "bin/ffprobe.exe" : "bin/ffprobe";
+  const ffmpegBin = path.join(ffmpegBinDir, isWindows ? "ffmpeg.exe" : "ffmpeg");
+  const ffprobeBin = path.join(ffmpegBinDir, isWindows ? "ffprobe.exe" : "ffprobe");
+
+  // --- Provision the build venv and install the CLI via pip ------------------
+  const basePython = process.env.PYTHON || (isWindows ? "python" : "python3");
+  const extras = process.env.AMVERGE_CLI_EXTRAS || "ml,dev";
+  // Default install source: the local CLI checkout (so prod ships current code).
+  // Override with AMVERGE_CLI_INSTALL_SPEC (e.g. "amverge[ml]" for the PyPI release).
+  const installSpec =
+    process.env.AMVERGE_CLI_INSTALL_SPEC || `${cliDir}[${extras}]`;
+  // CUDA torch wheel index (Windows GPU). Empty string skips the explicit torch
+  // install (macOS uses the default CPU wheel pulled by the [ml] extra).
+  const torchIndexUrl =
+    process.env.AMVERGE_TORCH_INDEX_URL ??
+    (isWindows ? "https://download.pytorch.org/whl/cu128" : "");
+  const neluxSpec =
+    process.env.AMVERGE_NELUX_SPEC ||
+    "git+https://github.com/NevermindNilas/Nelux.git";
+
+  let buildPythonExists = false;
+  try {
+    buildPythonExists = (await fs.stat(buildPython)).isFile();
+  } catch {
+    buildPythonExists = false;
+  }
+  if (!buildPythonExists) {
+    // A venv's python can bootstrap another venv, so basePython may be the dev
+    // interpreter or a system one on PATH (override with PYTHON).
+    run(basePython, ["-m", "venv", buildVenvDir]);
+  }
+
+  run(buildPython, ["-m", "pip", "install", "--upgrade", "pip"]);
+  // CLI itself (regular, non-editable) + extras: ml pulls torch/transnetv2,
+  // dev pulls pyinstaller. --upgrade so each build picks up the latest CLI code.
+  run(buildPython, ["-m", "pip", "install", "--upgrade", installSpec]);
+  // GPU torch: the [ml] extra resolves a CPU wheel on Windows, so override it
+  // with the CUDA build for prod. Skipped when torchIndexUrl is empty.
+  if (torchIndexUrl) {
+    run(buildPython, [
+      "-m", "pip", "install", "--upgrade",
+      "torch", "--index-url", torchIndexUrl,
+    ]);
+  }
+  // nelux is Windows-only (NVDEC GPU decode); other platforms fall back to the
+  // CLI's FFmpeg parallel decode and don't need it.
+  if (isWindows) {
+    run(buildPython, ["-m", "pip", "install", "--upgrade", neluxSpec]);
+  }
+  // ---------------------------------------------------------------------------
 
   await fs.rm(distDir, { recursive: true, force: true });
 
   const pyinstallerArgs = [
     "-m",
     "PyInstaller",
-    "app.py",
+    entryScript,
     "--onedir",
     "--clean",
     "--noconfirm",
     "--name",
-    "backend_script",
+    "amverge",
     "--add-binary",
     `${ffmpegBin}${sep}.`,
     "--add-binary",
     `${ffprobeBin}${sep}.`,
+    // nelux ships a native extension plus its own FFmpeg DLLs (nelux.libs via
+    // delvewheel); collect-all grabs the package, binaries, and data together.
+    "--collect-all",
+    "nelux",
+    // transnetv2-pytorch ships model weights as package data files.
+    "--collect-data",
+    "transnetv2_pytorch",
   ];
 
   if (process.platform === "darwin") {
@@ -100,21 +172,21 @@ async function main() {
     pyinstallerArgs.push("--noconsole");
   }
 
-  let cmd = pythonExe;
+  let cmd = buildPython;
   let args = pyinstallerArgs;
 
   if (process.platform === "darwin" && triple === "x86_64-apple-darwin") {
     cmd = "arch";
-    args = ["-x86_64", pythonExe, ...pyinstallerArgs];
+    args = ["-x86_64", buildPython, ...pyinstallerArgs];
   }
 
-  run(cmd, args, { cwd: backendDir });
+  run(cmd, args, { cwd: cliDir });
 
   await fs.rm(tauriSidecarDir, { recursive: true, force: true });
   await fs.mkdir(tauriSidecarDir, { recursive: true });
   await fs.cp(distDir, tauriSidecarDir, { recursive: true });
 
-  const exeName = isWindows ? "backend_script.exe" : "backend_script";
+  const exeName = isWindows ? "amverge.exe" : "amverge";
   const exePath = path.join(tauriSidecarDir, exeName);
   const baseLib = path.join(tauriSidecarDir, "_internal", "base_library.zip");
   const ffmpegName = isWindows ? "ffmpeg.exe" : "ffmpeg";
