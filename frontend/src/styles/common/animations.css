@@ -19,3 +19,46 @@
         opacity: 1;
     }
 }
+
+/* --------------------
+   ENTRANCE ANIMATIONS
+-------------------- */
+
+/* Grid tiles: episode-open fade, staggered per tile via --appear-delay so the
+   wave sweeps top-left → bottom-right. `backwards` fill keeps a tile invisible
+   while it waits for its delay, then releases all styles once done (no
+   `forwards`: that would pin `transform` and break the tile hover lift). */
+@keyframes clipFadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px) scale(0.97);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+.clip-appear {
+    animation: clipFadeIn 0.4s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+    animation-delay: var(--appear-delay, 0ms);
+}
+
+/* App startup: main content panes slide up and fade in, lightly staggered. */
+@keyframes introFadeUp {
+    from {
+        opacity: 0;
+        transform: translateY(14px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.app-intro {
+    animation: introFadeUp 0.55s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+    animation-delay: var(--intro-delay, 0ms);
+}

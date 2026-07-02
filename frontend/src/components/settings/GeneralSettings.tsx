@@ -4,7 +4,39 @@ import { importMethod, SceneDetectionMethod, useGeneralSettingsStore } from "../
 import { useUIStateStore } from "../../stores/UIStore";
 import { useEffect, useState} from "react";
 import SettingRow from "../common/SettingRow";
+import Dropdown, { type DropdownOption } from "../common/Dropdown";
 import { clearEpisodePanelCache } from "../../utils/episodeUtils";
+
+const SCENE_DETECTION_OPTIONS: DropdownOption<SceneDetectionMethod>[] = [
+  {
+    value: "transnetv2_gpu",
+    label: "TransNetV2 (GPU)",
+    description: "AI shot detection — most accurate scene boundaries.",
+  },
+  {
+    value: "keyframe_detection",
+    label: "Keyframe Detection",
+    description: "Not implemented yet.",
+  },
+  {
+    value: "pyscenedetect_cpu",
+    label: "PySceneDetect (CPU)",
+    description: "Not implemented yet.",
+  },
+];
+
+const PREVIEW_METHOD_OPTIONS: DropdownOption<importMethod>[] = [
+  {
+    value: "video_files",
+    label: "Video Files",
+    description: "Cut clips per scene — hover plays real video.",
+  },
+  {
+    value: "webp_files",
+    label: "WebP Files",
+    description: "Animated WebP previews generated from the source.",
+  },
+];
 
 type GeneralSettingsProps = {
   onGeneralSettingsReset: () => void;
@@ -109,19 +141,14 @@ export default function GeneralSettings({
         
         <SettingRow
           label="Scene Detection Method"
-          description="Click the info icon to get more info about each method."
+          description="How scene boundaries are found during import."
           control={
-            <div className="settings-control">
-              <select
-                className="settings-wide-dropdown export-profile-dropdown"
-                value={generalSettings.sceneDetectionMethod}
-                onChange={(e) => setSceneDetectionMethod(e.target.value as SceneDetectionMethod)}
-              >
-                <option value="transnetv2_gpu">GPU using TransNetV2</option>
-                <option value="pyscenedetect_cpu">CPU using PySceneDetect (not implemented yet)</option>
-                <option value="keyframe_detection">Keyframe detection (placeholder)</option>
-              </select>
-            </div>
+            <Dropdown
+              className="settings-wide-dropdown"
+              options={SCENE_DETECTION_OPTIONS}
+              value={generalSettings.sceneDetectionMethod}
+              onChange={(method) => setSceneDetectionMethod(method)}
+            />
           }
         />
 
@@ -129,22 +156,17 @@ export default function GeneralSettings({
           label="Preview Method"
           description="Choose whether grid preview should use source videos or generated WebP files."
           control={
-            <div className="settings-control">
-              <select
-                className="settings-wide-dropdown export-profile-dropdown"
-                value={generalSettings.importMethod}
-                onChange={(e) => {
-                  const nextMethod = e.target.value as importMethod;
-                  setImportMethod(nextMethod);
-                  if (nextMethod === "webp_files") {
-                    setGridPreview(true);
-                  }
-                }}
-              >
-                <option value="video_files">Video files</option>
-                <option value="webp_files">WebP files</option>
-              </select>
-            </div>
+            <Dropdown
+              className="settings-wide-dropdown"
+              options={PREVIEW_METHOD_OPTIONS}
+              value={generalSettings.importMethod}
+              onChange={(nextMethod) => {
+                setImportMethod(nextMethod);
+                if (nextMethod === "webp_files") {
+                  setGridPreview(true);
+                }
+              }}
+            />
           }
         />
 

@@ -13,6 +13,22 @@ import { SceneWebpJob } from "./types";
 import { cancelIdle, scheduleIdle, type IdleHandle } from "../../utils/idle";
 
 const WEBP_THUMBNAIL_CACHE = new Map<string, string>();
+// Cache keys include the importToken, so every episode (re)open adds a fresh set
+// of entries and the old ones would otherwise live for the whole session. Cap it
+// and evict oldest-inserted first so memory stays bounded over long sessions.
+const WEBP_THUMBNAIL_CACHE_MAX = 400;
+
+function cacheWebpThumbnail(key: string, dataUrl: string) {
+  if (WEBP_THUMBNAIL_CACHE.size >= WEBP_THUMBNAIL_CACHE_MAX) {
+    const excess = WEBP_THUMBNAIL_CACHE.size - WEBP_THUMBNAIL_CACHE_MAX + 1;
+    let dropped = 0;
+    for (const oldest of WEBP_THUMBNAIL_CACHE.keys()) {
+      WEBP_THUMBNAIL_CACHE.delete(oldest);
+      if (++dropped >= excess) break;
+    }
+  }
+  WEBP_THUMBNAIL_CACHE.set(key, dataUrl);
+}
 
 /** Extract a static JPEG from a WebP's first frame as a flicker-free base layer. */
 function useWebpThumbnail(webpSrc: string | undefined): string | null {
@@ -44,7 +60,7 @@ function useWebpThumbnail(webpSrc: string | undefined): string | null {
           if (!ctx) return;
           ctx.drawImage(img, 0, 0);
           const dataUrl = canvas.toDataURL("image/jpeg", 0.75);
-          WEBP_THUMBNAIL_CACHE.set(webpSrc, dataUrl);
+          cacheWebpThumbnail(webpSrc, dataUrl);
           setThumbnail(dataUrl);
         } catch {
           // Canvas tainted or decode failed — no thumbnail extracted

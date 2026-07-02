@@ -100,12 +100,25 @@ fn build_manifest_from_backend_payload(
                 .unwrap_or("")
                 .to_string();
 
+            // Static jpg poster path from the backend (video-mode). Falls back to
+            // the source video for webp/legacy payloads that don't emit one.
+            let thumbnail = scene
+                .get("thumbnail")
+                .and_then(|v| v.as_str())
+                .unwrap_or(video_path)
+                .to_string();
+            let thumbnail_ready = scene
+                .get("thumbnail_ready")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(true);
+
             json!({
                 "scene_index": scene_index,
                 "start_sec": start_sec,
                 "end_sec": end_sec,
                 "path": video_path,
-                "thumbnail": video_path,
+                "thumbnail": thumbnail,
+                "thumbnail_ready": thumbnail_ready,
                 "original_file": source_name,
                 "original_path": video_path,
                 "clip_path": clip_path,
@@ -229,41 +242,43 @@ pub async fn detect_scenes(
     let output_dir_base = dir_name_only(&output_dir);
 
     let mut child = if cfg!(debug_assertions) {
+        // current_dir is frontend/src-tauri during `tauri dev`; pop to the repo root.
         let mut root = std::env::current_dir().map_err(|e| e.to_string())?;
         root.pop();
         root.pop();
 
-        let script_path = root.join("backend").join("app.py");
-        let python_path = if cfg!(windows) {
-            root.join("backend")
-                .join("venv")
-                .join("Scripts")
-                .join("python.exe")
+        // CLI checkout: AMVERGE_CLI_DIR override, else the in-repo ./AMVerge-CLI clone.
+        let cli_dir = std::env::var("AMVERGE_CLI_DIR")
+            .map(PathBuf::from)
+            .unwrap_or_else(|_| root.join("AMVerge-CLI"));
+
+        let amverge_path = if cfg!(windows) {
+            cli_dir.join(".venv").join("Scripts").join("amverge.exe")
         } else {
-            root.join("backend").join("venv").join("bin").join("python")
+            cli_dir.join(".venv").join("bin").join("amverge")
         };
 
-        let python_name =
-            python_path
+        let amverge_name =
+            amverge_path
                 .file_name()
                 .and_then(|x| x.to_str())
                 .unwrap_or(if cfg!(windows) {
-                    "python.exe"
+                    "amverge.exe"
                 } else {
-                    "python"
+                    "amverge"
                 });
         console_log(
             "SCENE|spawn",
             &format!(
-                "mode=dev exe={python_name} script=app.py args=[{video_name},{output_dir_base}]"
+                "mode=dev exe={amverge_name} args=[backend,{video_name},{output_dir_base}]"
             ),
         );
 
-        let mut cmd = Command::new(python_path);
+        let mut cmd = Command::new(&amverge_path);
         apply_no_window(&mut cmd);
         #[cfg(not(windows))]
         cmd.process_group(0);
-        cmd.arg(script_path)
+        cmd.arg("backend")
             .arg(&video_path)
             .arg(&output_dir_str)
             .arg(scene_detection_method.clone().unwrap_or_else(|| "transnetv2_gpu".to_string()))
@@ -271,7 +286,7 @@ pub async fn detect_scenes(
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
-            .map_err(|e| format!("Failed to spawn python: {e}"))?
+            .map_err(|e| format!("Failed to spawn amverge CLI ({}): {e}", amverge_path.display()))?
     } else {
         let exe_dir = std::env::current_exe()
             .map_err(|e| format!("Can't find current exe: {e}"))?
@@ -280,11 +295,11 @@ pub async fn detect_scenes(
             .to_path_buf();
 
         let sidecar_rel = if cfg!(windows) {
-            "bin/backend_script-x86_64-pc-windows-msvc/backend_script.exe"
+            "bin/amverge-x86_64-pc-windows-msvc/amverge.exe"
         } else if cfg!(all(target_os = "macos", target_arch = "aarch64")) {
-            "bin/backend_script-aarch64-apple-darwin/backend_script"
+            "bin/amverge-aarch64-apple-darwin/amverge"
         } else if cfg!(target_os = "macos") {
-            "bin/backend_script-x86_64-apple-darwin/backend_script"
+            "bin/amverge-x86_64-apple-darwin/amverge"
         } else {
             return Err("detect_scenes: unsupported platform".to_string());
         };
@@ -299,9 +314,9 @@ pub async fn detect_scenes(
                 .file_name()
                 .and_then(|x| x.to_str())
                 .unwrap_or(if cfg!(windows) {
-                    "backend_script.exe"
+                    "amverge.exe"
                 } else {
-                    "backend_script"
+                    "amverge"
                 });
         console_log(
             "SCENE|spawn",
@@ -313,6 +328,7 @@ pub async fn detect_scenes(
         #[cfg(not(windows))]
         cmd.process_group(0);
         cmd.current_dir(&exe_dir)
+            .arg("backend")
             .arg(&video_path)
             .arg(&output_dir_str)
             .arg(scene_detection_method.clone().unwrap_or_else(|| "transnetv2_gpu".to_string()))
@@ -366,19 +382,16 @@ pub async fn detect_scenes(
                 let msg = parts.next().unwrap_or("").to_string();
 
                 if let Ok(p) = p_str.parse::<u8>() {
+                    // Drive the progress bar only. The PROGRESS lines are NOT echoed
+                    // to the console stream — at ~hundreds per import they swamped the
+                    // Console tab (and log store) with no tracking value; percent is
+                    // carried by this event, not the text line.
                     let _ = app_for_stderr.emit(
                         "scene_progress",
                         ProgressPayload {
                             percent: p,
-                            message: msg.clone(),
+                            message: msg,
                         },
-                    );
-
-                    emit_console_log(
-                        &app_for_stderr,
-                        "python",
-                        "log",
-                        &format!("PROGRESS {p}% - {msg}"),
                     );
                 }
             } else if let Some(clips_json) = line.strip_prefix("INITIAL_CLIPS_READY|") {

@@ -49,6 +49,11 @@
     margin-inline: auto;
     cursor: pointer;
     transition: transform 0.18s ease-out, box-shadow 0.18s ease-out;
+    /* Isolate each tile's layout + paint so a hover/state change on one tile can't
+       trigger reflow/repaint of siblings during scroll. Safe: the tile already has
+       a fixed aspect-ratio box + overflow:hidden, so containment changes nothing
+       visible. */
+    contain: layout paint;
 }
 
 .clip-wrapper:hover {

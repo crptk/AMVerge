@@ -3,7 +3,7 @@ import ClipsContainer from "./components/clipsGrid/ClipsContainer";
 import PreviewContainer from "./components/previewPanel/PreviewContainer";
 import { useAppStateStore } from "./stores/appStore";
 
-export default function MainLayout() {
+export default function MainLayout({ intro = false }: { intro?: boolean }) {
     const [leftWidth, setLeftWidth] = useState(65);
     const focusedClip = useAppStateStore(s => s.focusedClip);
     const clips = useAppStateStore(s => s.clips);
@@ -52,7 +52,10 @@ export default function MainLayout() {
     return (
         <div className="main-layout-root" style={{ display: 'flex', flexDirection: 'column', height: '100%', width: '100%' }}>
             <div className="split-layout" style={{ flex: 1, minHeight: 0 }}>
-                <div className="left-pane" style={{ width: `${leftWidth}%` }}>
+                <div
+                    className={`left-pane ${intro ? "app-intro" : ""}`}
+                    style={{ width: `${leftWidth}%`, ...(intro ? { ["--intro-delay" as any]: "80ms" } : {}) }}
+                >
                     <ClipsContainer />
                 </div>
 
@@ -61,7 +64,10 @@ export default function MainLayout() {
                     <span className="subdivider" />
                 </div>
 
-                <div className="right-pane" style={{ width: `${100 - leftWidth}%` }}>
+                <div
+                    className={`right-pane ${intro ? "app-intro" : ""}`}
+                    style={{ width: `${100 - leftWidth}%`, ...(intro ? { ["--intro-delay" as any]: "180ms" } : {}) }}
+                >
                     <PreviewContainer
                         sourceClip={focusedClip}
                         sourceClipThumbnail={focusedClipThumbnail}
