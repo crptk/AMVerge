@@ -44,6 +44,7 @@ export const LazyClip = memo(function LazyClip({
   onToggleSelection,
   reportStaggerDemand,
   onDownloadClip,
+  appearDelayMs,
 }: LazyClipProps) {
   const importToken = useAppStateStore(s => s.importToken);
 
@@ -102,8 +103,12 @@ export const LazyClip = memo(function LazyClip({
   // keep thumbnail visible until video is ready to avoid black screen replacing it
   const [isVideoReady, setIsVideoReady] = useState(false);
   // Video-mode poster failed to load (missing/corrupt jpg) → fall back to skeleton
-  // instead of a broken-image icon.
+  // instead of a broken-image icon. Transient failures (IO contention when a few
+  // hundred posters reload at once on episode open) get a couple of cache-busted
+  // retries before the tile gives up, and hovering a given-up tile re-arms it.
   const [videoThumbFailed, setVideoThumbFailed] = useState(false);
+  const [videoThumbRetry, setVideoThumbRetry] = useState(0);
+  const VIDEO_THUMB_MAX_RETRIES = 2;
   // the actual video source (original or proxy)
   const [effectiveSrc, setEffectiveSrc] = useState(clip.src);
   // video mode: cut clip remuxed to the selected audio track, used on hover so
@@ -124,6 +129,11 @@ export const LazyClip = memo(function LazyClip({
   // (staggered) — never per-visible tile. That keeps concurrent decoders bounded
   // and removes the scroll-reload; a static jpg poster covers the tile at rest.
   const shouldMountVideo = isVideoMode && (isHovered || (gridPreview && staggerReady));
+  // Single source of truth for the <video> src — the JSX and the media-release
+  // effect below must agree on it so a stripped attribute can be restored.
+  const videoSrcUrl = shouldMountVideo
+    ? `${convertFileSrc(isVideoMode ? (videoAudioProxySrc ?? clip.clipPath!) : effectiveSrc)}?v=${importToken}`
+    : null;
   const shouldShowThumbnail = isVideoMode
     ? (!shouldMountVideo || !isVideoReady)
     : (!showVideo || !shouldMountVideo || !isVideoReady);
@@ -209,6 +219,7 @@ export const LazyClip = memo(function LazyClip({
     setEffectiveSrc(clip.src);
     setVideoAudioProxySrc(null);
     setVideoThumbFailed(false);
+    setVideoThumbRetry(0);
   }, [clip.src, importToken, previewAudioStreamIndex]);
 
   // Video mode: when a non-default Preview Language is selected and the user
@@ -450,6 +461,50 @@ export const LazyClip = memo(function LazyClip({
     return () => observer.disconnect();
   }, []);
 
+  // Media player release. React removing a <video> from the DOM does NOT free
+  // Chromium's decoder/demuxer until GC. Hover + scroll churn (each mounts a
+  // fresh <video>) accumulates zombie players until the per-renderer cap, after
+  // which every new video fails with MEDIA_ERR_SRC_NOT_SUPPORTED (code 4) and
+  // the whole app lags. Clearing src + load() in the cleanup releases the player
+  // synchronously. The setup phase restores a stripped src attribute: StrictMode
+  // re-runs cleanup+setup on the SAME element, and React won't re-apply a src
+  // prop it considers unchanged — without the restore, dev hover playback dies.
+  // Declared BEFORE the playback effect so on re-runs the src is back in place
+  // by the time playback calls load()/play().
+  useEffect(() => {
+    if (!shouldMountVideo) return;
+    // Capture the element now: by the time the cleanup runs on unmount, React
+    // has already nulled videoRef.current (refs detach before passive cleanup).
+    // Releasing a detached element still frees its media player.
+    const v = videoRef.current;
+    if (!v) return;
+    if (videoSrcUrl && v.getAttribute("src") !== videoSrcUrl) {
+      v.setAttribute("src", videoSrcUrl);
+      try {
+        v.load();
+      } catch {
+        // ignore
+      }
+    }
+    return () => {
+      if (videoFrameCallbackIdRef.current && (v as any).cancelVideoFrameCallback) {
+        try {
+          (v as any).cancelVideoFrameCallback(videoFrameCallbackIdRef.current);
+        } catch {
+          // ignore
+        }
+        videoFrameCallbackIdRef.current = null;
+      }
+      try {
+        v.pause();
+        v.removeAttribute("src");
+        v.load();
+      } catch {
+        // ignore
+      }
+    };
+  }, [shouldMountVideo, videoSrcUrl]);
+
   // Playback control:
   // - When hovered (or grid preview mode) AND the video is mounted, ensure it loads and plays.
   // - When not hovered, pause and rewind to 0 so hover-preview always starts at the beginning.
@@ -675,7 +730,8 @@ export const LazyClip = memo(function LazyClip({
   return (
     <div
       ref={wrapperRef}
-      className={`clip-wrapper ${isFocused ? "focused" : ""} ${isSelected ? "selected" : ""}`}
+      className={`clip-wrapper ${isFocused ? "focused" : ""} ${isSelected ? "selected" : ""} ${appearDelayMs !== null ? "clip-appear" : ""}`}
+      style={appearDelayMs !== null ? { ["--appear-delay" as any]: `${appearDelayMs}ms` } : undefined}
       onClick={handleClick}
       onDoubleClick={handleDoubleClick}
       // hover toggles isHovered, which controls whether the <video> mounts and whether playback starts.
@@ -683,6 +739,11 @@ export const LazyClip = memo(function LazyClip({
         // IntersectionObserver can lag by a tick; hovering should always mount/play immediately.
         setIsVisible(true);
         setIsHovered(true);
+        // A tile whose poster gave up gets another chance on interaction.
+        if (videoThumbFailed) {
+          setVideoThumbFailed(false);
+          setVideoThumbRetry(0);
+        }
       }}
       onMouseLeave={() => {
         setIsHovered(false);
@@ -741,10 +802,20 @@ export const LazyClip = memo(function LazyClip({
           {isVideoMode && clip.thumbnailReady !== false && !videoThumbFailed && (
             <img
               className="clip"
-              src={`${convertFileSrc(clip.thumbnail)}?v=${importToken}`}
+              src={`${convertFileSrc(clip.thumbnail)}?v=${importToken}${videoThumbRetry > 0 ? `&r=${videoThumbRetry}` : ""}`}
               style={{ opacity: shouldShowThumbnail ? 1 : 0 }}
               draggable={false}
-              onError={() => setVideoThumbFailed(true)}
+              onError={() => {
+                // Retry with a fresh cache-buster before giving up — poster jpgs
+                // occasionally fail transiently when the whole grid (re)loads.
+                setVideoThumbRetry((attempt) => {
+                  if (attempt >= VIDEO_THUMB_MAX_RETRIES) {
+                    setVideoThumbFailed(true);
+                    return attempt;
+                  }
+                  return attempt + 1;
+                });
+              }}
               onDragStart={(e) => { e.preventDefault(); e.stopPropagation(); }}
             />
           )}
@@ -759,12 +830,10 @@ export const LazyClip = memo(function LazyClip({
           {/* ===================== VIDEO layer: cut clip playback =====================
               In video mode: mounted when visible/hovered to show the first frame.
               In WebP mode: intentionally disabled (showVideo=false → shouldMountVideo=false). */}
-          {shouldMountVideo && (
+          {shouldMountVideo && videoSrcUrl && (
             <video
               className="clip"
-              src={`${isVideoMode
-                ? convertFileSrc(videoAudioProxySrc ?? clip.clipPath!)
-                : convertFileSrc(effectiveSrc)}?v=${importToken}`}
+              src={videoSrcUrl}
               muted={!(isHovered && audioPlaybackHover)}
               loop
               autoPlay
@@ -809,9 +878,29 @@ export const LazyClip = memo(function LazyClip({
 
                 invoke("hover_preview_error", {
                   clipId: clip.id,
-                  clipPath: originalPath,
+                  clipPath: isVideoMode ? (clip.clipPath ?? originalPath) : originalPath,
                   errorCode,
                 }).catch(() => { });
+
+                // Video mode plays the pre-cut H.264 clip file directly; the HEVC
+                // source-proxy fallback below would transcode the WRONG file (the
+                // full source episode) and set effectiveSrc, which video-mode src
+                // ignores — pure wasted ffmpeg work. Retry the clip itself once
+                // instead: transient decoder/IO hiccups recover on a fresh load.
+                if (isVideoMode) {
+                  const vid = videoRef.current;
+                  window.setTimeout(() => {
+                    if (!vid || !vid.isConnected) return;
+                    hasReportedErrorRef.current = false;
+                    try {
+                      vid.load();
+                      vid.play().catch(() => { });
+                    } catch {
+                      // ignore
+                    }
+                  }, 300);
+                  return;
+                }
 
                 if (proxyInFlightRef.current) return;
                 proxyInFlightRef.current = true;

@@ -92,9 +92,10 @@ export const useUIStateStore = create<UIStateStore>()(
             name: "amverge.ui.v1",
             partialize: (state) => ({
                 // only these states are tracked in localStorage
+                // (gridPreview intentionally not persisted: Preview All always
+                // starts disabled on app launch)
                 sidebarWidthPx: state.sidebarWidthPx,
                 cols: state.cols,
-                gridPreview: state.gridPreview,
                 sidebarEnabled: state.sidebarEnabled,
             }),
         }

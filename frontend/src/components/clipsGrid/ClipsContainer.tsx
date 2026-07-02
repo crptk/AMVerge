@@ -4,7 +4,7 @@
  * Main grid container for displaying video clips. Handles layout, selection logic, and passes props to each tile (LazyClip).
  * Optimized for performance with lazy loading, proxying, and staggered mounting.
  */
-import { startTransition, useCallback, useEffect, useLayoutEffect, useMemo, useRef } from "react";
+import { startTransition, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { save } from "@tauri-apps/plugin-dialog";
 import { invoke } from "@tauri-apps/api/core";
 import { LazyClip } from "./LazyClip.tsx"
@@ -252,7 +252,34 @@ export default function ClipsContainer({ cols }: { cols?: number }) {
     savedScrollRef.current = null;
     containerRef.current?.scrollTo({ top: 0 });
     resetWebpQueue();
+    // Every fresh episode view (open / import / refresh / startup auto-open)
+    // starts with Preview All disabled.
+    useUIStateStore.getState().setGridPreview(false);
   }, [importToken, resetWebpQueue]);
+
+  // Entrance animation: tiles fade in top-left → bottom-right when an episode
+  // opens (importToken changes, including app startup auto-open). The class is
+  // only applied during a short window and then removed — CSS animations replay
+  // when a display:none ancestor becomes visible again, so leaving the class on
+  // would re-run the fade every time the user returns to the home page.
+  const [tilesAppearing, setTilesAppearing] = useState(true);
+  useEffect(() => {
+    setTilesAppearing(true);
+    const timeout = window.setTimeout(() => setTilesAppearing(false), 1400);
+    return () => window.clearTimeout(timeout);
+  }, [importToken]);
+
+  // Diagonal stagger: delay grows with (row + col), so the wave sweeps from the
+  // top-left tile to the bottom-right. Capped so huge grids finish promptly.
+  const appearDelayFor = useCallback(
+    (index: number) => {
+      if (!tilesAppearing) return null;
+      const row = Math.floor(index / gridColumns);
+      const col = index % gridColumns;
+      return Math.min((row + col) * 40, 600);
+    },
+    [tilesAppearing, gridColumns]
+  );
 
   useEffect(() => {
     // The WebP disk-cache prime only applies to WebP-preview episodes; video
@@ -344,7 +371,11 @@ export default function ClipsContainer({ cols }: { cols?: number }) {
         // scroll back up. The expensive work (video playback, WebP encode) is still
         // viewport-gated inside each tile via its IntersectionObserver, so only the
         // DOM mount + static thumbnail become eager.
+        // Keyed by importToken: every episode open / import / refresh remounts the
+        // tiles from scratch, so cells fully reload (thumbnails, videos, entrance
+        // animation) and any lingering per-tile state is dropped.
         <div
+          key={importToken}
           className="clips-grid"
           style={{
             gridTemplateColumns: `repeat(${gridColumns}, minmax(0, 1fr))`,
@@ -365,6 +396,7 @@ export default function ClipsContainer({ cols }: { cols?: number }) {
               onClipDoubleClick={handleClipDoubleClick}
               onToggleSelection={handleToggleSelection}
               onDownloadClip={handleDownloadSingleClip}
+              appearDelayMs={appearDelayFor(index)}
             />
           ))}
         </div>

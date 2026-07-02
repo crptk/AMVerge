@@ -3,6 +3,34 @@ import { startTransition } from "react";
 import { useAppStateStore } from "../stores/appStore";
 import { useEpisodePanelRuntimeStore, useEpisodePanelMetadataStore } from "../stores/episodeStore";
 
+/**
+ * Opens an episode by id. Store-level (reads via getState) so lightweight
+ * components — e.g. the grid refresh button — can trigger an open/re-open
+ * without subscribing to the full stores through useEpisodePanelState.
+ */
+export function openEpisodeById(episodeId: string) {
+	const appState = useAppStateStore.getState();
+	const episodeRuntimeState = useEpisodePanelRuntimeStore.getState();
+	const episodeMetadataState = useEpisodePanelMetadataStore.getState();
+
+	const selectedEpisode = episodeRuntimeState.episodes.find((e) => e.id === episodeId);
+	if (!selectedEpisode) return;
+
+	appState.setSelectedClips(new Set());
+	appState.setFocusedClip(null);
+	appState.setFocusedClipId(null);
+	episodeRuntimeState.setSelectedEpisodeId(episodeId);
+	episodeRuntimeState.setOpenedEpisodeId(episodeId);
+	episodeRuntimeState.setSelectedFolderId(null);
+	episodeMetadataState.setLastOpenedEpisodeId(episodeId);
+	appState.setImportedVideoPath(selectedEpisode.videoPath);
+	appState.setImportToken(Date.now().toString());
+
+	startTransition(() => {
+		appState.setClips(selectedEpisode.clips);
+	});
+}
+
 export default function useEpisodePanelState() {
 	const appState = useAppStateStore();
 	const episodeRuntimeState = useEpisodePanelRuntimeStore();
@@ -15,22 +43,7 @@ export default function useEpisodePanelState() {
 	};
 
 	const handleOpenEpisode = (episodeId: string) => {
-		const selectedEpisode = episodeRuntimeState.episodes.find((e) => e.id === episodeId);
-		if (!selectedEpisode) return;
-
-		appState.setSelectedClips(new Set());
-		appState.setFocusedClip(null);
-		appState.setFocusedClipId(null);
-		episodeRuntimeState.setSelectedEpisodeId(episodeId);
-		episodeRuntimeState.setOpenedEpisodeId(episodeId);
-		episodeRuntimeState.setSelectedFolderId(null);
-		episodeMetadataState.setLastOpenedEpisodeId(episodeId);
-		appState.setImportedVideoPath(selectedEpisode.videoPath);
-		appState.setImportToken(Date.now().toString());
-
-		startTransition(() => {
-			appState.setClips(selectedEpisode.clips);
-		});
+		openEpisodeById(episodeId);
 	};
 
 	const handleSelectFolder = (folderId: string | null) => {

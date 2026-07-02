@@ -1,5 +1,9 @@
+import { useState } from "react";
+import { FaSyncAlt } from "react-icons/fa";
 import { useAppStateStore } from "../stores/appStore";
 import { useUIStateStore } from "../stores/UIStore";
+import { useEpisodePanelRuntimeStore } from "../stores/episodeStore";
+import { openEpisodeById } from "../hooks/useEpisodePanelState";
 import useImportExport from "../hooks/useImportExport";
 
 export default function ImportButtons() {
@@ -10,10 +14,23 @@ export default function ImportButtons() {
   const bgImportProgress = useAppStateStore((s: any) => s.bgImportProgress);
   const gridPreview = useUIStateStore((s: any) => s.gridPreview);
   const setGridPreview = useUIStateStore((s: any) => s.setGridPreview);
+  const openedEpisodeId = useEpisodePanelRuntimeStore((s) => s.openedEpisodeId);
   const { onImportClick } = useImportExport();
+
+  // Drives the one-shot spin animation on the refresh icon.
+  const [refreshSpinning, setRefreshSpinning] = useState(false);
 
   const hasSelection = selectedClips.size > 0;
   const importBusy = loading || Boolean(bgProgress) || Boolean(bgImportProgress);
+
+  // Re-opens the current episode: fresh import token, cleared selection/focus,
+  // remounted tiles — same reset as switching away and back, without leaving.
+  const handleRefreshEpisode = () => {
+    if (!openedEpisodeId || importBusy) return;
+    setRefreshSpinning(true);
+    openEpisodeById(openedEpisodeId);
+  };
+
   return (
       <main className="clips-import">
         <div className="import-buttons-container">
@@ -23,6 +40,18 @@ export default function ImportButtons() {
                   id="file-button"
           >
             {importBusy ? "Processing...": "Import Episode"}
+          </button>
+          <button
+            onClick={handleRefreshEpisode}
+            className="import-button refresh-button"
+            disabled={importBusy || !openedEpisodeId}
+            title="Refresh episode"
+            aria-label="Refresh episode"
+          >
+            <FaSyncAlt
+              className={refreshSpinning ? "refresh-icon spinning" : "refresh-icon"}
+              onAnimationEnd={() => setRefreshSpinning(false)}
+            />
           </button>
         </div>
         <div className="grid-checkboxes">
@@ -37,12 +66,12 @@ export default function ImportButtons() {
                 />
                 <span className="checkmark"></span>
               </label>
-              <span>Preview All</span>    
+              <span>Preview All</span>
             </div>
             <div className="checkbox-row">
               <label className="custom-checkbox">
-                <input 
-                  type="checkbox" 
+                <input
+                  type="checkbox"
                   className="checkbox"
                   checked={hasSelection}
                   disabled={!hasSelection}
@@ -54,7 +83,7 @@ export default function ImportButtons() {
                 />
                 <span className="checkmark"></span>
               </label>
-              <span>{selectedClips.size} selected</span>    
+              <span>{selectedClips.size} selected</span>
             </div>
           </div>
         </div>
